@@ -1,10 +1,10 @@
 import 'dart:async';
+import 'dart:io' show Platform;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:forui/forui.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../core/core_lifecycle_service.dart';
 import '../desktop/app_update_service.dart';
@@ -13,6 +13,7 @@ import '../desktop/window_behavior_preferences.dart';
 import '../logging/app_logger.dart';
 import '../home/token_connection_home_view.dart';
 import '../home/workspace_home_view.dart';
+import '../shared/external_url_launcher.dart';
 import 'console_links.dart';
 import 'console_auth_service.dart';
 
@@ -193,7 +194,7 @@ class _AuthGateState extends State<AuthGate> with WidgetsBindingObserver {
       return false;
     }
 
-    final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    final opened = await launchExternalUrl(uri, scope: 'auth.browser');
     if (!opened && mounted) {
       setState(() {
         _statusMessage = '未能自动打开浏览器，请手动复制链接完成授权。';
@@ -400,7 +401,10 @@ class _AuthGateState extends State<AuthGate> with WidgetsBindingObserver {
   }
 
   bool get _shouldWaitForBrowserReturn {
-    return !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
+    if (kIsWeb || Platform.operatingSystem == 'ohos') {
+      return false;
+    }
+    return defaultTargetPlatform == TargetPlatform.android;
   }
 
   @override
@@ -635,7 +639,7 @@ class _BrandFooterLinks extends StatelessWidget {
     if (uri == null) {
       return;
     }
-    await launchUrl(uri, mode: LaunchMode.externalApplication);
+    await launchExternalUrl(uri, scope: 'auth.links');
   }
 
   Widget _link(
@@ -691,7 +695,7 @@ class _LoginRequiredView extends StatelessWidget {
   final Future<void> Function() onTokenConnect;
 
   Future<void> _openConsole() async {
-    await launchUrl(consoleHomeUri(), mode: LaunchMode.externalApplication);
+    await launchExternalUrl(consoleHomeUri(), scope: 'auth.console');
   }
 
   @override
@@ -822,14 +826,11 @@ class _TokenConnectionViewState extends State<_TokenConnectionView> {
   }
 
   Future<void> _openConsoleEnrollmentKeys() async {
-    await launchUrl(
-      consoleEnrollmentKeysUri(),
-      mode: LaunchMode.externalApplication,
-    );
+    await launchExternalUrl(consoleEnrollmentKeysUri(), scope: 'auth.token');
   }
 
   Future<void> _openConsole() async {
-    await launchUrl(consoleHomeUri(), mode: LaunchMode.externalApplication);
+    await launchExternalUrl(consoleHomeUri(), scope: 'auth.console');
   }
 
   @override

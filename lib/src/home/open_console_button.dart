@@ -2,9 +2,9 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:forui/forui.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../auth/console_links.dart';
+import '../shared/external_url_launcher.dart';
 
 class HomeOpenConsoleButton extends StatelessWidget {
   const HomeOpenConsoleButton({
@@ -25,7 +25,7 @@ class HomeOpenConsoleButton extends StatelessWidget {
         variant: .ghost,
         size: .sm,
         onPress: () => unawaited(
-          launchUrl(consoleHomeUri(), mode: LaunchMode.externalApplication),
+          launchExternalUrl(consoleHomeUri(), scope: 'home.console'),
         ),
         mainAxisSize: MainAxisSize.min,
         child: const Icon(Icons.open_in_new, size: 16),

@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:forui/forui.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:shared_preferences_platform_interface/shared_preferences_platform_interface.dart';
 
 import 'src/auth/auth_gate.dart';
 import 'src/auth/console_auth_service.dart';
@@ -37,7 +38,11 @@ enum _TrayExitChoice { appOnly, appAndService }
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await AppLogger.instance.initialize();
+  try {
+    await AppLogger.instance.initialize();
+  } catch (error, stack) {
+    debugPrint('AppLogger initialize failure: $error\n$stack');
+  }
   FlutterError.onError = (details) {
     AppLogger.instance.error(
       'flutter',
@@ -55,7 +60,7 @@ Future<void> main() async {
     return false;
   };
 
-  final preferences = await SharedPreferences.getInstance();
+  final preferences = await _loadSharedPreferences();
   final authService = ConsoleAuthService(
     tokenStore: OAuthTokenStore(preferences),
   );
@@ -90,6 +95,25 @@ Future<void> main() async {
       windowBehaviorPreferences: windowBehaviorPreferences,
     ),
   );
+}
+
+Future<SharedPreferences> _loadSharedPreferences() async {
+  try {
+    return await SharedPreferences.getInstance();
+  } catch (error, stack) {
+    AppLogger.instance.warn(
+      'preferences',
+      'SharedPreferences unavailable; using in-memory fallback',
+      context: {'error': error.toString(), 'stack': stack.toString()},
+    );
+    _installInMemorySharedPreferencesStore();
+    return SharedPreferences.getInstance();
+  }
+}
+
+void _installInMemorySharedPreferencesStore() {
+  SharedPreferencesStorePlatform.instance =
+      InMemorySharedPreferencesStore.empty();
 }
 
 @visibleForTesting

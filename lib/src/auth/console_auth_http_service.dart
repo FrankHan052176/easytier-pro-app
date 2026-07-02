@@ -1169,13 +1169,19 @@ class ConsoleAuthService implements AuthService {
   }
 
   static String _enrollmentKeyDisplayName() {
+    if (!kIsWeb && Platform.operatingSystem == 'ohos') {
+      return 'HarmonyOS Auto Key';
+    }
     return defaultTargetPlatform == TargetPlatform.android
         ? 'Android Auto Key'
         : 'Desktop Auto Key';
   }
 
   static bool _shouldRequestDeviceAuthAppReturnUri() {
-    return !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
+    if (kIsWeb || Platform.operatingSystem == 'ohos') {
+      return false;
+    }
+    return defaultTargetPlatform == TargetPlatform.android;
   }
 }
 
