@@ -15,6 +15,7 @@ part 'core_lifecycle_models.dart';
 part 'core_platform_runtime.dart';
 part 'desktop_core_runtime.dart';
 part 'android_core_runtime.dart';
+part 'ohos_core_runtime.dart';
 
 @visibleForTesting
 typedef CoreElevatedDesktopCommandRunner =

@@ -1,0 +1,499 @@
+import 'dart:async';
+import 'dart:collection';
+import 'dart:ui';
+
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+
+import 'package:meta/meta.dart';
+
+import 'package:forui/forui.dart';
+import 'package:forui/src/foundation/annotations.dart';
+import 'package:forui/src/widgets/tooltip/tooltip_controller.dart';
+import 'package:forui/src/widgets/tooltip/tooltip_group.dart';
+
+@SentinelValues(FTooltipStyle, {'backgroundFilter': 'Sentinels.imageFilter'})
+part 'tooltip.design.dart';
+
+/// A tooltip displays information related to a widget when focused, hovered over, or long pressed.
+///
+/// **Note**:
+/// The tooltip will not be shown when long pressed if the [child] contains a [GestureDetector] that has a long-press
+/// callback.
+///
+/// See:
+/// * https://forui.dev/docs/overlay/tooltip for working examples.
+/// * [FTooltipController] for controlling a tooltip.
+/// * [FTooltipStyle] for customizing a tooltip's appearance.
+/// * [FTooltipGroup] for grouping tooltips together where subsequent tooltips appear instantly after the initial one.
+class FTooltip extends StatefulWidget {
+  /// The default builder that returns the child as-is.
+  static Widget defaultBuilder(BuildContext _, FTooltipController _, Widget? child) => child!;
+
+  /// Defines how the tooltip's shown state is controlled.
+  ///
+  /// Defaults to [FTooltipControl.managed] which creates an internal [FTooltipController].
+  final FTooltipControl control;
+
+  /// The tooltip's style.
+  ///
+  /// To modify the current style:
+  /// ```dart
+  /// style: .delta(...)
+  /// ```
+  ///
+  /// To replace the style:
+  /// ```dart
+  /// style: FTooltipStyle(...)
+  /// ```
+  ///
+  /// ## CLI
+  /// To generate and customize this style:
+  ///
+  /// ```shell
+  /// dart run forui style create tooltip
+  /// ```
+  final FTooltipStyleDelta style;
+
+  /// The anchor point on the tip used for positioning relative to the [childAnchor].
+  ///
+  /// For example, with `tipAnchor: Alignment.bottomCenter` and `childAnchor: Alignment.topCenter`,
+  /// the tip's bottom edge will align with the child's top edge.
+  ///
+  /// Defaults to [Alignment.bottomCenter].
+  final AlignmentGeometry tipAnchor;
+
+  /// The anchor point on the [child] used for positioning relative to the [tipAnchor].
+  ///
+  /// For example, with `childAnchor: Alignment.topCenter` and `tipAnchor: Alignment.bottomCenter`,
+  /// the child's top edge will align with the tip's bottom edge.
+  ///
+  /// Defaults to [Alignment.topCenter].
+  final AlignmentGeometry childAnchor;
+
+  /// The spacing between the [tipAnchor] and [childAnchor].
+  ///
+  /// Applied before [overflow].
+  ///
+  /// Defaults to `FPortalSpacing(4)`.
+  final FPortalSpacing spacing;
+
+  /// The callback used to shift a tooltip's tip when it overflows out of the viewport.
+  ///
+  /// Applied after [spacing].
+  ///
+  /// See [FPortalOverflow] for the different overflow strategies.
+  ///
+  /// Defaults to [FPortalOverflow.flip].
+  final FPortalOverflow overflow;
+
+  /// True if the tooltip should be shown when hovered over. Defaults to [FTooltipGroup.hover], typically true.
+  final bool? hover;
+
+  /// True if the tooltip should be shown when long pressed.
+  ///
+  /// Defaults to the enclosing [FTooltipGroup.longPress], typically true.
+  final bool? longPress;
+
+  /// {@macro forui.foundation.FPortal.useViewPadding}
+  ///
+  /// Defaults to true.
+  final bool useViewPadding;
+
+  /// {@macro forui.foundation.FPortal.useViewInsets}
+  ///
+  /// Defaults to true.
+  final bool useViewInsets;
+
+  /// The tip builder. The child passed to [tipBuilder] will always be null.
+  final Widget Function(BuildContext context, FTooltipController controller) tipBuilder;
+
+  /// An optional builder which returns the child widget that the tooltip is aligned to.
+  ///
+  /// Can incorporate a value-independent widget subtree from the [child] into the returned widget tree.
+  ///
+  /// This can be null if the entire widget subtree the [builder] builds does not require the controller.
+  final ValueWidgetBuilder<FTooltipController> builder;
+
+  /// The child to which the tip is aligned to.
+  final Widget? child;
+
+  /// Creates a tooltip.
+  ///
+  /// ## Contract
+  /// Throws [AssertionError] if neither [builder] nor [child] is both provided.
+  const FTooltip({
+    required this.tipBuilder,
+    this.control = const .managed(),
+    this.style = const .context(),
+    this.tipAnchor = .bottomCenter,
+    this.childAnchor = .topCenter,
+    this.spacing = const .spacing(4),
+    this.overflow = .flip,
+    this.hover,
+    this.longPress,
+    this.useViewPadding = true,
+    this.useViewInsets = true,
+    this.builder = defaultBuilder,
+    this.child,
+    super.key,
+  }) : assert(builder != defaultBuilder || child != null, 'Either builder or child must be provided.');
+
+  @override
+  State<FTooltip> createState() => _FTooltipState();
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties
+      ..add(DiagnosticsProperty('control', control))
+      ..add(DiagnosticsProperty('style', style))
+      ..add(DiagnosticsProperty('tipAnchor', tipAnchor))
+      ..add(DiagnosticsProperty('childAnchor', childAnchor))
+      ..add(DiagnosticsProperty('spacing', spacing))
+      ..add(ObjectFlagProperty.has('overflow', overflow))
+      ..add(FlagProperty('hover', value: hover, ifTrue: 'hover'))
+      ..add(FlagProperty('longPress', value: longPress, ifTrue: 'longPress'))
+      ..add(FlagProperty('useViewPadding', value: useViewPadding, ifTrue: 'using view padding'))
+      ..add(FlagProperty('useViewInsets', value: useViewInsets, ifTrue: 'using view insets'))
+      ..add(ObjectFlagProperty.has('tipBuilder', tipBuilder))
+      ..add(ObjectFlagProperty.has('builder', builder));
+  }
+}
+
+class _FTooltipState extends State<FTooltip> with SingleTickerProviderStateMixin {
+  final FocusNode _focus = .new(debugLabel: 'FTooltip', canRequestFocus: false, skipTraversal: true);
+  late FTooltipController _controller;
+  late FTooltipStyle _style;
+  int _monotonic = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = widget.control.create(_handleOnChange, this);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _updateStyle();
+  }
+
+  @override
+  void didUpdateWidget(covariant FTooltip old) {
+    super.didUpdateWidget(old);
+    _controller = widget.control.update(old.control, _controller, _handleOnChange, this).$1;
+    _updateStyle();
+  }
+
+  void _updateStyle() {
+    final group = TooltipGroupScope.maybeOf(context);
+    _style = widget.style(group?.style ?? context.theme.tooltipStyle);
+    _controller.updateMotion(_style.motion);
+  }
+
+  @override
+  void dispose() {
+    widget.control.dispose(_controller, _handleOnChange);
+    _focus.dispose();
+    super.dispose();
+  }
+
+  void _handleOnChange() {
+    if (widget.control case FTooltipManagedControl(:final onChange?)) {
+      onChange(_controller.status.isForwardOrCompleted);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final group = TooltipGroupScope.maybeOf(context);
+    final direction = Directionality.maybeOf(context) ?? .ltr;
+    final hover = widget.hover ?? group?.hover ?? true;
+    final longPress = widget.longPress ?? group?.longPress ?? true;
+
+    var child = widget.builder(context, _controller, widget.child);
+    if (hover || longPress) {
+      child = CallbackShortcuts(
+        bindings: {const SingleActivator(.escape): _exit},
+        child: Focus(
+          // This is required as onFocusChange is not called when focus is shifted from a child to a nested child.
+          onKeyEvent: (_, event) {
+            _toggle(_focus.hasFocus);
+            return .ignored;
+          },
+          focusNode: _focus,
+          onFocusChange: _toggle,
+          child: child,
+        ),
+      );
+    }
+
+    if (hover) {
+      child = MouseRegion(
+        onEnter: (_) => _enter(),
+        onExit: (_) => _exit(),
+        // We have to use a Listener as GestureDetector's arena implementation allows only 1 gesture to win. It is
+        // problematic if the child is a button. See https://github.com/flutter/flutter/issues/92103.
+        child: Listener(onPointerDown: (_) => _exit(), child: child),
+      );
+    }
+
+    if (longPress) {
+      child = GestureDetector(
+        onLongPressStart: (_) async {
+          _monotonic++;
+          unawaited(_style.hapticFeedback());
+          await _controller.show();
+          group?.show();
+        },
+        onLongPressEnd: (_) async {
+          final count = ++_monotonic;
+          await Future.delayed(_style.longPressExitDuration);
+
+          if (count == _monotonic && !_controller.disposed) {
+            await _controller.hide();
+            group?.hide();
+          }
+        },
+        child: child,
+      );
+    }
+
+    return BackdropGroup(
+      child: FPortal(
+        control: .managed(controller: _controller.overlay),
+        spacing: widget.spacing,
+        childAnchor: widget.childAnchor,
+        portalAnchor: widget.tipAnchor,
+        overflow: widget.overflow,
+        useViewPadding: widget.useViewPadding,
+        useViewInsets: widget.useViewInsets,
+        portalBuilder: (context, _) {
+          Widget tooltip = Semantics(
+            container: true,
+            child: FadeTransition(
+              opacity: _controller.fade,
+              child: ScaleTransition(
+                alignment: widget.tipAnchor.resolve(direction),
+                scale: _controller.scale,
+                child: DecoratedBox(
+                  decoration: _style.decoration,
+                  child: Padding(
+                    padding: _style.padding,
+                    child: DefaultTextStyle(style: _style.textStyle, child: widget.tipBuilder(context, _controller)),
+                  ),
+                ),
+              ),
+            ),
+          );
+
+          // The background filter cannot be nested in a FadeTransition because of https://github.com/flutter/flutter/issues/31706.
+          if (_style.backgroundFilter case final background?) {
+            tooltip = Stack(
+              children: [
+                Positioned.fill(
+                  child: ClipRect(
+                    child: BackdropFilter(filter: background, child: Container()),
+                  ),
+                ),
+                tooltip,
+              ],
+            );
+          }
+
+          return tooltip;
+        },
+        child: child,
+      ),
+    );
+  }
+
+  Future<void> _toggle(bool focused) {
+    if (!focused) {
+      return _exit();
+    }
+
+    final descendants = Queue.of(_focus.children);
+    while (descendants.isNotEmpty) {
+      final current = descendants.removeFirst();
+      if (current.hasPrimaryFocus) {
+        return _enter();
+      }
+
+      if (!current.canRequestFocus) {
+        descendants.addAll(current.children);
+      }
+    }
+
+    return _exit();
+  }
+
+  Future<void> _enter() async {
+    final group = TooltipGroupScope.maybeOf(context);
+    final fencingToken = ++_monotonic;
+
+    if (!(group?.active ?? false)) {
+      await Future.delayed(_style.hoverEnterDuration);
+    }
+
+    if (fencingToken == _monotonic && !_controller.disposed) {
+      await _controller.show();
+      group?.show();
+    }
+  }
+
+  Future<void> _exit() async {
+    final group = TooltipGroupScope.maybeOf(context);
+    final count = ++_monotonic;
+    await Future.delayed(_style.hoverExitDuration);
+
+    if (count == _monotonic && !_controller.disposed) {
+      await _controller.hide();
+      group?.hide();
+    }
+  }
+}
+
+/// A [FTooltip]'s style.
+class FTooltipStyle with Diagnosticable, _$FTooltipStyleFunctions {
+  /// The tooltip's default shadow in [FTooltipStyle.inherit].
+  static const shadow = [
+    BoxShadow(color: Color(0x1a000000), offset: Offset(0, 4), blurRadius: 6, spreadRadius: -1),
+    BoxShadow(color: Color(0x1a000000), offset: Offset(0, 2), blurRadius: 4, spreadRadius: -2),
+  ];
+
+  /// The box decoration.
+  @override
+  final Decoration decoration;
+
+  /// An optional background filter applied to the tooltip.
+  ///
+  /// This is typically combined with a translucent background in [decoration] to create a glassmorphic effect.
+  @override
+  final ImageFilter? backgroundFilter;
+
+  /// The padding surrounding the tooltip's text.
+  @override
+  final EdgeInsets padding;
+
+  /// The tooltip's default text style.
+  @override
+  final TextStyle textStyle;
+
+  /// The haptic feedback for when the tooltip is shown via long press.
+  @override
+  final Future<void> Function() hapticFeedback;
+
+  /// The tooltip's motion configuration.
+  @override
+  final FTooltipMotion motion;
+
+  /// The duration to wait before showing the tooltip after the user hovers over the target. Defaults to 500ms.
+  @override
+  final Duration hoverEnterDuration;
+
+  /// The duration to wait before hiding the tooltip after the user has stopped hovering over the target.
+  ///
+  /// Defaults to [Duration.zero].
+  @override
+  final Duration hoverExitDuration;
+
+  /// The duration to wait before hiding the tooltip after the user has stopped pressing the target. Defaults to 1500ms.
+  @override
+  final Duration longPressExitDuration;
+
+  /// Creates a [FTooltipStyle].
+  const FTooltipStyle({
+    required this.decoration,
+    required this.textStyle,
+    required this.hapticFeedback,
+    this.backgroundFilter,
+    this.padding = const .symmetric(horizontal: 14, vertical: 10),
+    this.motion = const FTooltipMotion(),
+    this.hoverEnterDuration = const Duration(milliseconds: 500),
+    this.hoverExitDuration = .zero,
+    this.longPressExitDuration = const Duration(milliseconds: 1500),
+  });
+
+  /// Creates a [FTooltipStyle] that inherits its properties.
+  FTooltipStyle.inherit({
+    required FColors colors,
+    required FTypography typography,
+    required FStyle style,
+    FTooltipMotion motion = const FTooltipMotion(),
+    Duration hoverEnterDuration = const Duration(milliseconds: 500),
+    Duration hoverExitDuration = .zero,
+    Duration longPressExitDuration = const Duration(milliseconds: 1500),
+  }) : this(
+         decoration: ShapeDecoration(
+           shape: RoundedSuperellipseBorder(
+             side: BorderSide(color: colors.border, width: style.borderWidth),
+             borderRadius: style.borderRadius.md,
+           ),
+           color: colors.card,
+           shadows: FTooltipStyle.shadow,
+         ),
+         padding: const .symmetric(horizontal: 14, vertical: 10),
+         textStyle: typography.xs,
+         hapticFeedback: style.hapticFeedback.mediumImpact,
+         motion: motion,
+         hoverEnterDuration: hoverEnterDuration,
+         hoverExitDuration: hoverExitDuration,
+         longPressExitDuration: longPressExitDuration,
+       );
+}
+
+/// Motion-related properties for [FTooltip].
+class FTooltipMotion with Diagnosticable, _$FTooltipMotionFunctions {
+  /// A [FTooltipMotion] with no motion effects.
+  static const FTooltipMotion none = .new(
+    scaleTween: FImmutableTween(begin: 1, end: 1),
+    fadeTween: FImmutableTween(begin: 1, end: 1),
+  );
+
+  /// The tooltip's entrance duration. Defaults to 100ms.
+  @override
+  final Duration entranceDuration;
+
+  /// The tooltip's exit duration. Defaults to 100ms.
+  @override
+  final Duration exitDuration;
+
+  /// The curve used for the tooltip's expansion animation when entering. Defaults to [Curves.easeOutCubic].
+  @override
+  final Curve expandCurve;
+
+  /// The curve used for the tooltip's collapse animation when exiting. Defaults to [Curves.easeOutCubic].
+  @override
+  final Curve collapseCurve;
+
+  /// The curve used for the tooltip's fade-in animation when entering. Defaults to [Curves.linear].
+  @override
+  final Curve fadeInCurve;
+
+  /// The curve used for the tooltip's fade-out animation when exiting. Defaults to [Curves.linear].
+  @override
+  final Curve fadeOutCurve;
+
+  /// The tooltip's scale tween. Defaults to a tween from 0.93 to 1.
+  @override
+  final Animatable<double> scaleTween;
+
+  /// The tooltip's fade tween. Defaults to a tween from 0 to 1.
+  @override
+  final Animatable<double> fadeTween;
+
+  /// Creates a [FTooltipMotion].
+  const FTooltipMotion({
+    this.entranceDuration = const Duration(milliseconds: 100),
+    this.exitDuration = const Duration(milliseconds: 100),
+    this.expandCurve = Curves.easeOutCubic,
+    this.collapseCurve = Curves.easeOutCubic,
+    this.fadeInCurve = Curves.linear,
+    this.fadeOutCurve = Curves.linear,
+    this.scaleTween = const FImmutableTween(begin: 0.93, end: 1),
+    this.fadeTween = const FImmutableTween(begin: 0, end: 1),
+  });
+}

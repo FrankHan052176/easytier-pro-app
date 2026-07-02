@@ -1,0 +1,1518 @@
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
+
+import 'package:collection/collection.dart';
+import 'package:meta/meta.dart';
+
+import 'package:forui/forui.dart';
+
+part 'theme_data.design.dart';
+
+/// Defines the configuration of the overall visual [FTheme] for a widget subtree.
+///
+/// A [FThemeData] is composed of [colors], [typography], [style], widget styles, and [extensions].
+///
+/// * [colors] is a set of colors.
+/// * [typography] contains font and typography information.
+/// * [style] is a set of miscellaneous properties.
+/// * widget styles are used to style individual Forui widgets.
+/// * [extensions] are arbitrary additions to this theme. They are typically used to define properties specific to your
+///   application.
+///
+/// Widget styles provide an `inherit(...)` constructor. The constructor configures the widget style using the defaults
+/// provided by the [colors], [typography], and [style].
+final class FThemeData with Diagnosticable, _$FThemeDataFunctions {
+  /// A label that is used in the [toString] output. Intended to aid with identifying themes in debug output.
+  @override
+  final String? debugLabel;
+
+  /// The responsive breakpoints.
+  @override
+  final FBreakpoints breakpoints;
+
+  /// The color scheme. It is used to configure the colors of Forui widgets.
+  @override
+  final FColors colors;
+
+  /// The typography data. It is used to configure the [TextStyle]s of Forui widgets.
+  @override
+  final FTypography typography;
+
+  /// The style. It is used to configure the miscellaneous properties, such as border radii, of Forui widgets.
+  @override
+  final FStyle style;
+
+  /// The accordion style.
+  ///
+  /// ## CLI
+  /// To generate and customize this style:
+  ///
+  /// ```shell
+  /// dart run forui style create accordion
+  /// ```
+  @override
+  final FAccordionStyle accordionStyle;
+
+  /// The autocomplete style.
+  ///
+  /// ## CLI
+  /// To generate and customize this style:
+  ///
+  /// ```shell
+  /// dart run forui style create autocomplete
+  /// ```
+  @override
+  final FAutocompleteStyle autocompleteStyle;
+
+  /// The alert styles.
+  ///
+  /// ## CLI
+  /// To generate and customize this style:
+  ///
+  /// ```shell
+  /// dart run forui style create alerts
+  /// ```
+  @override
+  final FAlertStyles alertStyles;
+
+  /// The avatar style.
+  ///
+  /// ## CLI
+  /// To generate and customize this style:
+  ///
+  /// ```shell
+  /// dart run forui style create avatar
+  /// ```
+  @override
+  final FAvatarStyle avatarStyle;
+
+  /// The badge styles.
+  ///
+  /// ## CLI
+  /// To generate and customize this style:
+  ///
+  /// ```shell
+  /// dart run forui style create badges
+  /// ```
+  @override
+  final FBadgeStyles badgeStyles;
+
+  /// The bottom navigation bar style.
+  ///
+  /// ## CLI
+  /// To generate and customize this style:
+  ///
+  /// ```shell
+  /// dart run forui style create bottom-navigation-bar
+  /// ```
+  @override
+  final FBottomNavigationBarStyle bottomNavigationBarStyle;
+
+  /// The breadcrumb style.
+  ///
+  /// ## CLI
+  /// To generate and customize this style:
+  ///
+  /// ```shell
+  /// dart run forui style create breadcrumb
+  /// ```
+  @override
+  final FBreadcrumbStyle breadcrumbStyle;
+
+  /// The button styles.
+  ///
+  /// ## CLI
+  /// To generate and customize this style:
+  ///
+  /// ```shell
+  /// dart run forui style create buttons
+  /// ```
+  @override
+  final FButtonStyles buttonStyles;
+
+  /// The calendar style.
+  ///
+  /// ## CLI
+  /// To generate and customize this style:
+  ///
+  /// ```shell
+  /// dart run forui style create calendar
+  /// ```
+  @override
+  final FCalendarStyle calendarStyle;
+
+  /// The card style.
+  ///
+  /// ## CLI
+  /// To generate and customize this style:
+  ///
+  /// ```shell
+  /// dart run forui style create card
+  /// ```
+  @override
+  final FCardStyle cardStyle;
+
+  /// The checkbox style.
+  ///
+  /// ## CLI
+  /// To generate and customize this style:
+  ///
+  /// ```shell
+  /// dart run forui style create checkbox
+  /// ```
+  @override
+  final FCheckboxStyle checkboxStyle;
+
+  /// The circular progress style.
+  ///
+  /// ## CLI
+  /// To generate and customize this style:
+  ///
+  /// ```shell
+  /// dart run forui style create circular-progress
+  /// ```
+  @override
+  final FCircularProgressSizeStyles circularProgressStyles;
+
+  /// The date field style.
+  ///
+  /// ## CLI
+  /// To generate and customize this style:
+  ///
+  /// ```shell
+  /// dart run forui style create date-field
+  /// ```
+  @override
+  final FDateFieldStyle dateFieldStyle;
+
+  /// The date time picker style.
+  ///
+  /// ## CLI
+  /// To generate and customize this style:
+  ///
+  /// ```shell
+  /// dart run forui style create date-time-picker
+  /// ```
+  @override
+  final FDateTimePickerStyle dateTimePickerStyle;
+
+  /// The determinate progress style.
+  ///
+  /// ## CLI
+  /// To generate and customize this style:
+  ///
+  /// ```shell
+  /// dart run forui style create determinate-progress
+  /// ```
+  @override
+  final FDeterminateProgressStyle determinateProgressStyle;
+
+  /// The dialog route's style.
+  ///
+  /// ## CLI
+  /// To generate and customize this style:
+  ///
+  /// ```shell
+  /// dart run forui style create dialog-route
+  /// ```
+  @override
+  final FDialogRouteStyle dialogRouteStyle;
+
+  /// The dialog style.
+  ///
+  /// ## CLI
+  /// To generate and customize this style:
+  ///
+  /// ```shell
+  /// dart run forui style create dialog
+  /// ```
+  @override
+  final FDialogStyle dialogStyle;
+
+  /// The divider styles.
+  ///
+  /// ## CLI
+  /// To generate and customize this style:
+  ///
+  /// ```shell
+  /// dart run forui style create dividers
+  /// ```
+  @override
+  final FDividerStyles dividerStyles;
+
+  /// The header styles.
+  ///
+  /// ## CLI
+  /// To generate and customize this style:
+  ///
+  /// ```shell
+  /// dart run forui style create headers
+  /// ```
+  @override
+  final FHeaderStyles headerStyles;
+
+  /// The item styles.
+  ///
+  /// ## CLI
+  /// To generate and customize this style:
+  /// ```shell
+  /// dart run forui style create item
+  /// ```
+  @override
+  final FItemStyles itemStyles;
+
+  /// The item group style.
+  ///
+  /// ## CLI
+  /// To generate and customize this style:
+  /// ```shell
+  /// dart run forui style create item-group
+  /// ```
+  @override
+  final FItemGroupStyle itemGroupStyle;
+
+  /// The label styles.
+  ///
+  /// ## CLI
+  /// To generate and customize this style:
+  ///
+  /// ```shell
+  /// dart run forui style create labels
+  /// ```
+  @override
+  final FLabelStyles labelStyles;
+
+  /// The line calendar style.
+  ///
+  /// ## CLI
+  /// To generate and customize this style:
+  ///
+  /// ```shell
+  /// dart run forui style create line-calendar
+  /// ```
+  @override
+  final FLineCalendarStyle lineCalendarStyle;
+
+  /// The multi-select style.
+  ///
+  /// ## CLI
+  /// To generate and customize this style:
+  /// ```shell
+  /// dart run forui style create multi-select
+  /// ```
+  @override
+  final FMultiSelectStyle multiSelectStyle;
+
+  /// The modal sheet style.
+  ///
+  /// ## CLI
+  /// To generate and customize this style:
+  ///
+  /// ```shell
+  /// dart run forui style create modal-sheet
+  /// ```
+  @override
+  final FModalSheetStyle modalSheetStyle;
+
+  /// The OTP field style.
+  @override
+  final FOtpFieldStyle otpFieldStyle;
+
+  /// The pagination style.
+  ///
+  /// ## CLI
+  /// To generate and customize this style:
+  ///
+  /// ```shell
+  /// dart run forui style create pagination
+  /// ```
+  @override
+  final FPaginationStyle paginationStyle;
+
+  /// The persistent sheet style.
+  ///
+  /// ## CLI
+  /// To generate and customize this style:
+  ///
+  /// ```shell
+  /// dart run forui style create persistent-sheet
+  /// ```
+  @override
+  final FPersistentSheetStyle persistentSheetStyle;
+
+  /// The picker's style.
+  ///
+  /// ## CLI
+  /// To generate and customize this style:
+  ///
+  /// ```shell
+  /// dart run forui style create picker
+  /// ```
+  @override
+  final FPickerStyle pickerStyle;
+
+  /// The popover's style.
+  ///
+  /// ## CLI
+  /// To generate and customize this style:
+  ///
+  /// ```shell
+  /// dart run forui style create popover
+  /// ```
+  @override
+  final FPopoverStyle popoverStyle;
+
+  /// The popover menu's style.
+  ///
+  /// ## CLI
+  /// To generate and customize this style:
+  ///
+  /// ```shell
+  /// dart run forui style create popover-menu
+  /// ```
+  @override
+  final FPopoverMenuStyle popoverMenuStyle;
+
+  /// The progress style.
+  ///
+  /// ## CLI
+  /// To generate and customize this style:
+  ///
+  /// ```shell
+  /// dart run forui style create progress
+  /// ```
+  @override
+  final FProgressStyle progressStyle;
+
+  /// The radio style.
+  ///
+  /// ## CLI
+  /// To generate and customize this style:
+  ///
+  /// ```shell
+  /// dart run forui style create radio
+  /// ```
+  @override
+  final FRadioStyle radioStyle;
+
+  /// The resizable styles.
+  ///
+  /// ## CLI
+  /// To generate and customize this style:
+  ///
+  /// ```shell
+  /// dart run forui style create resizable
+  /// ```
+  @override
+  final FResizableStyles resizableStyles;
+
+  /// The scaffold style.
+  ///
+  /// ## CLI
+  /// To generate and customize this style:
+  ///
+  /// ```shell
+  /// dart run forui style create scaffold
+  /// ```
+  @override
+  final FScaffoldStyle scaffoldStyle;
+
+  /// The select style.
+  ///
+  /// ## CLI
+  /// To generate and customize this style:
+  ///
+  /// ```shell
+  /// dart run forui style create select
+  /// ```
+  @override
+  final FSelectStyle selectStyle;
+
+  /// The select group style.
+  ///
+  /// ## CLI
+  /// To generate and customize this style:
+  ///
+  /// ```shell
+  /// dart run forui style create select-group
+  /// ```
+  @override
+  final FSelectGroupStyle selectGroupStyle;
+
+  /// The select menu tile style.
+  ///
+  /// ## CLI
+  /// To generate and customize this style:
+  ///
+  /// ```shell
+  /// dart run forui style create select-menu-tile
+  /// ```
+  @override
+  final FSelectMenuTileStyle selectMenuTileStyle;
+
+  /// The sidebar style.
+  ///
+  /// ## CLI
+  /// To generate and customize this style:
+  ///
+  /// ```shell
+  /// dart run forui style create sidebar
+  /// ```
+  @override
+  final FSidebarStyle sidebarStyle;
+
+  /// The slider styles.
+  ///
+  /// ## CLI
+  /// To generate and customize this style:
+  ///
+  /// ```shell
+  /// dart run forui style create sliders
+  /// ```
+  @override
+  final FSliderStyles sliderStyles;
+
+  /// The toaster style.
+  ///
+  /// ## CLI
+  /// To generate and customize this style:
+  ///
+  /// ```shell
+  /// dart run forui style create toaster
+  /// ```
+  @override
+  final FToasterStyle toasterStyle;
+
+  /// The switch style.
+  ///
+  /// ## CLI
+  /// To generate and customize this style:
+  ///
+  /// ```shell
+  /// dart run forui style create switch
+  /// ```
+  @override
+  final FSwitchStyle switchStyle;
+
+  /// The tabs styles.
+  ///
+  /// ## CLI
+  /// To generate and customize this style:
+  ///
+  /// ```shell
+  /// dart run forui style create tabs
+  /// ```
+  @override
+  final FTabsStyle tabsStyle;
+
+  /// The tappable style.
+  ///
+  /// ## CLI
+  /// To generate and customize this style:
+  ///
+  /// ```shell
+  /// dart run forui style create tappable
+  /// ```
+  @override
+  final FTappableStyle tappableStyle;
+
+  /// The text field styles.
+  ///
+  /// ## CLI
+  /// To generate and customize this style:
+  ///
+  /// ```shell
+  /// dart run forui style create text-field
+  /// ```
+  @override
+  final FTextFieldSizeStyles textFieldStyles;
+
+  /// The tile's styles.
+  ///
+  /// ## CLI
+  /// To generate and customize this style:
+  ///
+  /// ```shell
+  /// dart run forui style create tile
+  /// ```
+  @override
+  final FTileStyles tileStyles;
+
+  /// The tile group's style.
+  ///
+  /// ## CLI
+  /// To generate and customize this style:
+  ///
+  /// ```shell
+  /// dart run forui style create tile-group
+  /// ```
+  @override
+  final FTileGroupStyle tileGroupStyle;
+
+  /// The time field's style.
+  ///
+  /// ## CLI
+  /// To generate and customize this style:
+  ///
+  /// ```shell
+  /// dart run forui style create time-field
+  /// ```
+  @override
+  final FTimeFieldStyle timeFieldStyle;
+
+  /// The time picker style.
+  ///
+  /// ## CLI
+  /// To generate and customize this style:
+  ///
+  /// ```shell
+  /// dart run forui style create time-picker
+  /// ```
+  @override
+  final FTimePickerStyle timePickerStyle;
+
+  /// The tooltip style.
+  ///
+  /// ## CLI
+  /// To generate and customize this style:
+  ///
+  /// ```shell
+  /// dart run forui style create tooltip
+  /// ```
+  @override
+  final FTooltipStyle tooltipStyle;
+
+  final Map<Object, ThemeExtension<dynamic>> _extensions;
+
+  /// Creates a [FThemeData].
+  ///
+  /// Set [touch] to true for touch-optimized sizing.
+  factory FThemeData({
+    required FColors colors,
+    required bool touch,
+    String? debugLabel,
+    FBreakpoints breakpoints = const FBreakpoints(),
+    FTypography? typography,
+    FStyle? style,
+    FAccordionStyle? accordionStyle,
+    FAutocompleteStyle? autocompleteStyle,
+    FVariants<FAlertVariantConstraint, FAlertVariant, FAlertStyle, FAlertStyleDelta>? alertStyles,
+    FAvatarStyle? avatarStyle,
+    FVariants<FBadgeVariantConstraint, FBadgeVariant, FBadgeStyle, FBadgeStyleDelta>? badgeStyles,
+    FBottomNavigationBarStyle? bottomNavigationBarStyle,
+    FBreadcrumbStyle? breadcrumbStyle,
+    FVariants<FButtonVariantConstraint, FButtonVariant, FButtonSizeStyles, FButtonSizesDelta>? buttonStyles,
+    FCalendarStyle? calendarStyle,
+    FCardStyle? cardStyle,
+    FCheckboxStyle? checkboxStyle,
+    FVariants<
+      FCircularProgressSizeVariantConstraint,
+      FCircularProgressSizeVariant,
+      FCircularProgressStyle,
+      FCircularProgressStyleDelta
+    >?
+    circularProgressStyles,
+    FDateFieldStyle? dateFieldStyle,
+    FDateTimePickerStyle? dateTimePickerStyle,
+    FDeterminateProgressStyle? determinateProgressStyle,
+    FDialogRouteStyle? dialogRouteStyle,
+    FDialogStyle? dialogStyle,
+    FVariants<FDividerAxisVariantConstraint, FDividerAxisVariant, FDividerStyle, FDividerStyleDelta>? dividerStyles,
+    FVariants<FHeaderVariantConstraint, FHeaderVariant, FHeaderStyle, FHeaderStyleDelta>? headerStyles,
+    FVariants<FItemVariantConstraint, FItemVariant, FItemStyle, FItemStyleDelta>? itemStyles,
+    FItemGroupStyle? itemGroupStyle,
+    FLabelStyles? labelStyles,
+    FLineCalendarStyle? lineCalendarStyle,
+    FMultiSelectStyle? multiSelectStyle,
+    FModalSheetStyle? modalSheetStyle,
+    FOtpFieldStyle? otpFieldStyle,
+    FPaginationStyle? paginationStyle,
+    FPersistentSheetStyle? persistentSheetStyle,
+    FPickerStyle? pickerStyle,
+    FPopoverStyle? popoverStyle,
+    FPopoverMenuStyle? popoverMenuStyle,
+    FProgressStyle? progressStyle,
+    FRadioStyle? radioStyle,
+    FVariants<
+      FResizableAxisVariantConstraint,
+      FResizableAxisVariant,
+      FResizableDividerStyle,
+      FResizableDividerStyleDelta
+    >?
+    resizableStyles,
+    FScaffoldStyle? scaffoldStyle,
+    FSelectStyle? selectStyle,
+    FSelectGroupStyle? selectGroupStyle,
+    FSelectMenuTileStyle? selectMenuTileStyle,
+    FSidebarStyle? sidebarStyle,
+    FVariants<FSliderAxisVariantConstraint, FSliderAxisVariant, FSliderStyle, FSliderStyleDelta>? sliderStyles,
+    FToasterStyle? toasterStyle,
+    FSwitchStyle? switchStyle,
+    FTabsStyle? tabsStyle,
+    FTappableStyle? tappableStyle,
+    FVariants<FTextFieldSizeVariantConstraint, FTextFieldSizeVariant, FTextFieldStyle, FTextFieldStyleDelta>?
+    textFieldStyles,
+    FVariants<FItemVariantConstraint, FItemVariant, FTileStyle, FTileStyleDelta>? tileStyles,
+    FTileGroupStyle? tileGroupStyle,
+    FTimeFieldStyle? timeFieldStyle,
+    FTimePickerStyle? timePickerStyle,
+    FTooltipStyle? tooltipStyle,
+    Iterable<ThemeExtension<dynamic>> extensions = const [],
+  }) {
+    typography ??= .inherit(colors: colors, touch: touch);
+    style ??= .inherit(colors: colors, typography: typography, touch: touch);
+    return ._(
+      debugLabel: debugLabel,
+      breakpoints: breakpoints,
+      colors: colors,
+      typography: typography,
+      style: style,
+      accordionStyle: accordionStyle ?? .inherit(colors: colors, typography: typography, style: style, touch: touch),
+      autocompleteStyle:
+          autocompleteStyle ?? .inherit(colors: colors, typography: typography, style: style, touch: touch),
+      alertStyles: alertStyles == null
+          ? FAlertStyles.inherit(colors: colors, typography: typography, style: style, touch: touch)
+          : FAlertStyles(alertStyles),
+      avatarStyle: avatarStyle ?? .inherit(colors: colors, typography: typography),
+      badgeStyles: badgeStyles == null
+          ? FBadgeStyles.inherit(colors: colors, typography: typography, style: style, touch: touch)
+          : FBadgeStyles(badgeStyles),
+      bottomNavigationBarStyle:
+          bottomNavigationBarStyle ?? .inherit(colors: colors, typography: typography, style: style),
+      breadcrumbStyle: breadcrumbStyle ?? .inherit(colors: colors, typography: typography, style: style, touch: touch),
+      buttonStyles: buttonStyles == null
+          ? FButtonStyles.inherit(colors: colors, typography: typography, style: style, touch: touch)
+          : FButtonStyles(buttonStyles),
+      calendarStyle: calendarStyle ?? .inherit(colors: colors, typography: typography, style: style, touch: touch),
+      cardStyle: cardStyle ?? .inherit(colors: colors, typography: typography, style: style, touch: touch),
+      checkboxStyle: checkboxStyle ?? .inherit(colors: colors, style: style, touch: touch),
+      circularProgressStyles: circularProgressStyles == null
+          ? FCircularProgressSizeStyles.inherit(colors: colors, typography: typography)
+          : FCircularProgressSizeStyles(circularProgressStyles),
+      dateFieldStyle: dateFieldStyle ?? .inherit(colors: colors, typography: typography, style: style, touch: touch),
+      dateTimePickerStyle:
+          dateTimePickerStyle ?? .inherit(colors: colors, typography: typography, style: style, touch: touch),
+      determinateProgressStyle: determinateProgressStyle ?? .inherit(colors: colors, style: style),
+      dialogRouteStyle: dialogRouteStyle ?? .inherit(colors: colors),
+      dialogStyle: dialogStyle ?? .inherit(colors: colors, typography: typography, style: style, touch: touch),
+      dividerStyles: dividerStyles == null
+          ? FDividerStyles.inherit(colors: colors, style: style)
+          : FDividerStyles(dividerStyles),
+      headerStyles: headerStyles == null
+          ? FHeaderStyles.inherit(colors: colors, typography: typography, style: style, touch: touch)
+          : FHeaderStyles(headerStyles),
+      itemStyles: itemStyles == null
+          ? FItemStyles.inherit(colors: colors, typography: typography, style: style, touch: touch)
+          : FItemStyles(itemStyles),
+      itemGroupStyle: itemGroupStyle ?? .inherit(colors: colors, typography: typography, style: style, touch: touch),
+      labelStyles: labelStyles ?? .inherit(style: style),
+      lineCalendarStyle: lineCalendarStyle ?? .inherit(colors: colors, typography: typography, style: style),
+      multiSelectStyle:
+          multiSelectStyle ?? .inherit(colors: colors, typography: typography, style: style, touch: touch),
+      modalSheetStyle: modalSheetStyle ?? .inherit(colors: colors),
+      otpFieldStyle: otpFieldStyle ?? .inherit(colors: colors, typography: typography, style: style, touch: touch),
+      paginationStyle: paginationStyle ?? .inherit(colors: colors, typography: typography, style: style, touch: touch),
+      persistentSheetStyle: persistentSheetStyle ?? const FPersistentSheetStyle(),
+      pickerStyle: pickerStyle ?? .inherit(colors: colors, style: style, typography: typography, touch: touch),
+      popoverStyle: popoverStyle ?? .inherit(colors: colors, style: style),
+      popoverMenuStyle:
+          popoverMenuStyle ?? .inherit(colors: colors, style: style, typography: typography, touch: touch),
+      progressStyle: progressStyle ?? .inherit(colors: colors, style: style),
+      radioStyle: radioStyle ?? .inherit(colors: colors, style: style, touch: touch),
+      resizableStyles: resizableStyles == null
+          ? FResizableStyles.inherit(colors: colors, style: style)
+          : FResizableStyles(resizableStyles),
+      scaffoldStyle: scaffoldStyle ?? .inherit(colors: colors, style: style),
+      selectStyle: selectStyle ?? .inherit(colors: colors, typography: typography, style: style, touch: touch),
+      selectGroupStyle:
+          selectGroupStyle ?? .inherit(colors: colors, typography: typography, style: style, touch: touch),
+      selectMenuTileStyle:
+          selectMenuTileStyle ?? .inherit(colors: colors, typography: typography, style: style, touch: touch),
+      sidebarStyle: sidebarStyle ?? .inherit(colors: colors, typography: typography, style: style, touch: touch),
+      sliderStyles: sliderStyles == null
+          ? FSliderStyles.inherit(colors: colors, typography: typography, style: style)
+          : FSliderStyles(sliderStyles),
+      toasterStyle: toasterStyle ?? .inherit(colors: colors, typography: typography, style: style, touch: touch),
+      switchStyle: switchStyle ?? .inherit(colors: colors, style: style),
+      tabsStyle: tabsStyle ?? .inherit(colors: colors, typography: typography, style: style),
+      tappableStyle: tappableStyle ?? FTappableStyle(),
+      textFieldStyles: textFieldStyles == null
+          ? FTextFieldSizeStyles.inherit(colors: colors, typography: typography, style: style, touch: touch)
+          : FTextFieldSizeStyles(textFieldStyles),
+      tileStyles: tileStyles == null
+          ? FTileStyles.inherit(colors: colors, typography: typography, style: style)
+          : FTileStyles(tileStyles),
+      tileGroupStyle: tileGroupStyle ?? .inherit(colors: colors, typography: typography, style: style),
+      timeFieldStyle: timeFieldStyle ?? .inherit(colors: colors, typography: typography, style: style, touch: touch),
+      timePickerStyle: timePickerStyle ?? .inherit(colors: colors, typography: typography, style: style, touch: touch),
+      tooltipStyle: tooltipStyle ?? .inherit(colors: colors, typography: typography, style: style),
+      extensions: .unmodifiable({for (final extension in extensions) extension.type: extension}),
+    );
+  }
+
+  /// Creates a linear interpolation between two [FThemeData] using the given factor [t].
+  factory FThemeData.lerp(FThemeData a, FThemeData b, double t) => ._(
+    debugLabel: t < 0.5 ? a.debugLabel : b.debugLabel,
+    breakpoints: t < 0.5 ? a.breakpoints : b.breakpoints,
+    colors: .lerp(a.colors, b.colors, t),
+    typography: .lerp(a.typography, b.typography, t),
+    style: a.style.lerp(b.style, t),
+    accordionStyle: a.accordionStyle.lerp(b.accordionStyle, t),
+    autocompleteStyle: a.autocompleteStyle.lerp(b.autocompleteStyle, t),
+    alertStyles: FVariants.lerpWhereUsing(
+      a.alertStyles,
+      b.alertStyles,
+      t,
+      (a, b, t) => a!.lerp(b!, t),
+      (base, variants) => FAlertStyles(.raw(base, variants)),
+    ),
+    avatarStyle: a.avatarStyle.lerp(b.avatarStyle, t),
+    badgeStyles: FVariants.lerpWhereUsing(
+      a.badgeStyles,
+      b.badgeStyles,
+      t,
+      (a, b, t) => a!.lerp(b!, t),
+      (base, variants) => FBadgeStyles(.raw(base, variants)),
+    ),
+    bottomNavigationBarStyle: a.bottomNavigationBarStyle.lerp(b.bottomNavigationBarStyle, t),
+    breadcrumbStyle: a.breadcrumbStyle.lerp(b.breadcrumbStyle, t),
+    buttonStyles: FVariants.lerpWhereUsing(a.buttonStyles, b.buttonStyles, t, (a, b, t) {
+      if (a == null) {
+        return b;
+      }
+
+      if (b == null) {
+        return a;
+      }
+
+      return FButtonSizeStyles(
+        FVariants.lerpWhere(a, b, t, (a, b, t) {
+          if (a == null) {
+            return b;
+          }
+
+          if (b == null) {
+            return a;
+          }
+
+          return a.lerp(b, t);
+        }),
+      );
+    }, (base, variants) => FButtonStyles(.raw(base, variants))),
+    calendarStyle: a.calendarStyle.lerp(b.calendarStyle, t),
+    cardStyle: a.cardStyle.lerp(b.cardStyle, t),
+    checkboxStyle: a.checkboxStyle.lerp(b.checkboxStyle, t),
+    circularProgressStyles: FVariants.lerpWhereUsing(
+      a.circularProgressStyles,
+      b.circularProgressStyles,
+      t,
+      (a, b, t) => a!.lerp(b!, t),
+      (base, variants) => FCircularProgressSizeStyles(.raw(base, variants)),
+    ),
+    dateFieldStyle: a.dateFieldStyle.lerp(b.dateFieldStyle, t),
+    dateTimePickerStyle: a.dateTimePickerStyle.lerp(b.dateTimePickerStyle, t),
+    determinateProgressStyle: a.determinateProgressStyle.lerp(b.determinateProgressStyle, t),
+    dialogRouteStyle: a.dialogRouteStyle.lerp(b.dialogRouteStyle, t),
+    dialogStyle: a.dialogStyle.lerp(b.dialogStyle, t),
+    dividerStyles: FVariants.lerpWhereUsing(
+      a.dividerStyles,
+      b.dividerStyles,
+      t,
+      (a, b, t) => a!.lerp(b!, t),
+      (base, variants) => FDividerStyles(.raw(base, variants)),
+    ),
+    headerStyles: FVariants.lerpWhereUsing(
+      a.headerStyles,
+      b.headerStyles,
+      t,
+      (a, b, t) => a!.lerp(b!, t),
+      (base, variants) => FHeaderStyles(.raw(base, variants)),
+    ),
+    itemStyles: FVariants.lerpWhereUsing(
+      a.itemStyles,
+      b.itemStyles,
+      t,
+      (a, b, t) => a!.lerp(b!, t),
+      (base, variants) => FItemStyles(.raw(base, variants)),
+    ),
+    itemGroupStyle: a.itemGroupStyle.lerp(b.itemGroupStyle, t),
+    labelStyles: a.labelStyles.lerp(b.labelStyles, t),
+    lineCalendarStyle: a.lineCalendarStyle.lerp(b.lineCalendarStyle, t),
+    multiSelectStyle: a.multiSelectStyle.lerp(b.multiSelectStyle, t),
+    modalSheetStyle: a.modalSheetStyle.lerp(b.modalSheetStyle, t),
+    otpFieldStyle: a.otpFieldStyle.lerp(b.otpFieldStyle, t),
+    paginationStyle: a.paginationStyle.lerp(b.paginationStyle, t),
+    persistentSheetStyle: a.persistentSheetStyle.lerp(b.persistentSheetStyle, t),
+    pickerStyle: a.pickerStyle.lerp(b.pickerStyle, t),
+    popoverStyle: a.popoverStyle.lerp(b.popoverStyle, t),
+    popoverMenuStyle: a.popoverMenuStyle.lerp(b.popoverMenuStyle, t),
+    progressStyle: a.progressStyle.lerp(b.progressStyle, t),
+    radioStyle: a.radioStyle.lerp(b.radioStyle, t),
+    resizableStyles: FVariants.lerpWhereUsing(
+      a.resizableStyles,
+      b.resizableStyles,
+      t,
+      (a, b, t) => a!.lerp(b!, t),
+      (base, variants) => FResizableStyles(.raw(base, variants)),
+    ),
+    scaffoldStyle: a.scaffoldStyle.lerp(b.scaffoldStyle, t),
+    selectStyle: a.selectStyle.lerp(b.selectStyle, t),
+    selectGroupStyle: a.selectGroupStyle.lerp(b.selectGroupStyle, t),
+    selectMenuTileStyle: a.selectMenuTileStyle.lerp(b.selectMenuTileStyle, t),
+    sidebarStyle: a.sidebarStyle.lerp(b.sidebarStyle, t),
+    sliderStyles: FVariants.lerpWhereUsing(
+      a.sliderStyles,
+      b.sliderStyles,
+      t,
+      (a, b, t) => a!.lerp(b!, t),
+      (base, variants) => FSliderStyles(.raw(base, variants)),
+    ),
+    toasterStyle: a.toasterStyle.lerp(b.toasterStyle, t),
+    switchStyle: a.switchStyle.lerp(b.switchStyle, t),
+    tabsStyle: a.tabsStyle.lerp(b.tabsStyle, t),
+    tappableStyle: a.tappableStyle.lerp(b.tappableStyle, t),
+    textFieldStyles: FVariants.lerpWhereUsing(
+      a.textFieldStyles,
+      b.textFieldStyles,
+      t,
+      (a, b, t) => a!.lerp(b!, t),
+      (base, variants) => FTextFieldSizeStyles(.raw(base, variants)),
+    ),
+    tileStyles: FVariants.lerpWhereUsing(
+      a.tileStyles,
+      b.tileStyles,
+      t,
+      (a, b, t) => a!.lerp(b!, t),
+      (base, variants) => FTileStyles(.raw(base, variants)),
+    ),
+    tileGroupStyle: a.tileGroupStyle.lerp(b.tileGroupStyle, t),
+    timeFieldStyle: a.timeFieldStyle.lerp(b.timeFieldStyle, t),
+    timePickerStyle: a.timePickerStyle.lerp(b.timePickerStyle, t),
+    tooltipStyle: a.tooltipStyle.lerp(b.tooltipStyle, t),
+    // Copied from Flutter's [ThemeData].
+    extensions: a._extensions.map((id, extensionA) => MapEntry(id, extensionA.lerp(b._extensions[id], t)))
+      ..addEntries(b._extensions.entries.where((entry) => !a._extensions.containsKey(entry.key))),
+  );
+
+  FThemeData._({
+    required this.debugLabel,
+    required this.breakpoints,
+    required this.colors,
+    required this.typography,
+    required this.style,
+    required this.accordionStyle,
+    required this.autocompleteStyle,
+    required this.alertStyles,
+    required this.avatarStyle,
+    required this.badgeStyles,
+    required this.bottomNavigationBarStyle,
+    required this.breadcrumbStyle,
+    required this.buttonStyles,
+    required this.calendarStyle,
+    required this.cardStyle,
+    required this.checkboxStyle,
+    required this.circularProgressStyles,
+    required this.dateFieldStyle,
+    required this.dateTimePickerStyle,
+    required this.determinateProgressStyle,
+    required this.dialogRouteStyle,
+    required this.dialogStyle,
+    required this.dividerStyles,
+    required this.headerStyles,
+    required this.itemStyles,
+    required this.itemGroupStyle,
+    required this.labelStyles,
+    required this.lineCalendarStyle,
+    required this.multiSelectStyle,
+    required this.modalSheetStyle,
+    required this.otpFieldStyle,
+    required this.paginationStyle,
+    required this.persistentSheetStyle,
+    required this.pickerStyle,
+    required this.popoverStyle,
+    required this.popoverMenuStyle,
+    required this.progressStyle,
+    required this.radioStyle,
+    required this.resizableStyles,
+    required this.scaffoldStyle,
+    required this.selectStyle,
+    required this.selectGroupStyle,
+    required this.selectMenuTileStyle,
+    required this.sidebarStyle,
+    required this.sliderStyles,
+    required this.toasterStyle,
+    required this.switchStyle,
+    required this.tabsStyle,
+    required this.tappableStyle,
+    required this.textFieldStyles,
+    required this.tileStyles,
+    required this.tileGroupStyle,
+    required this.timeFieldStyle,
+    required this.timePickerStyle,
+    required this.tooltipStyle,
+    required Map<Object, ThemeExtension<dynamic>> extensions,
+  }) : _extensions = extensions;
+
+  /// Obtains a particular [ThemeExtension].
+  ///
+  /// {@template forui.theme.FThemeData.extension}
+  /// ## Creating and passing a [ThemeExtension] to [FThemeData]
+  /// ```dart
+  /// class BrandColor extends ThemeExtension<BrandColor> {
+  ///   final Color color;
+  ///
+  ///   BrandColor(this.color);
+  ///
+  ///   @override
+  ///   BrandColor copyWith({Color? color}) => BrandColor(color ?? this.color);
+  ///
+  ///   @override
+  ///   BrandColor lerp(BrandColor? other, double t) {
+  ///     if (other is! BrandColor) return this;
+  ///
+  ///    return BrandColor(Color.lerp(color, other.color, t)!);
+  ///   }
+  /// }
+  /// ```
+  ///
+  /// Passing it via constructor:
+  /// ```dart
+  /// final theme = FThemeData(
+  ///   extensions: [BrandColor(Colors.blue)],
+  ///   ... // other fields omitted for brevity
+  /// );
+  /// ```
+  ///
+  /// Passing it via [copyWith]:
+  /// ```dart
+  /// theme.copyWith(extensions: [BrandColor(Colors.blue)]);
+  /// ```
+  ///
+  /// ## Accessing the extension
+  /// ```dart
+  /// final brandColor = context.theme.extension<BrandColor>();
+  /// ```
+  ///
+  /// It is recommended to define a getter for your [ThemeExtension]:
+  /// ```extension FThemeDataBrandColor on FThemeData {
+  ///  BrandColor get brandColor => extension<BrandColor>();
+  ///  }
+  ///  ```
+  /// {@endtemplate}
+  T extension<T extends Object>() => _extensions[T]! as T;
+
+  /// All [ThemeExtension]s defined in this theme.
+  ///
+  /// {@macro forui.theme.FThemeData.extension}
+  @override
+  Set<ThemeExtension<dynamic>> get extensions => _extensions.values.toSet();
+
+  /// Converts this [FThemeData] to a Material [ThemeData] on a best-effort basis.
+  ///
+  /// It does not take into account any platform-specific styling. If you need to do so, consider generating and
+  /// customizing this method using the CLI:
+  /// ```shell
+  /// dart run forui snippet create material-mapping
+  /// ```
+  ///
+  /// This method enables interoperability between Forui and Material Design widgets by mapping
+  /// Forui's theme properties to their closest Material equivalents. Use this when you need to:
+  ///
+  /// * Use Material widgets within a Forui application
+  /// * Apply your Forui theme consistently to both Forui and Material widgets
+  /// * Create a gradual migration path from Material Design to Forui
+  ///
+  /// Note that this conversion is approximate. Some styling properties may not map perfectly between the two design
+  /// systems, and the resulting Material theme might not capture all the nuances of your Forui theme.
+  ///
+  /// ```dart
+  /// // Apply a Forui theme to Material widgets
+  /// MaterialApp(
+  ///   theme: FThemes.neutral.light.touch.toApproximateMaterialTheme(),
+  ///   // ...
+  /// )
+  /// ```
+  ThemeData toApproximateMaterialTheme() {
+    // Material requires height to be 1, certain widgets will overflow without it.
+    // TextBaseline.alphabetic is required as TextField requires it.
+    final textTheme = TextTheme(
+      displayLarge: typography.xl4.copyWith(height: 1, textBaseline: typography.xl4.textBaseline ?? .alphabetic),
+      displayMedium: typography.xl3.copyWith(height: 1, textBaseline: typography.xl3.textBaseline ?? .alphabetic),
+      displaySmall: typography.xl2.copyWith(height: 1, textBaseline: typography.xl2.textBaseline ?? .alphabetic),
+      headlineLarge: typography.xl3.copyWith(height: 1, textBaseline: typography.xl3.textBaseline ?? .alphabetic),
+      headlineMedium: typography.xl2.copyWith(height: 1, textBaseline: typography.xl2.textBaseline ?? .alphabetic),
+      headlineSmall: typography.xl.copyWith(height: 1, textBaseline: typography.xl.textBaseline ?? .alphabetic),
+      titleLarge: typography.lg.copyWith(height: 1, textBaseline: typography.lg.textBaseline ?? .alphabetic),
+      titleMedium: typography.md.copyWith(height: 1, textBaseline: typography.md.textBaseline ?? .alphabetic),
+      titleSmall: typography.sm.copyWith(height: 1, textBaseline: typography.sm.textBaseline ?? .alphabetic),
+      labelLarge: typography.md.copyWith(height: 1, textBaseline: typography.md.textBaseline ?? .alphabetic),
+      labelMedium: typography.sm.copyWith(height: 1, textBaseline: typography.sm.textBaseline ?? .alphabetic),
+      labelSmall: typography.xs.copyWith(height: 1, textBaseline: typography.xs.textBaseline ?? .alphabetic),
+      bodyLarge: typography.md.copyWith(height: 1, textBaseline: typography.md.textBaseline ?? .alphabetic),
+      bodyMedium: typography.sm.copyWith(height: 1, textBaseline: typography.sm.textBaseline ?? .alphabetic),
+      bodySmall: typography.xs.copyWith(height: 1, textBaseline: typography.xs.textBaseline ?? .alphabetic),
+    )..apply(fontFamily: typography.fontFamily, bodyColor: colors.foreground, displayColor: colors.foreground);
+
+    return ThemeData(
+      colorScheme: ColorScheme(
+        brightness: colors.brightness,
+        primary: colors.primary,
+        onPrimary: colors.primaryForeground,
+        secondary: colors.secondary,
+        onSecondary: colors.secondaryForeground,
+        error: colors.error,
+        onError: colors.errorForeground,
+        surface: colors.background,
+        onSurface: colors.foreground,
+        secondaryContainer: colors.secondary,
+        onSecondaryContainer: colors.secondaryForeground,
+      ),
+      fontFamily: typography.fontFamily,
+      typography: Typography(
+        black: textTheme,
+        white: textTheme,
+        englishLike: textTheme,
+        dense: textTheme,
+        tall: textTheme,
+      ),
+      textTheme: textTheme,
+      splashFactory: NoSplash.splashFactory,
+      useMaterial3: true,
+
+      // Navigation Bar
+      navigationBarTheme: NavigationBarThemeData(
+        indicatorShape: RoundedSuperellipseBorder(borderRadius: style.borderRadius.md),
+      ),
+
+      // Navigation Drawer
+      navigationDrawerTheme: NavigationDrawerThemeData(
+        indicatorShape: RoundedSuperellipseBorder(borderRadius: style.borderRadius.md),
+      ),
+
+      // Navigation Rail
+      navigationRailTheme: NavigationRailThemeData(
+        indicatorShape: RoundedSuperellipseBorder(borderRadius: style.borderRadius.md),
+      ),
+
+      // Card
+      cardTheme: CardThemeData(
+        elevation: 0,
+        shape: RoundedSuperellipseBorder(
+          borderRadius: style.borderRadius.md,
+          side: BorderSide(color: colors.border, width: style.borderWidth),
+        ),
+      ),
+
+      // Chip
+      chipTheme: ChipThemeData(shape: RoundedSuperellipseBorder(borderRadius: style.borderRadius.md)),
+
+      // Input
+      inputDecorationTheme: InputDecorationTheme(
+        border: WidgetStateInputBorder.resolveWith((states) => textFieldStyles.md.border.resolve(toVariants(states))),
+        labelStyle: textFieldStyles.md.descriptionTextStyle.base,
+        floatingLabelStyle: textFieldStyles.md.labelTextStyle.base,
+        hintStyle: textFieldStyles.md.hintTextStyle.base,
+        errorStyle: textFieldStyles.md.errorTextStyle.base,
+        helperStyle: textFieldStyles.md.descriptionTextStyle.base,
+        counterStyle: textFieldStyles.md.counterTextStyle.base,
+        contentPadding: textFieldStyles.md.contentPadding,
+      ),
+
+      // Date Picker
+      datePickerTheme: DatePickerThemeData(
+        shape: RoundedSuperellipseBorder(borderRadius: style.borderRadius.md),
+        dayShape: .all(RoundedSuperellipseBorder(borderRadius: style.borderRadius.md)),
+        rangePickerShape: RoundedSuperellipseBorder(borderRadius: style.borderRadius.md),
+      ),
+
+      // Time Picker
+      timePickerTheme: TimePickerThemeData(
+        hourMinuteTextColor: colors.secondaryForeground,
+        hourMinuteColor: colors.secondary,
+        hourMinuteShape: RoundedSuperellipseBorder(borderRadius: style.borderRadius.md),
+        dayPeriodTextColor: colors.foreground,
+        dayPeriodColor: colors.secondary,
+        dayPeriodBorderSide: BorderSide(color: colors.border),
+        dayPeriodShape: RoundedSuperellipseBorder(borderRadius: style.borderRadius.md),
+        dialBackgroundColor: colors.secondary,
+        shape: RoundedSuperellipseBorder(borderRadius: style.borderRadius.md),
+      ),
+
+      // Slider
+      sliderTheme: SliderThemeData(
+        activeTrackColor: sliderStyles.horizontal.activeColor.base,
+        inactiveTrackColor: sliderStyles.horizontal.inactiveColor.base,
+        disabledActiveTrackColor: sliderStyles.horizontal.activeColor.resolve({FSliderVariant.disabled}),
+        disabledInactiveTrackColor: sliderStyles.horizontal.inactiveColor.resolve({FSliderVariant.disabled}),
+        activeTickMarkColor: sliderStyles.horizontal.markStyle.tickColor.base,
+        inactiveTickMarkColor: sliderStyles.horizontal.markStyle.tickColor.base,
+        disabledActiveTickMarkColor: sliderStyles.horizontal.markStyle.tickColor.resolve({FSliderVariant.disabled}),
+        disabledInactiveTickMarkColor: sliderStyles.horizontal.markStyle.tickColor.resolve({FSliderVariant.disabled}),
+        thumbColor: sliderStyles.horizontal.thumbStyle.borderColor.base,
+        disabledThumbColor: sliderStyles.horizontal.thumbStyle.borderColor.resolve({FSliderVariant.disabled}),
+        valueIndicatorColor: sliderStyles.horizontal.tooltipStyle.decoration.color,
+        valueIndicatorTextStyle: sliderStyles.horizontal.tooltipStyle.textStyle,
+      ),
+
+      // Switch
+      switchTheme: SwitchThemeData(
+        thumbColor: .resolveWith((states) => switchStyle.thumbColor.resolve(toVariants(states))),
+        trackColor: .resolveWith((states) => switchStyle.trackColor.resolve(toVariants(states))),
+        trackOutlineColor: .resolveWith((states) => switchStyle.trackColor.resolve(toVariants(states))),
+      ),
+
+      // Buttons
+      elevatedButtonTheme: ElevatedButtonThemeData(
+        style: ButtonStyle(
+          textStyle: .resolveWith(
+            (states) => buttonStyles.secondary.base.contentStyle.textStyle.resolve(toVariants(states)),
+          ),
+          backgroundColor: .resolveWith(
+            (states) => buttonStyles.secondary.base.decoration.resolve(toVariants(states)).color ?? colors.secondary,
+          ),
+          foregroundColor: .resolveWith(
+            (states) =>
+                buttonStyles.secondary.base.contentStyle.textStyle.resolve(toVariants(states)).color ??
+                colors.secondaryForeground,
+          ),
+          padding: .all(buttonStyles.secondary.base.contentStyle.padding),
+          shape: .all(RoundedSuperellipseBorder(borderRadius: style.borderRadius.md)),
+        ),
+      ),
+
+      filledButtonTheme: FilledButtonThemeData(
+        style: ButtonStyle(
+          textStyle: .resolveWith(
+            (states) => buttonStyles.primary.base.contentStyle.textStyle.resolve(toVariants(states)),
+          ),
+          backgroundColor: .resolveWith(
+            (states) => buttonStyles.primary.base.decoration.resolve(toVariants(states)).color ?? colors.secondary,
+          ),
+          foregroundColor: .resolveWith(
+            (states) =>
+                buttonStyles.secondary.base.contentStyle.textStyle.resolve(toVariants(states)).color ??
+                colors.secondaryForeground,
+          ),
+          padding: .all(buttonStyles.primary.base.contentStyle.padding),
+          shape: .all(RoundedSuperellipseBorder(borderRadius: style.borderRadius.md)),
+        ),
+      ),
+
+      outlinedButtonTheme: OutlinedButtonThemeData(
+        style: ButtonStyle(
+          textStyle: .resolveWith(
+            (states) => buttonStyles.outline.base.contentStyle.textStyle.resolve(toVariants(states)),
+          ),
+          backgroundColor: .resolveWith(
+            (states) => buttonStyles.outline.base.decoration.resolve(toVariants(states)).color ?? Colors.transparent,
+          ),
+          foregroundColor: .resolveWith(
+            (states) =>
+                buttonStyles.outline.base.contentStyle.textStyle.resolve(toVariants(states)).color ??
+                Colors.transparent,
+          ),
+          padding: .all(buttonStyles.outline.base.contentStyle.padding),
+          side: .resolveWith((states) {
+            final border = buttonStyles.outline.base.decoration.resolve(toVariants(states)).border;
+            final side = switch (border) {
+              OutlinedBorder(:final side) || BoxBorder(top: final side) => side,
+              _ => null,
+            };
+            return BorderSide(
+              color:
+                  side?.color ??
+                  switch (states) {
+                    _ when states.contains(WidgetState.disabled) => colors.disable(colors.border),
+                    _ when states.contains(WidgetState.hovered) => colors.hover(colors.border),
+                    _ => colors.border,
+                  },
+              width: side?.width ?? style.borderWidth,
+            );
+          }),
+          shape: .resolveWith(
+            (states) => switch (buttonStyles.outline.base.decoration.resolve(toVariants(states)).border) {
+              final OutlinedBorder border => border,
+              _ => RoundedSuperellipseBorder(borderRadius: style.borderRadius.md),
+            },
+          ),
+        ),
+      ),
+
+      textButtonTheme: TextButtonThemeData(
+        style: ButtonStyle(
+          textStyle: .resolveWith(
+            (states) => buttonStyles.ghost.base.contentStyle.textStyle.resolve(toVariants(states)),
+          ),
+          backgroundColor: .resolveWith(
+            (states) => buttonStyles.ghost.base.decoration.resolve(toVariants(states)).color ?? Colors.transparent,
+          ),
+          foregroundColor: .resolveWith(
+            (states) =>
+                buttonStyles.ghost.base.contentStyle.textStyle.resolve(toVariants(states)).color ??
+                colors.secondaryForeground,
+          ),
+          shape: .resolveWith(
+            (states) => switch (buttonStyles.ghost.base.decoration.resolve(toVariants(states)).border) {
+              final OutlinedBorder border => border,
+              _ => RoundedSuperellipseBorder(borderRadius: style.borderRadius.md),
+            },
+          ),
+        ),
+      ),
+
+      floatingActionButtonTheme: FloatingActionButtonThemeData(
+        backgroundColor: buttonStyles.primary.base.decoration.base.color,
+        foregroundColor: buttonStyles.primary.base.contentStyle.textStyle.base.color,
+        hoverColor: buttonStyles.primary.base.decoration.resolve({FTappableVariant.hovered}).color,
+        disabledElevation: 0,
+        shape: switch (buttonStyles.primary.base.decoration.base.border) {
+          final OutlinedBorder border => border,
+          _ => RoundedSuperellipseBorder(borderRadius: style.borderRadius.md),
+        },
+      ),
+
+      iconButtonTheme: IconButtonThemeData(
+        style: ButtonStyle(
+          backgroundColor: .resolveWith(
+            (states) => buttonStyles.ghost.base.decoration.resolve(toVariants(states)).color ?? Colors.transparent,
+          ),
+          foregroundColor: .resolveWith(
+            (states) =>
+                buttonStyles.ghost.base.contentStyle.textStyle.resolve(toVariants(states)).color ??
+                colors.secondaryForeground,
+          ),
+          shape: .resolveWith(
+            (states) => switch (buttonStyles.ghost.base.decoration.resolve(toVariants(states)).border) {
+              final OutlinedBorder border => border,
+              _ => RoundedSuperellipseBorder(borderRadius: style.borderRadius.md),
+            },
+          ),
+        ),
+      ),
+
+      segmentedButtonTheme: SegmentedButtonThemeData(
+        style: ButtonStyle(
+          textStyle: .resolveWith(
+            (states) => buttonStyles.ghost.base.contentStyle.textStyle.resolve(toVariants(states)),
+          ),
+          backgroundColor: .resolveWith(
+            (states) => buttonStyles.ghost.base.decoration.resolve(toVariants(states)).color ?? Colors.transparent,
+          ),
+          foregroundColor: .resolveWith(
+            (states) =>
+                buttonStyles.ghost.base.contentStyle.textStyle.resolve(toVariants(states)).color ??
+                colors.secondaryForeground,
+          ),
+          shape: .resolveWith(
+            (states) => switch (buttonStyles.ghost.base.decoration.resolve(toVariants(states)).border) {
+              final OutlinedBorder border => border,
+              _ => RoundedSuperellipseBorder(borderRadius: style.borderRadius.md),
+            },
+          ),
+        ),
+      ),
+
+      /// Dialog
+      dialogTheme: DialogThemeData(shape: RoundedSuperellipseBorder(borderRadius: style.borderRadius.md)),
+
+      /// Bottom Sheet
+      bottomSheetTheme: BottomSheetThemeData(shape: RoundedSuperellipseBorder(borderRadius: style.borderRadius.md)),
+
+      /// Snack Bar
+      snackBarTheme: SnackBarThemeData(shape: RoundedSuperellipseBorder(borderRadius: style.borderRadius.md)),
+
+      /// List Tile
+      listTileTheme: ListTileThemeData(shape: RoundedSuperellipseBorder(borderRadius: style.borderRadius.md)),
+
+      /// Divider
+      dividerTheme: DividerThemeData(color: dividerStyles.horizontal.color, thickness: dividerStyles.horizontal.width),
+
+      iconTheme: IconThemeData(color: colors.primary, size: 20),
+    );
+  }
+
+  /// Returns a copy of this [FThemeData] with the given properties replaced.
+  ///
+  /// ```dart
+  /// final theme = FThemeData(
+  ///   alertStyles: ...,
+  ///   avatarStyle: ...,
+  /// );
+  ///
+  /// final copy = theme.copyWith(avatarStyle: bar);
+  ///
+  /// print(theme.alertStyles == copy.alertStyles); // true
+  /// print(theme.avatarStyle == copy.avatarStyle); // false
+  /// ```
+  ///
+  /// To modify [colors], [typography], and/or [style], create a new `FThemeData` using [FThemeData] first. This allows
+  /// the global theme data to propagate to widget-specific theme data.
+  ///
+  /// ```dart
+  /// @override
+  /// Widget build(BuildContext context) {
+  ///   final theme = FThemeData(
+  ///     colors: FThemes.neutral.light.touch.colors.copyWith(
+  ///       primary: const Color(0xFF0D47A1), // dark blue
+  ///       primaryForeground: const Color(0xFFFFFFFF), // white
+  ///     ),
+  ///     typography: FThemes.neutral.light.touch.typography.copyWith(
+  ///       // ...
+  ///     ).scale(sizeScalar: 0.8),
+  ///     style: FThemes.neutral.light.touch.style.copyWith(
+  ///       borderRadius: .zero,
+  ///     ),
+  ///   );
+  ///
+  ///   return FTheme(
+  ///     data: theme.copyWith(
+  ///       cardStyle: .delta(decoration: .delta(borderRadius: const .all(.circular(8)))),
+  ///     ),
+  ///     child: const FScaffold(...),
+  ///   );
+  /// }
+  /// ```
+  ///
+  /// Alternatively, consider using the [CLI](forui.dev/docs/reference/cli).
+  @useResult
+  FThemeData copyWith({
+    String? debugLabel,
+    FBreakpoints? breakpoints,
+    FColors? colors,
+    FTypography? typography,
+    FStyleDelta? style,
+    FAccordionStyleDelta? accordionStyle,
+    FAutocompleteStyleDelta? autocompleteStyle,
+    FVariantsDelta<FAlertVariantConstraint, FAlertVariant, FAlertStyle, FAlertStyleDelta>? alertStyles,
+    FAvatarStyleDelta? avatarStyle,
+    FVariantsDelta<FBadgeVariantConstraint, FBadgeVariant, FBadgeStyle, FBadgeStyleDelta>? badgeStyles,
+    FBottomNavigationBarStyleDelta? bottomNavigationBarStyle,
+    FBreadcrumbStyleDelta? breadcrumbStyle,
+    FVariantsDelta<FButtonVariantConstraint, FButtonVariant, FButtonSizeStyles, FButtonSizesDelta>? buttonStyles,
+    FCalendarStyleDelta? calendarStyle,
+    FCardStyleDelta? cardStyle,
+    FCheckboxStyleDelta? checkboxStyle,
+    FVariantsDelta<
+      FCircularProgressSizeVariantConstraint,
+      FCircularProgressSizeVariant,
+      FCircularProgressStyle,
+      FCircularProgressStyleDelta
+    >?
+    circularProgressStyles,
+    FDateFieldStyleDelta? dateFieldStyle,
+    FDateTimePickerStyleDelta? dateTimePickerStyle,
+    FDeterminateProgressStyleDelta? determinateProgressStyle,
+    FDialogRouteStyleDelta? dialogRouteStyle,
+    FDialogStyleDelta? dialogStyle,
+    FVariantsDelta<FDividerAxisVariantConstraint, FDividerAxisVariant, FDividerStyle, FDividerStyleDelta>?
+    dividerStyles,
+    FVariantsDelta<FHeaderVariantConstraint, FHeaderVariant, FHeaderStyle, FHeaderStyleDelta>? headerStyles,
+    FVariantsDelta<FItemVariantConstraint, FItemVariant, FItemStyle, FItemStyleDelta>? itemStyles,
+    FItemGroupStyleDelta? itemGroupStyle,
+    FLabelStylesDelta? labelStyles,
+    FLineCalendarStyleDelta? lineCalendarStyle,
+    FMultiSelectStyleDelta? multiSelectStyle,
+    FModalSheetStyleDelta? modalSheetStyle,
+    FOtpFieldStyleDelta? otpFieldStyle,
+    FPaginationStyleDelta? paginationStyle,
+    FPersistentSheetStyleDelta? persistentSheetStyle,
+    FPickerStyleDelta? pickerStyle,
+    FPopoverStyleDelta? popoverStyle,
+    FPopoverMenuStyleDelta? popoverMenuStyle,
+    FProgressStyleDelta? progressStyle,
+    FRadioStyleDelta? radioStyle,
+    FVariantsDelta<
+      FResizableAxisVariantConstraint,
+      FResizableAxisVariant,
+      FResizableDividerStyle,
+      FResizableDividerStyleDelta
+    >?
+    resizableStyles,
+    FScaffoldStyleDelta? scaffoldStyle,
+    FSelectStyleDelta? selectStyle,
+    FSelectGroupStyleDelta? selectGroupStyle,
+    FSelectMenuTileStyleDelta? selectMenuTileStyle,
+    FSidebarStyleDelta? sidebarStyle,
+    FVariantsDelta<FSliderAxisVariantConstraint, FSliderAxisVariant, FSliderStyle, FSliderStyleDelta>? sliderStyles,
+    FToasterStyleDelta? toasterStyle,
+    FSwitchStyleDelta? switchStyle,
+    FTabsStyleDelta? tabsStyle,
+    FTappableStyleDelta? tappableStyle,
+    FVariantsDelta<FTextFieldSizeVariantConstraint, FTextFieldSizeVariant, FTextFieldStyle, FTextFieldStyleDelta>?
+    textFieldStyles,
+    FVariantsDelta<FItemVariantConstraint, FItemVariant, FTileStyle, FTileStyleDelta>? tileStyles,
+    FTileGroupStyleDelta? tileGroupStyle,
+    FTimeFieldStyleDelta? timeFieldStyle,
+    FTimePickerStyleDelta? timePickerStyle,
+    FTooltipStyleDelta? tooltipStyle,
+    Iterable<ThemeExtension<dynamic>>? extensions,
+  }) => FThemeData(
+    // This does not affect anything since it's only used to configure null parameters, and parameters are never null.
+    touch: true,
+    debugLabel: debugLabel ?? this.debugLabel,
+    breakpoints: breakpoints ?? this.breakpoints,
+    colors: colors ?? this.colors,
+    typography: typography ?? this.typography,
+    style: style?.call(this.style) ?? this.style,
+    accordionStyle: accordionStyle?.call(this.accordionStyle) ?? this.accordionStyle,
+    autocompleteStyle: autocompleteStyle?.call(this.autocompleteStyle) ?? this.autocompleteStyle,
+    alertStyles: alertStyles == null ? this.alertStyles : FAlertStyles(alertStyles(this.alertStyles)),
+    avatarStyle: avatarStyle?.call(this.avatarStyle) ?? this.avatarStyle,
+    badgeStyles: badgeStyles == null ? this.badgeStyles : FBadgeStyles(badgeStyles(this.badgeStyles)),
+    bottomNavigationBarStyle:
+        bottomNavigationBarStyle?.call(this.bottomNavigationBarStyle) ?? this.bottomNavigationBarStyle,
+    breadcrumbStyle: breadcrumbStyle?.call(this.breadcrumbStyle) ?? this.breadcrumbStyle,
+    buttonStyles: buttonStyles == null ? this.buttonStyles : FButtonStyles(buttonStyles(this.buttonStyles)),
+    calendarStyle: calendarStyle?.call(this.calendarStyle) ?? this.calendarStyle,
+    cardStyle: cardStyle?.call(this.cardStyle) ?? this.cardStyle,
+    checkboxStyle: checkboxStyle?.call(this.checkboxStyle) ?? this.checkboxStyle,
+    circularProgressStyles: circularProgressStyles == null
+        ? this.circularProgressStyles
+        : FCircularProgressSizeStyles(circularProgressStyles(this.circularProgressStyles)),
+    dateFieldStyle: dateFieldStyle?.call(this.dateFieldStyle) ?? this.dateFieldStyle,
+    dateTimePickerStyle: dateTimePickerStyle?.call(this.dateTimePickerStyle) ?? this.dateTimePickerStyle,
+    determinateProgressStyle:
+        determinateProgressStyle?.call(this.determinateProgressStyle) ?? this.determinateProgressStyle,
+    dialogRouteStyle: dialogRouteStyle?.call(this.dialogRouteStyle) ?? this.dialogRouteStyle,
+    dialogStyle: dialogStyle?.call(this.dialogStyle) ?? this.dialogStyle,
+    dividerStyles: dividerStyles == null ? this.dividerStyles : FDividerStyles(dividerStyles(this.dividerStyles)),
+    headerStyles: headerStyles == null ? this.headerStyles : FHeaderStyles(headerStyles(this.headerStyles)),
+    itemStyles: itemStyles == null ? this.itemStyles : FItemStyles(itemStyles(this.itemStyles)),
+    itemGroupStyle: itemGroupStyle?.call(this.itemGroupStyle) ?? this.itemGroupStyle,
+    labelStyles: labelStyles?.call(this.labelStyles) ?? this.labelStyles,
+    lineCalendarStyle: lineCalendarStyle?.call(this.lineCalendarStyle) ?? this.lineCalendarStyle,
+    multiSelectStyle: multiSelectStyle?.call(this.multiSelectStyle) ?? this.multiSelectStyle,
+    modalSheetStyle: modalSheetStyle?.call(this.modalSheetStyle) ?? this.modalSheetStyle,
+    otpFieldStyle: otpFieldStyle?.call(this.otpFieldStyle) ?? this.otpFieldStyle,
+    paginationStyle: paginationStyle?.call(this.paginationStyle) ?? this.paginationStyle,
+    persistentSheetStyle: persistentSheetStyle?.call(this.persistentSheetStyle) ?? this.persistentSheetStyle,
+    pickerStyle: pickerStyle?.call(this.pickerStyle) ?? this.pickerStyle,
+    popoverStyle: popoverStyle?.call(this.popoverStyle) ?? this.popoverStyle,
+    popoverMenuStyle: popoverMenuStyle?.call(this.popoverMenuStyle) ?? this.popoverMenuStyle,
+    progressStyle: progressStyle?.call(this.progressStyle) ?? this.progressStyle,
+    radioStyle: radioStyle?.call(this.radioStyle) ?? this.radioStyle,
+    resizableStyles: resizableStyles == null
+        ? this.resizableStyles
+        : FResizableStyles(resizableStyles(this.resizableStyles)),
+    scaffoldStyle: scaffoldStyle?.call(this.scaffoldStyle) ?? this.scaffoldStyle,
+    selectStyle: selectStyle?.call(this.selectStyle) ?? this.selectStyle,
+    selectGroupStyle: selectGroupStyle?.call(this.selectGroupStyle) ?? this.selectGroupStyle,
+    selectMenuTileStyle: selectMenuTileStyle?.call(this.selectMenuTileStyle) ?? this.selectMenuTileStyle,
+    sidebarStyle: sidebarStyle?.call(this.sidebarStyle) ?? this.sidebarStyle,
+    sliderStyles: sliderStyles == null ? this.sliderStyles : FSliderStyles(sliderStyles(this.sliderStyles)),
+    toasterStyle: toasterStyle?.call(this.toasterStyle) ?? this.toasterStyle,
+    switchStyle: switchStyle?.call(this.switchStyle) ?? this.switchStyle,
+    tabsStyle: tabsStyle?.call(this.tabsStyle) ?? this.tabsStyle,
+    tappableStyle: tappableStyle?.call(this.tappableStyle) ?? this.tappableStyle,
+    textFieldStyles: textFieldStyles == null
+        ? this.textFieldStyles
+        : FTextFieldSizeStyles(textFieldStyles(this.textFieldStyles)),
+    tileStyles: tileStyles == null ? this.tileStyles : FTileStyles(tileStyles(this.tileStyles)),
+    tileGroupStyle: tileGroupStyle?.call(this.tileGroupStyle) ?? this.tileGroupStyle,
+    timeFieldStyle: timeFieldStyle?.call(this.timeFieldStyle) ?? this.timeFieldStyle,
+    timePickerStyle: timePickerStyle?.call(this.timePickerStyle) ?? this.timePickerStyle,
+    tooltipStyle: tooltipStyle?.call(this.tooltipStyle) ?? this.tooltipStyle,
+    extensions: extensions ?? this.extensions,
+  );
+}

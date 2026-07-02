@@ -4,11 +4,15 @@ class AndroidCoreRuntime extends CorePlatformRuntime {
   AndroidCoreRuntime({
     MethodChannel? methodChannel,
     EventChannel? eventChannel,
+    String platformLabel = 'Android',
+    String fallbackHostname = 'android-device',
     @visibleForTesting Duration? vpnRouteRefreshFastInterval,
     @visibleForTesting Duration? vpnRouteRefreshSteadyInterval,
     @visibleForTesting int? vpnRouteRefreshFastLimit,
   }) : _methodChannel = methodChannel ?? const MethodChannel(_methodName),
        _eventChannel = eventChannel ?? const EventChannel(_eventName),
+       _platformLabel = platformLabel,
+       _fallbackHostname = fallbackHostname,
        _vpnRouteRefreshFastInterval =
            vpnRouteRefreshFastInterval ?? _androidVpnRouteRefreshFastInterval,
        _vpnRouteRefreshSteadyInterval =
@@ -51,6 +55,8 @@ class AndroidCoreRuntime extends CorePlatformRuntime {
 
   final MethodChannel _methodChannel;
   final EventChannel _eventChannel;
+  final String _platformLabel;
+  final String _fallbackHostname;
   final Duration _vpnRouteRefreshFastInterval;
   final Duration _vpnRouteRefreshSteadyInterval;
   final int _vpnRouteRefreshFastLimit;
@@ -101,7 +107,7 @@ class AndroidCoreRuntime extends CorePlatformRuntime {
       }
       return CoreRuntimeStartResult(
         phase: CoreRunPhase.running,
-        message: 'Android 连接引擎运行中',
+        message: '$_platformLabel 连接引擎运行中',
         machineId: machineId,
         details: 'EasyTier ${bootstrap.version}',
         coreVersion: bootstrap.version,
@@ -147,7 +153,7 @@ class AndroidCoreRuntime extends CorePlatformRuntime {
         message: '需要授权 VPN 连接',
         machineId: machineId,
         details: 'EasyTier ${bootstrap.version}',
-        lastError: 'Android 需要用户授权后才能建立虚拟网卡',
+        lastError: '$_platformLabel 需要用户授权后才能建立虚拟网卡',
         coreVersion: bootstrap.version,
       );
     }
@@ -155,7 +161,7 @@ class AndroidCoreRuntime extends CorePlatformRuntime {
 
     return CoreRuntimeStartResult(
       phase: CoreRunPhase.running,
-      message: 'Android 连接引擎运行中',
+      message: '$_platformLabel 连接引擎运行中',
       machineId: machineId,
       details: 'EasyTier ${bootstrap.version}',
       coreVersion: bootstrap.version,
@@ -297,7 +303,7 @@ class AndroidCoreRuntime extends CorePlatformRuntime {
     final value = await _methodChannel.invokeMethod<String>('getMachineId');
     final machineId = value?.trim() ?? '';
     if (machineId.isEmpty) {
-      throw StateError('Android machineId 为空');
+      throw StateError('$_platformLabel machineId 为空');
     }
     return machineId;
   }
@@ -309,7 +315,7 @@ class AndroidCoreRuntime extends CorePlatformRuntime {
       return hostname;
     }
     return Platform.localHostname.trim().isEmpty
-        ? 'android-device'
+        ? _fallbackHostname
         : Platform.localHostname.trim();
   }
 
@@ -488,7 +494,7 @@ class AndroidCoreRuntime extends CorePlatformRuntime {
         CoreRuntimeEvent(
           type: CoreRuntimeEventTypes.error,
           data: {
-            'error': callbackError ?? 'Android config server event failed',
+            'error': callbackError ?? '$_platformLabel config server event failed',
             'event': eventName,
             'instance_id': _readString(
               payloadMap['instance_id'] ??
@@ -602,7 +608,7 @@ class AndroidCoreRuntime extends CorePlatformRuntime {
         CoreRuntimeEvent(
           type: CoreRuntimeEventTypes.error,
           data: {
-            'error': 'Android VPN 缺少虚拟 IP 配置',
+            'error': '$_platformLabel VPN 缺少虚拟 IP 配置',
             'instance_key': instanceKey,
             'instance_name': target.instanceName,
             'instance_id': target.instanceId,

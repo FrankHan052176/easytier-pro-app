@@ -1,0 +1,740 @@
+import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
+
+import 'package:meta/meta.dart';
+
+import 'package:forui/forui.dart';
+import 'package:forui/src/foundation/annotations.dart';
+import 'package:forui/src/foundation/debug.dart';
+import 'package:forui/src/theme/variant.dart';
+import 'package:forui/src/widgets/button/button_content.dart';
+
+@Variants('FButton', {
+  'primary': (2, 'The primary button style.'),
+  'secondary': (2, 'The secondary button style.'),
+  'destructive': (2, 'The destructive button style.'),
+  'outline': (2, 'The outline button style.'),
+  'ghost': (2, 'The ghost button style.'),
+})
+@Variants('FButtonSize', {
+  'xs': (1, 'The extra small button size.\n\nDefaults to:\n* Desktop — 24.\n* Touch — 32.'),
+  'sm': (1, 'The small button size.\n\nDefaults to:\n* Desktop — 32.\n* Touch — 40.'),
+  'md': (1, 'The medium (default) button size.\n\nDefaults to:\n* Desktop — 36.\n* Touch — 44.'),
+  'lg': (1, 'The large button size.\n\nDefaults to:\n* Desktop — 40.\n* Touch — 48.'),
+})
+part 'button.design.dart';
+
+/// A button.
+///
+/// [FButton] typically contains icons and/or a label. If the [onPress] and [onLongPress] callbacks are null, then this
+/// button will be disabled, and it will not react to touch.
+///
+/// {@macro forui.foundation.doc_templates.overlay}
+///
+/// See:
+/// * https://forui.dev/docs/form/button for working examples.
+/// * [FButtonStyle] for customizing a button's appearance.
+class FButton extends StatelessWidget {
+  /// The default [FButtonContentBuilder] which returns [child] unchanged.
+  static Widget defaultContentBuilder(
+    BuildContext context,
+    FButtonStyle style,
+    TextStyle textStyle,
+    IconThemeData iconStyle,
+    FCircularProgressStyle progressStyle,
+    Widget? child,
+  ) => child!;
+
+  /// The default [FButtonIconContentBuilder] which returns [child] unchanged.
+  static Widget defaultIconContentBuilder(
+    BuildContext context,
+    FButtonStyle style,
+    IconThemeData iconStyle,
+    Widget? child,
+  ) => child!;
+
+  /// The variant. Defaults to [FButtonVariant.primary].
+  ///
+  /// The current platform variant is automatically included during style resolution. To change the platform variant,
+  /// update the enclosing [FTheme.platform]/[FAdaptiveScope.platform].
+  ///
+  /// For example, to create a destructive button:
+  /// ```dart
+  /// FButton(
+  ///   variant: .destructive,
+  ///   onPress: () {},
+  ///   child: Text('Delete'),
+  /// )
+  /// ```
+  final FButtonVariant variant;
+
+  /// The button size. Defaults to [FButtonSizeVariant.md].
+  ///
+  /// The current platform variant is automatically included during style resolution. To change the platform variant,
+  /// update the enclosing [FTheme.platform]/[FAdaptiveScope.platform].
+  ///
+  /// For example, to create a small button:
+  /// ```dart
+  /// FButton(
+  ///   size: .sm,
+  ///   mainAxisSize: .min, // optional: shrink to fit content horizontally.
+  ///   onPress: () {},
+  ///   child: Text('Delete'),
+  /// )
+  /// ```
+  final FButtonSizeVariant size;
+
+  /// The style delta applied to the style resolved by [variant] and [size].
+  ///
+  /// ```dart
+  /// FButton(
+  ///   variant: .destructive,
+  ///   size: .sm,
+  ///   style: .delta(contentStyle: .delta(padding: .all(20))),
+  ///   onPress: () {},
+  ///   child: Text('Small destructive button with extra padding'),
+  /// )
+  /// ```
+  ///
+  /// ## CLI
+  /// To generate and customize this style:
+  ///
+  /// ```shell
+  /// dart run forui style create buttons
+  /// ```
+  final FButtonStyleDelta style;
+
+  /// {@macro forui.foundation.FTappable.onPress}
+  final VoidCallback? onPress;
+
+  /// {@macro forui.foundation.FTappable.onLongPress}
+  final VoidCallback? onLongPress;
+
+  /// {@macro forui.foundation.FTappable.onDoubleTap}
+  final VoidCallback? onDoubleTap;
+
+  /// {@macro forui.foundation.FTappable.onSecondaryPress}
+  final VoidCallback? onSecondaryPress;
+
+  /// {@macro forui.foundation.FTappable.onSecondaryLongPress}
+  final VoidCallback? onSecondaryLongPress;
+
+  /// {@macro forui.foundation.doc_templates.autofocus}
+  final bool autofocus;
+
+  /// {@macro forui.foundation.doc_templates.focusNode}
+  final FocusNode? focusNode;
+
+  /// {@macro forui.foundation.doc_templates.onFocusChange}
+  final ValueChanged<bool>? onFocusChange;
+
+  /// {@macro forui.foundation.FTappable.onHoverChange}
+  final ValueChanged<bool>? onHoverChange;
+
+  /// {@macro forui.foundation.FTappable.onVariantChange}
+  final FTappableVariantChangeCallback? onVariantChange;
+
+  /// {@macro forui.foundation.FTappable.shortcuts}
+  final Map<ShortcutActivator, Intent>? shortcuts;
+
+  /// {@macro forui.foundation.FTappable.actions}
+  final Map<Type, Action<Intent>>? actions;
+
+  /// True if this button is currently selected. Defaults to false.
+  final bool selected;
+
+  /// The child.
+  final Widget child;
+
+  /// Creates a [FButton] that contains a [prefix], [child], and [suffix].
+  ///
+  /// [mainAxisSize] determines how the button's width is sized.
+  ///
+  /// [mainAxisAlignment] and [crossAxisAlignment] determine how the button's content is aligned horizontally and
+  /// vertically, respectively.
+  ///
+  /// [textBaseline] is used to align the [prefix], [child] and [suffix] if [crossAxisAlignment] is
+  /// [CrossAxisAlignment.baseline].
+  ///
+  /// [prefix] and [suffix] are wrapped in [IconThemeData].
+  ///
+  /// The button layout is as follows, assuming the locale is LTR:
+  /// ```diagram
+  /// |---------------------------------------|
+  /// |  [prefix]  [child]  [suffix]  |
+  /// |---------------------------------------|
+  /// ```
+  ///
+  /// The layout is reversed for RTL locales.
+  FButton({
+    required this.onPress,
+    this.variant = .primary,
+    this.size = .md,
+    this.style = const .context(),
+    this.onLongPress,
+    this.onDoubleTap,
+    this.onSecondaryPress,
+    this.onSecondaryLongPress,
+    this.autofocus = false,
+    this.focusNode,
+    this.onFocusChange,
+    this.onHoverChange,
+    this.onVariantChange,
+    this.selected = false,
+    this.shortcuts,
+    this.actions,
+    MainAxisSize mainAxisSize = .max,
+    MainAxisAlignment mainAxisAlignment = .center,
+    CrossAxisAlignment crossAxisAlignment = .center,
+    TextBaseline? textBaseline,
+    FButtonContentBuilder? prefixBuilder,
+    Widget? prefix,
+    FButtonContentBuilder? suffixBuilder,
+    Widget? suffix,
+    FButtonContentBuilder builder = defaultContentBuilder,
+    Widget? child,
+    super.key,
+  }) : assert(builder != defaultContentBuilder || child != null, 'Either builder or a child must be provided.'),
+       child = Content(
+         mainAxisSize: mainAxisSize,
+         mainAxisAlignment: mainAxisAlignment,
+         crossAxisAlignment: crossAxisAlignment,
+         textBaseline: textBaseline,
+         prefix: prefix,
+         prefixBuilder: prefixBuilder,
+         suffix: suffix,
+         suffixBuilder: suffixBuilder,
+         builder: builder,
+         child: child,
+       );
+
+  /// Creates a [FButton] that contains only an icon.
+  ///
+  /// [child] is wrapped in [IconThemeData].
+  ///
+  /// [builder] exposes the resolved [FButtonStyle] and icon style. When [child] is provided, it is passed to the
+  /// builder as its `child` argument. The builder defaults to [defaultIconContentBuilder] which returns [child]
+  /// unchanged. At least one of [child] or a custom [builder] must be provided.
+  FButton.icon({
+    required this.onPress,
+    this.variant = .outline,
+    this.size = .md,
+    this.style = const .context(),
+    this.onLongPress,
+    this.onDoubleTap,
+    this.onSecondaryPress,
+    this.onSecondaryLongPress,
+    this.autofocus = false,
+    this.focusNode,
+    this.onFocusChange,
+    this.onHoverChange,
+    this.onVariantChange,
+    this.selected = false,
+    this.shortcuts,
+    this.actions,
+    FButtonIconContentBuilder builder = defaultIconContentBuilder,
+    Widget? child,
+    super.key,
+  }) : assert(builder != defaultIconContentBuilder || child != null, 'Either builder or a child must be provided.'),
+       child = IconContent(builder: builder, child: child);
+
+  /// Creates a [FButton] with custom content.
+  const FButton.raw({
+    required this.onPress,
+    required this.child,
+    this.variant = .primary,
+    this.size = .md,
+    this.style = const .context(),
+    this.onLongPress,
+    this.onDoubleTap,
+    this.onSecondaryPress,
+    this.onSecondaryLongPress,
+    this.autofocus = false,
+    this.focusNode,
+    this.onFocusChange,
+    this.onHoverChange,
+    this.onVariantChange,
+    this.selected = false,
+    this.shortcuts,
+    this.actions,
+    super.key,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final style = this.style(
+      context.theme.buttonStyles.resolve({variant, context.platformVariant}).resolve({size, context.platformVariant}),
+    );
+
+    return FTappable(
+      style: style.tappableStyle,
+      focusedOutlineStyle: style.focusedOutlineStyle,
+      autofocus: autofocus,
+      focusNode: focusNode,
+      onFocusChange: onFocusChange,
+      onHoverChange: onHoverChange,
+      onVariantChange: onVariantChange,
+      onPress: onPress,
+      onLongPress: onLongPress,
+      onDoubleTap: onDoubleTap,
+      onSecondaryPress: onSecondaryPress,
+      onSecondaryLongPress: onSecondaryLongPress,
+      selected: selected,
+      builder: (_, variants, _) => DecoratedBox(
+        decoration: style.decoration.resolve(variants),
+        child: FButtonData(style: style, variants: variants, child: child),
+      ),
+    );
+  }
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties
+      ..add(DiagnosticsProperty('variant', variant))
+      ..add(DiagnosticsProperty('size', size))
+      ..add(DiagnosticsProperty('style', style))
+      ..add(ObjectFlagProperty.has('onPress', onPress))
+      ..add(ObjectFlagProperty.has('onLongPress', onLongPress))
+      ..add(ObjectFlagProperty.has('onDoubleTap', onDoubleTap))
+      ..add(ObjectFlagProperty.has('onSecondaryPress', onSecondaryPress))
+      ..add(ObjectFlagProperty.has('onSecondaryLongPress', onSecondaryLongPress))
+      ..add(FlagProperty('autofocus', value: autofocus, defaultValue: false, ifTrue: 'autofocus'))
+      ..add(DiagnosticsProperty('focusNode', focusNode))
+      ..add(ObjectFlagProperty.has('onFocusChange', onFocusChange))
+      ..add(ObjectFlagProperty.has('onHoverChange', onHoverChange))
+      ..add(ObjectFlagProperty.has('onVariantChange', onVariantChange))
+      ..add(DiagnosticsProperty('shortcuts', shortcuts))
+      ..add(DiagnosticsProperty('actions', actions))
+      ..add(FlagProperty('selected', value: selected, defaultValue: false, ifTrue: 'selected'));
+  }
+}
+
+/// [FButtonStyle]'s style.
+extension type FButtonStyles(
+  FVariants<FButtonVariantConstraint, FButtonVariant, FButtonSizeStyles, FButtonSizesDelta> _
+)
+    implements FVariants<FButtonVariantConstraint, FButtonVariant, FButtonSizeStyles, FButtonSizesDelta> {
+  /// Creates a [FButtonStyles] that inherits its properties.
+  factory FButtonStyles.inherit({
+    required FColors colors,
+    required FTypography typography,
+    required FStyle style,
+    required bool touch,
+  }) {
+    final primary = FButtonSizeStyles.inherit(
+      typography: typography,
+      style: style,
+      touch: touch,
+      decoration: (radius) => .from(
+        ShapeDecoration(
+          shape: RoundedSuperellipseBorder(borderRadius: radius),
+          color: colors.primary,
+        ),
+        variants: {
+          [.hovered, .pressed]: .shapeDelta(color: colors.hover(colors.primary)),
+          //
+          [.disabled]: .shapeDelta(color: colors.disable(colors.primary)),
+          //
+          [.selected]: .shapeDelta(color: colors.hover(colors.primary)),
+          [.selected.and(.disabled)]: .shapeDelta(color: colors.disable(colors.hover(colors.primary))),
+        },
+      ),
+      foregroundColor: colors.primaryForeground,
+      disabledForegroundColor: colors.disable(colors.primaryForeground),
+    );
+
+    return FButtonStyles(
+      FVariants(
+        primary,
+        variants: {
+          [.primary]: primary,
+          [.secondary]: .inherit(
+            typography: typography,
+            style: style,
+            touch: touch,
+            decoration: (radius) => .from(
+              ShapeDecoration(
+                shape: RoundedSuperellipseBorder(borderRadius: radius),
+                color: colors.secondary,
+              ),
+              variants: {
+                [.hovered, .pressed]: .shapeDelta(color: colors.hover(colors.secondary)),
+                //
+                [.disabled]: .shapeDelta(color: colors.disable(colors.secondary)),
+                //
+                [.selected]: .shapeDelta(color: colors.hover(colors.secondary)),
+                [.selected.and(.disabled)]: .shapeDelta(color: colors.disable(colors.hover(colors.secondary))),
+              },
+            ),
+            foregroundColor: colors.secondaryForeground,
+            disabledForegroundColor: colors.disable(colors.secondaryForeground),
+          ),
+          [.destructive]: .inherit(
+            typography: typography,
+            style: style,
+            touch: touch,
+            decoration: (radius) => .from(
+              ShapeDecoration(
+                shape: RoundedSuperellipseBorder(borderRadius: radius),
+                color: colors.destructive.withValues(alpha: colors.brightness == .light ? 0.1 : 0.2),
+              ),
+              variants: {
+                [.hovered, .pressed]: .shapeDelta(
+                  color: colors.destructive.withValues(alpha: colors.brightness == .light ? 0.2 : 0.3),
+                ),
+                //
+                [.disabled]: .shapeDelta(
+                  color: colors.destructive.withValues(alpha: colors.brightness == .light ? 0.05 : 0.1),
+                ),
+                //
+                [.selected]: .shapeDelta(
+                  color: colors.destructive.withValues(alpha: colors.brightness == .light ? 0.2 : 0.3),
+                ),
+                [.selected.and(.disabled)]: .shapeDelta(
+                  color: colors.disable(colors.destructive.withValues(alpha: colors.brightness == .light ? 0.2 : 0.3)),
+                ),
+              },
+            ),
+            foregroundColor: colors.destructive,
+            disabledForegroundColor: colors.destructive.withValues(alpha: 0.5),
+          ),
+          [.outline]: .inherit(
+            typography: typography,
+            style: style,
+            touch: touch,
+            decoration: (radius) => .from(
+              ShapeDecoration(
+                shape: RoundedSuperellipseBorder(
+                  side: BorderSide(color: colors.border, width: style.borderWidth),
+                  borderRadius: radius,
+                ),
+                color: colors.card,
+              ),
+              variants: {
+                [.hovered, .pressed]: .shapeDelta(color: colors.secondary),
+                //
+                [.disabled]: .shapeDelta(color: colors.disable(colors.card)),
+                //
+                [.selected]: .shapeDelta(color: colors.secondary),
+                [.selected.and(.disabled)]: .shapeDelta(color: colors.disable(colors.secondary)),
+              },
+            ),
+            foregroundColor: colors.secondaryForeground,
+            disabledForegroundColor: colors.disable(colors.secondaryForeground),
+          ),
+          [.ghost]: .inherit(
+            typography: typography,
+            style: style,
+            touch: touch,
+            decoration: (radius) => .from(
+              ShapeDecoration(shape: RoundedSuperellipseBorder(borderRadius: radius)),
+              variants: {
+                [.hovered, .pressed]: .shapeDelta(color: colors.secondary),
+                //
+                [.disabled]: const .shapeDelta(),
+                //
+                [.selected]: .shapeDelta(color: colors.secondary),
+                [.selected.and(.disabled)]: .shapeDelta(color: colors.disable(colors.secondary)),
+              },
+            ),
+            foregroundColor: colors.secondaryForeground,
+            disabledForegroundColor: colors.disable(colors.secondaryForeground),
+          ),
+        },
+      ),
+    );
+  }
+
+  /// The primary button size styles.
+  FButtonSizeStyles get primary => resolve({FButtonVariant.primary});
+
+  /// The secondary button size styles.
+  FButtonSizeStyles get secondary => resolve({FButtonVariant.secondary});
+
+  /// The destructive button size styles.
+  FButtonSizeStyles get destructive => resolve({FButtonVariant.destructive});
+
+  /// The outline button size styles.
+  FButtonSizeStyles get outline => resolve({FButtonVariant.outline});
+
+  /// The ghost button size styles.
+  FButtonSizeStyles get ghost => resolve({FButtonVariant.ghost});
+}
+
+/// An alias for the [FButtonSizeStyles]' delta.
+typedef FButtonSizesDelta =
+    FVariantsDelta<FButtonSizeVariantConstraint, FButtonSizeVariant, FButtonStyle, FButtonStyleDelta>;
+
+/// [FButtonStyle]'s size styles.
+extension type FButtonSizeStyles(
+  FVariants<FButtonSizeVariantConstraint, FButtonSizeVariant, FButtonStyle, FButtonStyleDelta> _
+)
+    implements FVariants<FButtonSizeVariantConstraint, FButtonSizeVariant, FButtonStyle, FButtonStyleDelta> {
+  /// Creates a [FButtonSizeStyles] that inherits its properties.
+  factory FButtonSizeStyles.inherit({
+    required FTypography typography,
+    required FStyle style,
+    required FVariants<FTappableVariantConstraint, FTappableVariant, Decoration, DecorationDelta> Function(
+      BorderRadiusGeometry radius,
+    )
+    decoration,
+    required Color foregroundColor,
+    required Color disabledForegroundColor,
+    required bool touch,
+  }) {
+    if (touch) {
+      final md = FButtonStyle.inherit(
+        style: style,
+        foregroundColor: foregroundColor,
+        disabledForegroundColor: disabledForegroundColor,
+        decoration: decoration(style.borderRadius.md),
+        textStyle: typography.sm,
+        contentConstraints: const BoxConstraints(minWidth: 44, minHeight: 44),
+        contentPadding: const .symmetric(horizontal: 12, vertical: 14),
+        contentSpacing: 6,
+        iconConstraints: const BoxConstraints(minWidth: 44, minHeight: 44),
+        iconSize: typography.md.fontSize ?? 18,
+        iconPadding: const .all(13),
+      );
+
+      return FButtonSizeStyles(
+        FVariants(
+          md,
+          variants: {
+            [.xs]: FButtonStyle.inherit(
+              style: style,
+              foregroundColor: foregroundColor,
+              disabledForegroundColor: disabledForegroundColor,
+              decoration: decoration(style.borderRadius.sm),
+              textStyle: typography.xs,
+              contentConstraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+              contentPadding: const .symmetric(horizontal: 10, vertical: 9),
+              contentSpacing: 4,
+              iconConstraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+              iconSize: typography.sm.fontSize ?? 16,
+              iconPadding: const .all(8),
+            ),
+            [.sm]: FButtonStyle.inherit(
+              style: style,
+              foregroundColor: foregroundColor,
+              disabledForegroundColor: disabledForegroundColor,
+              decoration: decoration(style.borderRadius.md),
+              textStyle: typography.sm,
+              contentConstraints: const BoxConstraints(minWidth: 40, minHeight: 40),
+              contentPadding: const .symmetric(horizontal: 12, vertical: 12),
+              contentSpacing: 4,
+              iconConstraints: const BoxConstraints(minWidth: 40, minHeight: 40),
+              iconSize: typography.md.fontSize ?? 18,
+              iconPadding: const .all(11),
+            ),
+            [.md]: md,
+            [.lg]: FButtonStyle.inherit(
+              style: style,
+              foregroundColor: foregroundColor,
+              disabledForegroundColor: disabledForegroundColor,
+              decoration: decoration(style.borderRadius.md),
+              textStyle: typography.sm,
+              contentConstraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+              contentPadding: const .symmetric(horizontal: 12, vertical: 16),
+              contentSpacing: 6,
+              iconConstraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+              iconSize: typography.lg.fontSize ?? 20,
+              iconPadding: const .all(14),
+            ),
+          },
+        ),
+      );
+    } else {
+      final md = FButtonStyle.inherit(
+        style: style,
+        foregroundColor: foregroundColor,
+        disabledForegroundColor: disabledForegroundColor,
+        decoration: decoration(style.borderRadius.md),
+        textStyle: typography.sm,
+        contentConstraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+        contentPadding: const .symmetric(horizontal: 10, vertical: 11),
+        contentSpacing: 6,
+        iconConstraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+        iconSize: typography.md.fontSize ?? 16,
+        iconPadding: const .all(10),
+      );
+
+      return FButtonSizeStyles(
+        FVariants(
+          md,
+          variants: {
+            [.xs]: FButtonStyle.inherit(
+              style: style,
+              foregroundColor: foregroundColor,
+              disabledForegroundColor: disabledForegroundColor,
+              decoration: decoration(style.borderRadius.sm),
+              textStyle: typography.xs,
+              contentConstraints: const BoxConstraints(minWidth: 24, minHeight: 24),
+              contentPadding: const .symmetric(horizontal: 8, vertical: 6),
+              contentSpacing: 4,
+              iconConstraints: const BoxConstraints(minWidth: 24, minHeight: 24),
+              iconSize: typography.sm.fontSize ?? 14,
+              iconPadding: const .all(5),
+            ),
+            [.sm]: FButtonStyle.inherit(
+              style: style,
+              foregroundColor: foregroundColor,
+              disabledForegroundColor: disabledForegroundColor,
+              decoration: decoration(style.borderRadius.md),
+              textStyle: typography.sm,
+              contentConstraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+              contentPadding: const .symmetric(horizontal: 10, vertical: 9),
+              contentSpacing: 4,
+              iconConstraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+              iconSize: typography.md.fontSize ?? 16,
+              iconPadding: const .all(8),
+            ),
+            [.md]: md,
+            [.lg]: FButtonStyle.inherit(
+              style: style,
+              foregroundColor: foregroundColor,
+              disabledForegroundColor: disabledForegroundColor,
+              decoration: decoration(style.borderRadius.md),
+              textStyle: typography.sm,
+              contentConstraints: const BoxConstraints(minWidth: 40, minHeight: 40),
+              contentPadding: const .symmetric(horizontal: 10, vertical: 13),
+              contentSpacing: 6,
+              iconConstraints: const BoxConstraints(minWidth: 40, minHeight: 40),
+              iconSize: typography.lg.fontSize ?? 18,
+              iconPadding: const .all(11),
+            ),
+          },
+        ),
+      );
+    }
+  }
+
+  /// The extra small button style.
+  FButtonStyle get xs => resolve({FButtonSizeVariant.xs});
+
+  /// The small button style.
+  FButtonStyle get sm => resolve({FButtonSizeVariant.sm});
+
+  /// The medium (default) button style.
+  FButtonStyle get md => resolve({FButtonSizeVariant.md});
+
+  /// The large button style.
+  FButtonStyle get lg => resolve({FButtonSizeVariant.lg});
+}
+
+/// A [FButton]'s style.
+final class FButtonStyle with Diagnosticable, _$FButtonStyleFunctions {
+  /// The box decoration.
+  @override
+  final FVariants<FTappableVariantConstraint, FTappableVariant, Decoration, DecorationDelta> decoration;
+
+  /// The content's style.
+  @override
+  final FButtonContentStyle contentStyle;
+
+  /// The icon content's style.
+  @override
+  final FButtonIconContentStyle iconContentStyle;
+
+  /// The tappable's style.
+  @override
+  final FTappableStyle tappableStyle;
+
+  /// The focused outline style.
+  @override
+  final FFocusedOutlineStyle focusedOutlineStyle;
+
+  /// Creates a [FButtonStyle].
+  FButtonStyle({
+    required this.decoration,
+    required this.contentStyle,
+    required this.iconContentStyle,
+    required this.tappableStyle,
+    required this.focusedOutlineStyle,
+  });
+
+  /// Creates a [FButtonStyle] that inherits its properties.
+  factory FButtonStyle.inherit({
+    required FStyle style,
+    required FVariants<FTappableVariantConstraint, FTappableVariant, Decoration, DecorationDelta> decoration,
+    required Color foregroundColor,
+    required Color disabledForegroundColor,
+    required TextStyle textStyle,
+    required BoxConstraints contentConstraints,
+    required EdgeInsetsGeometry contentPadding,
+    required double contentSpacing,
+    required BoxConstraints iconConstraints,
+    required double iconSize,
+    required EdgeInsetsGeometry iconPadding,
+  }) => FButtonStyle(
+    decoration: decoration,
+    focusedOutlineStyle: style.focusedOutlineStyle,
+    contentStyle: FButtonContentStyle(
+      textStyle: .from(
+        textStyle.copyWith(color: foregroundColor, fontWeight: .w500, height: 1),
+        variants: {
+          [.disabled]: .delta(color: disabledForegroundColor),
+        },
+      ),
+      iconStyle: .from(
+        IconThemeData(color: foregroundColor, size: textStyle.fontSize),
+        variants: {
+          [.disabled]: .delta(color: disabledForegroundColor),
+        },
+      ),
+      circularProgressStyle: .from(
+        FCircularProgressStyle(
+          iconStyle: IconThemeData(color: foregroundColor, size: textStyle.fontSize),
+        ),
+        variants: {
+          [.disabled]: .delta(iconStyle: .delta(color: disabledForegroundColor)),
+        },
+      ),
+      padding: contentPadding,
+      spacing: contentSpacing,
+      constraints: contentConstraints,
+    ),
+    iconContentStyle: FButtonIconContentStyle(
+      iconStyle: .from(
+        IconThemeData(color: foregroundColor, size: iconSize),
+        variants: {
+          [.disabled]: .delta(color: disabledForegroundColor),
+        },
+      ),
+      padding: iconPadding,
+      constraints: iconConstraints,
+    ),
+    tappableStyle: style.tappableStyle,
+  );
+}
+
+/// A button's data.
+class FButtonData extends InheritedWidget {
+  /// Returns the [FButtonData] of the [FButton] in the given [context].
+  @useResult
+  static FButtonData of(BuildContext context) {
+    assert(debugCheckHasAncestor<FButtonData>('$FButton', context));
+    return context.dependOnInheritedWidgetOfExactType<FButtonData>()!;
+  }
+
+  /// The button's style.
+  final FButtonStyle style;
+
+  /// The current variants.
+  final Set<FTappableVariant> variants;
+
+  /// Creates a [FButtonData].
+  const FButtonData({required this.style, required this.variants, required super.child, super.key});
+
+  @override
+  bool updateShouldNotify(covariant FButtonData old) => style != old.style || !setEquals(variants, old.variants);
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties
+      ..add(DiagnosticsProperty('style', style))
+      ..add(IterableProperty('variants', variants));
+  }
+}

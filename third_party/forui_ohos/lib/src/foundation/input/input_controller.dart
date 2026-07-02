@@ -1,0 +1,101 @@
+import 'package:flutter/widgets.dart';
+
+import 'package:meta/meta.dart';
+
+import 'package:forui/forui.dart';
+import 'package:forui/src/foundation/input/parser.dart';
+import 'package:forui/src/theme/variant.dart';
+
+@internal
+abstract class InputController extends TextEditingController {
+  final FTextFieldStyle style;
+  final WidgetStatesController statesController;
+  final Parser parser;
+  final String placeholder;
+  bool mutating = false;
+
+  InputController(super.value, this.style, this.parser, this.placeholder)
+    : statesController = WidgetStatesController(),
+      super.fromValue();
+
+  void traverse({required bool forward});
+
+  void adjust(int amount);
+
+  @override
+  set value(TextEditingValue newValue) {
+    if (mutating) {
+      return;
+    }
+
+    final TextSelection(:baseOffset, :extentOffset) = newValue.selection;
+    // Selected the entire text without doing anything else.
+    if (baseOffset == 0 && extentOffset == newValue.text.length && text == newValue.text) {
+      rawValue = newValue;
+      return;
+    }
+
+    try {
+      mutating = true;
+      rawValue = switch (newValue) {
+        _ when newValue.text.isEmpty => TextEditingValue(
+          text: placeholder,
+          selection: .new(baseOffset: 0, extentOffset: placeholder.length),
+        ),
+        _ when text != newValue.text => _update(newValue),
+        _ => selector.navigate(newValue) ?? rawValue,
+      };
+    } finally {
+      mutating = false;
+    }
+  }
+
+  TextEditingValue _update(TextEditingValue value) {
+    final current = selector.split(value.text);
+    if (current.length != parser.pattern.length) {
+      return rawValue;
+    }
+
+    final (parts, selected) = parser.update(selector.split(text), current);
+    switch (selected) {
+      case None():
+        return rawValue;
+
+      case Single(:final index):
+        return selector.select(parts, index);
+
+      case Many():
+        final text = selector.join(parts);
+        return TextEditingValue(
+          text: text,
+          selection: .new(baseOffset: 0, extentOffset: text.length),
+        );
+    }
+  }
+
+  Selector get selector;
+
+  @protected
+  TextEditingValue get rawValue => super.value;
+
+  @protected
+  set rawValue(TextEditingValue value) => super.value = value;
+
+  @override
+  TextSpan buildTextSpan({required BuildContext context, required bool withComposing, TextStyle? style}) {
+    if (text == placeholder) {
+      final platform = context.platformVariant;
+      style = statesController.value.contains(WidgetState.focused)
+          ? this.style.contentTextStyle.resolve(toTextFieldVariants(platform, statesController.value))
+          : this.style.hintTextStyle.resolve({platform});
+    }
+
+    return super.buildTextSpan(context: context, withComposing: withComposing, style: style);
+  }
+
+  @override
+  void dispose() {
+    statesController.dispose();
+    super.dispose();
+  }
+}

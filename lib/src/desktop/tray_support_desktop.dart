@@ -11,7 +11,9 @@ import 'window_behavior_preferences.dart';
 
 class _DesktopTraySupport extends TraySupport
     with TrayListener, WindowListener {
-  _DesktopTraySupport({required this._windowBehaviorPreferences});
+  _DesktopTraySupport({
+    required WindowBehaviorPreferences windowBehaviorPreferences,
+  }) : _windowBehaviorPreferences = windowBehaviorPreferences;
 
   static const String _trayTooltip = 'EasyTier Pro';
   static const String _windowsTrayIconPath =

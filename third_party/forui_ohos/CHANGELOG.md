@@ -1,0 +1,3514 @@
+## 0.21.3
+
+### `FDeterminateProgress`
+* **Breaking** Change `FDeterminateProgressMotion.duration` to be the total animation duration regardless of value
+  delta.
+
+* Fix `FDeterminateProgress` track fill desyncing from the value when a non-linear motion curve is used.
+
+
+### `FHeader`
+* Fix `FHeader` ignoring `FHeaderStyle.decoration` on the root variant.
+
+
+## 0.21.2
+
+### `FSelectMenuTile`
+* Fix `FSelectMenuTile` rendering an extra border when a custom style is supplied inside a `FTileGroup`.
+
+
+## 0.21.1
+
+### `FHeader`
+* Add `FHeaderStyle.constraints`.
+
+* Fix `FHeader.nested` rendering taller than `FHeader` on desktop themes.
+
+
+## 0.21.0
+
+### `FTypography`
+* Add `FTypography.defaultFontFamily` static constant.
+
+* Change default leading distribution from proportional to even.
+* **Breaking** Rename `FTypography.defaultFontFamily` to `FTypography.fontFamily`.
+
+* Fix default text styles created by `FTypography` to include a `fontFamily`.
+
+
+### `FButton`
+* Add `FButton(prefixBuilder: ...)`.
+* Add `FButton(suffixBuilder: ...)`.
+* Add `FButton(builder: ...)`.
+* Add `FButton.icon(builder: ...)`.
+* Add `FButtonContentBuilder` typedef.
+* Add `FButtonIconContentBuilder` typedef.
+* Add `FButtonContentStyle.constraints` and `FButtonIconContentStyle.constraints` to enforce minimum size.
+
+
+### `FCheckbox`
+* Add `FCheckbox(leadingLabel: ...)`.
+* Add `FCheckboxStyle.leadingLabelStyle`.
+* Add `FCheckboxStyle.trailingLabelStyle`.
+
+* **Breaking** Change `FCheckboxStyle` to not extend `FLabelStyle`. Use `FCheckboxStyle.leadingLabelStyle` and
+  `FCheckboxStyle.trailingLabelStyle` instead.
+
+
+### `FDateField`
+* Add `FDateField.defaultFormat`.
+
+* **Breaking** Change `FDateField.calendar(format: ...)` from `DateFormat?` to
+  `String Function(BuildContext, DateTime, DateFormat)`.
+
+
+### `FDateTimePicker`
+* Add `FDateTimePicker`.
+* Add `FDateTimePickerController`.
+* Add `FDateTimePickerStyle`.
+
+
+### `FDialog`
+We've changed `FDialog`'s default styling to be more aesthetically pleasing.
+
+* Add `FDialog.image` parameter.
+* Add `FDialogContentStyle.titlePadding`.
+* Add `FDialogContentStyle.bodyPadding`.
+* Add `FDialogContentStyle.imageSpacing`.
+* Add `FDialogContentStyle.expandActions`.
+* Add `FDialogContentStyles` extension type.
+* Add `FDialogStyle.slidePressHapticFeedback`.
+
+* **Breaking** Change `FDialogContentStyle` fields to have defaults instead of being required.
+* **Breaking** Change `VerticalContent` alignment from center to start.
+* **Breaking** Remove `FDialogContentStyle.bodySpacing`. Use `FDialogContentStyle.titleSpacing` instead.
+
+
+### `FHapticFeedback`
+* Add `FHapticFeedback`.
+
+
+### `FLabel`
+* Add `FLabelLayout` enum.
+
+* **Breaking** Replace `FLabel(axis: ...)` with `FLabel(layout: ...)`. Use `FLabelLayout.horizontalEnd` instead of
+  `Axis.horizontal` and `FLabelLayout.vertical` instead of `Axis.vertical`.
+* **Breaking** Replace `FLabelStyles.horizontalStyle` with `FLabelStyles.horizontalLeadingStyle` and
+  `FLabelStyles.horizontalTrailingStyle`.
+
+
+### `FItem`
+* Add `FInheritedItemCallbacks`.
+* Add `FItemMixin.submenu(...)` shorthand for `FSubmenuItem`.
+
+
+### `FItemGroup`
+* Add `FItemGroupStyle.slidePressHapticFeedback`.
+
+
+### `FLineCalendar`
+We've changed `FLineCalendar`'s default styling to be more aesthetically pleasing.
+
+* **Breaking** Change `FLineCalendarStyle.padding` to `FLineCalendarStyle.itemSpacing`.
+
+* Fix widget inspector crashing when tapping on a line calendar item.
+
+
+### `FRadio`
+* Add `FRadio(leadingLabel: ...)`.
+* Add `FRadioStyle.leadingLabelStyle`.
+* Add `FRadioStyle.trailingLabelStyle`.
+
+* **Breaking** Change `FRadioStyle` to not extend `FLabelStyle`. Use `FRadioStyle.leadingLabelStyle` and
+  `FRadioStyle.trailingLabelStyle` instead.
+
+
+### `FPopover`
+* Add `FPopoverStyle.motion`.
+* Add `FPopoverController.show(animated:)`.
+* Add `FPopoverController.hide(animated:)`.
+* Add `FPopoverController.toggle(animated:)`.
+
+* **Breaking** Remove `FPopoverControl.managed(motion: ...)`. Configure motion via `FPopoverStyle` instead.
+* **Breaking** Remove `FPopoverControl.lifted(motion: ...)`. Configure motion via `FPopoverStyle` instead.
+* **Breaking** Remove `FPopoverController(motion: ...)`. Configure motion via `FPopoverStyle` instead.
+
+* Fix root and nested popovers with barriers incorrectly being dismissed with a single tap.
+
+
+### `FPopoverMenu`
+* Add `FPopoverMenu.faded`.
+* Add `FPopoverMenuMotion`.
+* Add `FPopoverMenuStyle.menuMotion`.
+* Add `FSubmenuItem`.
+* Add `FSubmenuTile`.
+* Add `FPopoverMenuStyle.hoverEnterDuration`.
+* Add `FPopoverMenuStyle.minWidth`.
+* Add `FPopoverMenuStyle.hapticFeedback`.
+
+* Fix `FPopoverMenuStyle` tiles not having a selected decoration style.
+* Fix `FPopoverMenuStyle` items not showing card background.
+* Fix `FPopoverMenu` not resetting active submenu state when menu is closed.
+
+
+### `FTextField`
+* Add `FTextFieldStyle.cursorWidth`.
+* Add `FTextFieldStyle.cursorOpacityAnimates`.
+
+
+### `FTabs`
+* Add swipe/scroll navigation when `expands` is true, with `BouncingScrollPhysics` by default.
+* Add `FTabs.contentPhysics` to customize the content area's scroll physics.
+
+* **Breaking** Remove `FTabs.swipeablePhysics`. Use `FTabs.contentPhysics` instead.
+
+
+### `FTile`
+* Add `FTileMixin.submenu(...)` shorthand for `FSubmenuTile`.
+* Add `FTileMixin.tile(variant: ...)`.
+* Add `FTileMixin.raw(variant: ...)`.
+
+
+### `FTileGroup`
+* Add `FTileGroupStyle.slidePressHapticFeedback`.
+
+
+### `FTimeField`
+* Add `FTimeField.defaultFormat`.
+
+* **Breaking** Change `FTimeField.picker(format: ...)` from `DateFormat?` to
+  `String Function(BuildContext, FTime, DateFormat)`.
+
+
+### `FTimePicker`
+* Add `FTimePickerStyle.hapticFeedback`.
+* Add `FTimePickerStyle.hourFlex`.
+* Add `FTimePickerStyle.minuteFlex`.
+* Add `FTimePickerStyle.periodFlex`.
+
+* Change `FTimePickerStyle.inherit(...)` to accept `touch` parameter.
+
+
+### `FSlider`
+* **Breaking** Remove `FSliderStyle.tooltipMotion`. Configure motion via `FTooltipStyle.motion` instead.
+
+
+### `FTooltip` & `FTooltipGroup`
+* Add `FTooltipStyle.hapticFeedback`.
+* Add `FTooltipStyle.motion`.
+* Add `FTooltipStyle.hoverEnterDuration`.
+* Add `FTooltipStyle.hoverExitDuration`.
+* Add `FTooltipStyle.longPressExitDuration`.
+* Add `FTooltipGroup.style`.
+* Add `FTooltipController.show(animated:)`.
+* Add `FTooltipController.hide(animated:)`.
+* Add `FTooltipController.toggle(animated:)`.
+
+* **Breaking** Remove `FTooltipControl.managed(motion: ...)`. Configure motion via `FTooltipStyle` instead.
+* **Breaking** Remove `FTooltipControl.lifted(motion: ...)`. Configure motion via `FTooltipStyle` instead.
+* **Breaking** Remove `FTooltipController(motion: ...)`. Configure motion via `FTooltipStyle` instead.
+* **Breaking** Remove `FTooltip(hoverEnterDuration: ...)`. Configure via `FTooltipStyle` instead.
+* **Breaking** Remove `FTooltip(hoverExitDuration: ...)`. Configure via `FTooltipStyle` instead.
+* **Breaking** Remove `FTooltip(longPressExitDuration: ...)`. Configure via `FTooltipStyle` instead.
+* **Breaking** Remove `FTooltipGroup(hoverEnterDuration: ...)`. Configure via `FTooltipStyle` instead.
+* **Breaking** Remove `FTooltipGroup(hoverExitDuration: ...)`. Configure via `FTooltipStyle` instead.
+* **Breaking** Remove `FTooltipGroup(longPressExitDuration: ...)`. Configure via `FTooltipStyle` instead.
+
+
+### `FOtpField`
+* Add `FOtpField`.
+
+
+### `FOverlay`
+* Add `FOverlay`.
+* Add `FOverlayControl`.
+
+
+### `FPicker`
+* Add `FPickerStyle.hapticFeedback`.
+
+* Change `FPickerStyle.inherit(...)` to accept `touch` parameter.
+
+
+### `FPortal`
+* **Breaking** Replace `FPortal(controller: ...)` with `FPortal(control: .managed(controller: ...))`.
+
+* Fix portal not repositioning when the child widget changes size.
+
+
+### `FStyle`
+* Add `FStyle.hapticFeedback`.
+
+
+### `FSwitch`
+* Add `FSwitch(leadingLabel: ...)`.
+* Add `FSwitchStyle.leadingLabelStyle`.
+* Add `FSwitchStyle.trailingLabelStyle`.
+
+* **Breaking** Change `FSwitchStyle` to not extend `FLabelStyle`. Use `FSwitchStyle.leadingLabelStyle` and
+  `FSwitchStyle.trailingLabelStyle` instead.
+
+
+## 0.20.4
+
+### `FSelect`
+* Fix `onChange` not being called when clearing via the clear button.
+
+
+## 0.20.3
+
+### `FToaster`
+* Fix `SelectableText` and other widgets that require an `Overlay` ancestor not working inside toasts.
+
+
+
+## 0.20.2
+
+### `FSelectMenuTile`
+* Fix `FSelectMenuTile` not inheriting the primary tile style from the parent `FTileGroup`.
+
+
+### `FTileGroup`
+* Fix `FTileGroupStyle.tileStyles` type to `FTileStyles`.
+
+## 0.20.1
+
+### `FCalendar`
+* Fix inconsistent border radius.
+
+### `FPortal`
+* Fix incomplete view insets being applied when a keyboard is sliding up while the portal is being built.
+
+
+
+## 0.20.0
+
+This update builds upon the styling overhaul by introducing desktop and touch variants of each theme and making widget
+sizes consistent across each platform.
+
+### `FAlert`
+* Add `FAlertVariant.primary`.
+
+* **Breaking** Change `FAlert.variant` type from `FAlertVariant?` to `FAlertVariant`. Use `FAlertVariant.primary` instead
+  of `null`.
+* **Breaking** Change `FAlertStyle.decoration` type from `BoxDecoration` to `Decoration`.
+
+
+### `FAutocomplete`
+* Add `FAutocomplete.contentCutout`.
+* Add `FAutocomplete.contentCutoutBuilder`.
+* Add `FAutocomplete.contentUseViewPadding`.
+* Add `FAutocomplete.contentUseViewInsets`.
+* Add `FAutocomplete.retainFocus`.
+* Add `FAutocomplete.popoverBuilder`.
+* Add `FAutocomplete.size`.
+* Add `FAutocompleteFieldSizeStyles`.
+* Add `FAutocompleteFieldStyle`.
+
+* Change `FAutocompleteFieldStyle.typeaheadTextStyle` type from `FVariants<..., TextStyle, ...>` to
+  `FVariants<..., TextStyle?, ...>`.
+* Change `FAutocompleteSection` layout to better align with the latest shadcn version.
+
+* **Breaking** Rename `FAutocompleteStyle.fieldStyle` to `FAutocompleteStyle.fieldStyles`. Type changed from
+  `FTextFieldStyle` to `FAutocompleteFieldSizeStyles`.
+* **Breaking** Move `FAutocompleteStyle.composingTextStyle` and `FAutocompleteStyle.typeaheadTextStyle` to
+  `FAutocompleteFieldStyle`.
+* **Breaking** Remove `FAutocomplete.defaultClearable`. Use `FTextField.defaultClearable` instead.
+* **Breaking** Remove `FAutocomplete.defaultBuilder`. Use `FTextField.defaultBuilder` instead.
+* **Breaking** Remove `FAutocomplete.defaultPopoverBuilder`. Use `FPopover.defaultPopoverBuilder` instead.
+
+* Fix `FAutocomplete` not closing suggestions popover when pressing enter/done.
+* Fix `FAutocomplete` showing typeahead text when disabled or unfocused.
+
+
+### `FBadge`
+* Add `FBadgeVariant.primary`.
+
+* **Breaking** Change `FBadge.variant` type from `FBadgeVariant?` to `FBadgeVariant`. Use `FBadgeVariant.primary` instead
+  of `null`.
+* **Breaking** Change `FBadgeStyle.decoration` type from `BoxDecoration` to `Decoration`.
+* **Breaking** Remove `FBadgeStyles.defaultBadgeRadius`. Use `FBorderRadius.pill` instead.
+
+
+### `FBreadcrumb`
+* Add `FBreadcrumbItem.collapsed(cutout: ...)`.
+* Add `FBreadcrumbItem.collapsed(cutoutBuilder: ...)`.
+* Add `FBreadcrumbItem.collapsed(intrinsicWidth: ...)`.
+
+
+### `FBottomNavigationBar`
+* Add `FBottomNavigationBarStyle.slideableItems` for slide-across interaction.
+
+* **Breaking** Change `FBottomNavigationBarStyle.decoration` type from `BoxDecoration` to `Decoration`.
+* **Breaking** Change `FBottomNavigationBarItemStyle.inherit` icon and text colors/variants.
+
+
+### `FButton`
+* Add `FButtonVariant.primary`.
+* Add `FButtonSizeVariant.md`.
+
+* **Breaking** Change `FButton.variant` type from `FButtonVariant?` to `FButtonVariant`. Use `FButtonVariant.primary`
+  instead of `null`.
+* **Breaking** Change `FButton.size` type from `FButtonSizeVariant?` to `FButtonSizeVariant`. Use `FButtonSizeVariant.md`
+  instead of `null`.
+* **Breaking** Change `FButtonStyle.decoration` type from `FVariants<..., BoxDecoration, BoxDecorationDelta>` to
+  `FVariants<..., Decoration, DecorationDelta>`.
+
+
+### `FCalendar`
+* Add `FCalendarControl.defaultSelectable`.
+
+* **Breaking** Change `FCalendarStyle.decoration` type from `BoxDecoration` to `Decoration`.
+
+
+### `FCard`
+* **Breaking** Change `FCardStyle.decoration` type from `BoxDecoration` to `Decoration`.
+
+
+### `FCheckbox`
+* **Breaking** Change `FCheckboxStyle.decoration` type from `FVariants<..., BoxDecoration, BoxDecorationDelta>` to
+  `FVariants<..., Decoration, DecorationDelta>`.
+
+
+### `FCircularProgress`
+* Add `FCircularProgress.size`.
+* Add `FCircularProgressSizeStyles` and `FCircularProgressSizeVariant`.
+
+* **Breaking** Rename `FThemeData.circularProgressStyle` to `FThemeData.circularProgressStyles`. Type changed from
+  `FCircularProgressStyle` to `FCircularProgressSizeStyles`.
+
+
+### `FDeterminateProgress`
+* **Breaking** Change `FDeterminateProgressStyle.trackDecoration` and `fillDecoration` types from `BoxDecoration` to
+  `Decoration`.
+
+
+### `FDateField`
+* Add `FDateField.formFieldKey`.
+* Add `FDateFieldCalendarProperties.cutout`.
+* Add `FDateFieldCalendarProperties.cutoutBuilder`.
+* Add `FDateFieldCalendarProperties.popoverBuilder`.
+* Add `FDateFieldCalendarProperties.useViewPadding`.
+* Add `FDateFieldCalendarProperties.useViewInsets`.
+* Add `FDateField.popoverBuilder`.
+* Add `FDateField.size`.
+
+* **Breaking** Change `FDateField.prefixBuilder` type from `FFieldIconBuilder<FDateFieldStyle>?` to
+  `FFieldIconBuilder<FTextFieldStyle>?`.
+* **Breaking** Change `FDateField.suffixBuilder` type from `FFieldIconBuilder<FDateFieldStyle>?` to
+  `FFieldIconBuilder<FTextFieldStyle>?`.
+* **Breaking** Rename `FDateFieldStyle.fieldStyle` to `FDateFieldStyle.fieldStyles`. Type changed from
+  `FTextFieldStyle` to `FTextFieldSizeStyles`.
+* **Breaking** Remove `FDateField.defaultFieldBuilder`. Use `FTextField.defaultBuilder` instead.
+* **Breaking** Remove `FDateField.defaultPopoverBuilder`. Use `FPopover.defaultPopoverBuilder` instead.
+
+* Fix `FDateField.calendar` clear button not resetting controller value to null.
+
+
+### `FDialog`
+* Add `FDialogStyle.slideableActions` for slide-across interaction between dialog actions.
+
+* **Breaking** Change `FDialogStyle.decoration` type from `BoxDecoration` to `Decoration`.
+
+
+### `FHeader`
+* Add `FHeaderVariant.root`.
+* Add `FHeaderStyle.slidableActions` for slide-across interaction between header actions.
+
+* **Breaking** Change `FHeaderStyle.decoration` type from `BoxDecoration` to `Decoration`.
+
+
+### `FItem` & `FItemGroup`
+* Add `FItemVariant.primary`.
+* Add `FItem.onDoubleTap`.
+* Add `FItemGroup.intrinsicWidth`.
+* Add `FItemStyle.shape` for clipping items.
+* Add `FItemGroupStyle.slideableItems` for slide-across interaction.
+* Add `FItemContentStyle.unsuffixedPadding`.
+
+* **Breaking** Change `FItemStyle.decoration` type from `FVariants<..., BoxDecoration, BoxDecorationDelta>` to
+  `FVariants<..., Decoration, DecorationDelta>`.
+* **Breaking** Change `FItemGroupStyle.decoration` type from `BoxDecoration` to `Decoration`.
+* **Breaking** Rename `FItemStyle.border` to `FItemStyle.shape`.
+* **Breaking** Rename `FItemContentStyle.padding` to `FItemContentStyle.suffixedPadding`.
+
+* Fix `FItemDivider.indented` not masking the gap area with the item's background color.
+* Fix `FItem` not being clipped to its shape.
+* Fix `FItem` long press triggering an empty callback instead of falling back to `onPress` when `onLongPress` is null.
+
+
+### `FLineCalendar`
+* Add `FLineCalendar.defaultBuilder`.
+
+* **Breaking** Change `FLineCalendarStyle.decoration` type from `FVariants<..., BoxDecoration, BoxDecorationDelta>` to
+  `FVariants<..., Decoration, DecorationDelta>`.
+
+
+### `FModalBarrier` & `FAnimatedModalBarrier`
+* Add `FModalBarrier.defaultCutoutBuilder`.
+* Add `FModalBarrier.cutout`.
+* Add `FModalBarrier.cutoutBuilder`.
+* Add `FAnimatedModalBarrier.cutout`.
+* Add `FAnimatedModalBarrier.cutoutBuilder`.
+
+* Fix `FModalBarrier` incorrectly excluding semantics when barrier is dismissible.
+
+
+### `FPagination`
+* **Breaking** Change `FPaginationStyle.itemDecoration` type from `FVariants<..., BoxDecoration, BoxDecorationDelta>`
+  to `FVariants<..., Decoration, DecorationDelta>`.
+
+
+### `FPopover`
+* Add `FPopover.cutout`.
+* Add `FPopover.cutoutBuilder`.
+* Add `FPopover.useViewPadding`.
+* Add `FPopover.useViewInsets`.
+* Add `FPopover.defaultBuilder`.
+* Add `FPopover.defaultPopoverBuilder`.
+
+* **Breaking** Rename `FPopoverStyle.viewPadding` to `FPopoverStyle.popoverPadding`.
+* **Breaking** Change `FPopoverStyle.decoration` type from `BoxDecoration` to `Decoration`.
+
+
+### `FPopoverMenu`
+* Add `FPopoverMenu.cutout`.
+* Add `FPopoverMenu.cutoutBuilder`.
+* Add `FPopoverMenu.intrinsicWidth`.
+* Add `FPopoverMenu.useViewPadding`.
+* Add `FPopoverMenu.useViewInsets`.
+* Add `FPopoverMenu.defaultItemBuilder`.
+* Add `FPopoverMenu.defaultTileBuilder`.
+
+* Change `FPopoverMenu` to intrinsically size to menu contents.
+
+* **Breaking** Remove `FPopoverMenu.defaultBuilder`. Use `FPopover.defaultBuilder` instead.
+
+
+### `FPortal`
+* Add `FPortal.useViewPadding`.
+* Add `FPortal.useViewInsets`.
+* Add `FPortal.padding`.
+
+* **Breaking** Change `FPortal.barrier` type from `Widget?` to `Widget Function(RenderBox? cutout)?`.
+* **Breaking** Remove `FPortal.viewInsets`. Use `FPortal.useViewPadding`, `FPortal.useViewInsets`, and `FPortal.padding`
+  instead.
+
+* Fix portal not recalculating overflow whenever the child moves.
+
+
+### `FProgress`
+* **Breaking** Change `FProgressStyle.trackDecoration` and `fillDecoration` types from `BoxDecoration` to `Decoration`.
+
+
+### `FResizable`
+* Add `FResizable.defaultLabel`.
+
+* **Breaking** Change `FResizableDividerThumbStyle.decoration` type from `BoxDecoration` to `Decoration`.
+
+
+### `FScaffold`
+* **Breaking** Change `FScaffoldStyle.headerDecoration` and `footerDecoration` types from `BoxDecoration` to
+  `Decoration`.
+
+
+### `FSelect` & `FMultiSelect`
+* Add `FSelect.formFieldKey`.
+* Add `FMultiSelect.formFieldKey`.
+* Add `FSelect.contentCutout`.
+* Add `FSelect.contentCutoutBuilder`.
+* Add `FSelect.contentUseViewPadding`.
+* Add `FSelect.contentUseViewInsets`.
+* Add `FMultiSelect.contentCutout`.
+* Add `FMultiSelect.contentCutoutBuilder`.
+* Add `FMultiSelect.contentUseViewPadding`.
+* Add `FMultiSelect.contentUseViewInsets`.
+* Add `FSelect.popoverBuilder`.
+* Add `FMultiSelect.popoverBuilder`.
+* Add `FMultiSelect.size`.
+* Add `FMultiSelectFieldSizeStyles`.
+* Add `FSelect.size`.
+* Add `FSelectSearchFieldProperties.size`.
+
+* Change `FSelectSection` layout to better align with the latest shadcn version.
+
+* **Breaking** Change `FMultiSelect.prefixBuilder` type from `FFieldIconBuilder<FMultiSelectStyle>?` to
+  `FFieldIconBuilder<FMultiSelectFieldStyle>?`.
+* **Breaking** Change `FMultiSelect.suffixBuilder` type from `FFieldIconBuilder<FMultiSelectStyle>?` to
+  `FFieldIconBuilder<FMultiSelectFieldStyle>?`.
+* **Breaking** Change `FSelect.prefixBuilder` type from `FFieldIconBuilder<FSelectStyle>?` to
+  `FFieldIconBuilder<FTextFieldStyle>?`.
+* **Breaking** Change `FSelect.suffixBuilder` type from `FFieldIconBuilder<FSelectStyle>?` to
+  `FFieldIconBuilder<FTextFieldStyle>?`.
+* **Breaking** Change `FSelectSearchFieldProperties.prefixBuilder` type from `FFieldIconBuilder<FSelectSearchStyle>?`
+  to `FFieldIconBuilder<FTextFieldStyle>?`.
+* **Breaking** Change `FSelectSearchFieldProperties.suffixBuilder` type from `FFieldIconBuilder<FSelectSearchStyle>?`
+  to `FFieldIconBuilder<FTextFieldStyle>?`.
+* **Breaking** Change `FMultiSelectTagBuilder` `style` parameter type from `FMultiSelectStyle` to
+  `FMultiSelectFieldStyle`.
+* **Breaking** Move `FMultiSelectStyle.tagStyle` to `FMultiSelectFieldStyle.tagStyle`.
+* **Breaking** Rename `FMultiSelectStyle.fieldStyle` to `FMultiSelectStyle.fieldStyles`. Type changed from
+  `FMultiSelectFieldStyle` to `FMultiSelectFieldSizeStyles`.
+* **Breaking** Rename `FSelectStyle.fieldStyle` to `FSelectStyle.fieldStyles`. Type changed from `FTextFieldStyle` to
+  `FTextFieldSizeStyles`.
+* **Breaking** Rename `FSelectSearchStyle.fieldStyle` to `FSelectSearchStyle.fieldStyles`. Type changed from
+  `FTextFieldStyle` to `FTextFieldSizeStyles`.
+* **Breaking** Remove `FSelect.defaultFieldBuilder`. Use `FTextField.defaultBuilder` instead.
+* **Breaking** Remove `FSelect.defaultPopoverBuilder`. Use `FPopover.defaultPopoverBuilder` instead.
+* **Breaking** Remove `FSelect.defaultValidator`. Use `FFormFieldProperties.defaultValidator` instead.
+* **Breaking** Remove `FMultiSelect.defaultPopoverBuilder`. Use `FPopover.defaultPopoverBuilder` instead.
+* **Breaking** Remove `FMultiSelect.defaultValidator`. Use `FFormFieldProperties.defaultValidator` instead.
+* **Breaking** Remove `FSelectSearchFieldProperties.defaultClearable`. Use `FTextField.defaultClearable` instead.
+
+* Fix `FSelect` and `FMultiSelect` autofocusing first item on touch devices.
+
+
+### `FSidebar`
+* **Breaking** Change `FSidebarStyle.decoration` type from `BoxDecoration` to `Decoration`.
+
+
+### `FSelectGroup`
+* Add `FSelectGroup.formFieldKey`.
+
+
+### `FSlider`
+* Add `FSlider.formFieldKey`.
+* Add `FSlider.defaultTooltipBuilder`.
+* Add `FSlider.defaultSemanticValueFormatter`.
+
+* Fix disabled slider ticks showing through active track due to transparency.
+
+
+### `FTabs`
+* **Breaking** Change `FTabsStyle.decoration` and `indicatorDecoration` types from `BoxDecoration` to `Decoration`.
+
+* Fix `FTabs` showing Material hover overlay on tabs.
+
+
+### `FTappable` & `FTappableGroup`
+* Add `FTappableGroup` that enables slide-across interaction between `FTappable`s.
+* Add slide-across long press support to `FTappableGroup`.
+* Add `FTappable.defaultBuilder`.
+
+* **Breaking** Change `FTappableStyle.pressedEnterDuration` default from 200ms to 100ms.
+* **Breaking** Change `FTappableStyle.pressedExitDuration` default from 0ms to 100ms.
+* **Breaking** Change `FTappableMotion.bounceUpDuration` default from 120ms to 100ms.
+
+* Fix incorrectly handling of platform changes.
+
+
+### `FSelectMenuTile`
+* Add `FSelectMenuTile.formFieldKey`.
+* Add `FSelectMenuTile.menuCutout`.
+* Add `FSelectMenuTile.menuCutoutBuilder`.
+* Add `FSelectMenuTile.menuIntrinsicWidth`.
+* Add `FSelectMenuTile.menuUseViewPadding`.
+* Add `FSelectMenuTile.menuUseViewInsets`.
+
+
+### `FSelectTileGroup`
+* Add `FSelectTileGroup.formFieldKey`.
+* Add `FSelectTileGroup.intrinsicWidth`.
+
+
+### `FTimeField`
+* Add `FTimeField.formFieldKey`.
+* Add `FTimeFieldPickerProperties.cutout`.
+* Add `FTimeFieldPickerProperties.cutoutBuilder`.
+* Add `FTimeFieldPickerProperties.popoverBuilder`.
+* Add `FTimeFieldPickerProperties.useViewPadding`.
+* Add `FTimeFieldPickerProperties.useViewInsets`.
+* Add `FTimeField.clearable`.
+* Add `FTimeField.popoverBuilder`.
+* Add `FTimeField.size`.
+
+* **Breaking** Rename `FTimeFieldStyle.fieldStyle` to `FTimeFieldStyle.fieldStyles`. Type changed from
+  `FTextFieldStyle` to `FTextFieldSizeStyles`.
+* **Breaking** Remove `FTimeField.defaultFieldBuilder`. Use `FTextField.defaultBuilder` instead.
+* **Breaking** Remove `FTimeField.defaultPopoverBuilder`. Use `FPopover.defaultPopoverBuilder` instead.
+
+* Fix `FTimeField.picker` not showing hint text when no initial time is provided.
+* Fix `FTimeField.picker` clear button not resetting controller value to null.
+
+
+### `FTextField` & `FTextFormField`
+* Add `FTextFormField.formFieldKey`.
+* Add `FTextField.size` and `FTextFormField.size` for `sm`, `md`, and `lg` size variants.
+* Add `FTextFieldSizeStyles` and `FTextFieldSizeVariant`.
+* Add `FTextField.prefixIconBuilder`.
+* Add `FTextField.defaultBuilder`.
+* Add `FTextField.defaultClearable`.
+* Add `FTextField.defaultClearIconBuilder`.
+* Add `FTextField.defaultObscureIconBuilder`.
+* Add `FTextField.defaultContextMenuBuilder`.
+
+* **Breaking** Remove `FTextFormField.defaultErrorBuilder`. Use `FFormFieldProperties.defaultErrorBuilder` instead.
+
+* Fix `FTextFormField` incorrectly forwarding `key` to inner `Input` widget, causing `GlobalKey` collisions.
+* Fix `FTextField.clearable` clear icon not appearing immediately when text changes while focused.
+* Fix `FTextFormField.onTapOutside` not being used internally.
+
+
+### `FTheme` & `FBasicTheme`
+* Add `FBorderRadius` with size tokens (`xs`, `sm`, `md`, `lg`, `xl`, `xl2`, `xl3`, `pill`).
+* Add color scheme constants to `FColors`.
+* Add `FTypography.xs3`.
+* Add `FTypography.xs2`.
+* Add `FTypography.inherit(touch: ...)`.
+* Add `FThemeData(touch: ...)`.
+
+* Re-add `FColors.disable(background: ...)` optional parameter for alpha-blending disabled colors against a background.
+* **Breaking** Change `FThemes.*.light`/`dark` from `FThemeData` to `FThemes.*.*.desktop/touch`.
+* **Breaking** Rename `FThemeData.textFieldStyle` to `FThemeData.textFieldStyles`. Type changed from `FTextFieldStyle`
+  to `FTextFieldSizeStyles`.
+* **Breaking** Change default `FTheme`/`FBasicTheme` text size from `md` to `sm`.
+* **Breaking** Change `FStyle.borderRadius` from `BorderRadius` to `FBorderRadius`.
+* **Breaking** Remove `FLerpBorderRadius`. Use `BorderRadius` instead.
+* **Breaking** Rename `FTypography.base` to `FTypography.md`.
+* **Breaking** Change `FTypography` default sizes — each token is now one level larger.
+
+
+### `FTile` & `FTileGroup`
+* Add `FTileStyles.primary` resolving via `FItemVariant.primary`.
+* Add `FTile.onDoubleTap`.
+* Add `FTileGroup.intrinsicWidth`.
+* Add `FTileStyle.shape` for clipping standalone tiles.
+* Add `FTileGroupStyle.slideableTiles` for slide-across interaction.
+
+* **Breaking** Change `FTileGroupStyle.decoration` type from `BoxDecoration` to `Decoration`.
+
+* Fix `FTile` long press triggering an empty callback instead of falling back to `onPress` when `onLongPress` is null.
+
+
+### `FToast`
+* Change `FToast` layout to better align with the latest shadcn version.
+
+* **Breaking** Change `FToastStyle.decoration` type from `BoxDecoration` to `Decoration`.
+
+
+### `FTooltip`
+* Add `FTooltip.useViewPadding`.
+* Add `FTooltip.useViewInsets`.
+* Add `FTooltip.defaultBuilder`.
+
+* **Breaking** Change `FTooltipStyle.decoration` type from `BoxDecoration` to `Decoration`.
+
+
+### Others
+* Add `Decorations` extension on `Decoration` for extracting common visual properties.
+* Add `FPlatformVariantConstraint` extension type.
+* Add `Sentinels`.
+* Add `FPortal.defaultBuilder`.
+* Add `FFormFieldProperties.defaultValidator`.
+
+* Change default border shape from `RoundedRectangleBorder` to `RoundedSuperellipseBorder`.
+
+* **Breaking** Rename `desktop` parameter to `touch` (with inverted logic) and change from `bool desktop = false` to
+  `required bool touch` in all `.inherit()` constructors and `FThemeData(...)`.
+
+* Fix widget `.inherit()` constructors not using `FStyle.borderWidth` for `BorderSide` widths.
+* Fix `FVariants.resolve` returning `base` instead of `null` when a variant is explicitly set to `null`.
+
+
+## 0.19.0
+
+This is a minor follow-up that adds some missing features and addresses some QoL issues discovered after the 0.18.0 release.
+
+### `FAlert`
+* Add `FAlertStyles.primary` and `FAlertStyles.destructive` getters.
+
+
+### `FBadge`
+* Add `FBadgeStyles.primary`, `FBadgeStyles.secondary`, `FBadgeStyles.destructive`, and `FBadgeStyles.outline` getters.
+
+
+### `FButton`
+* Add `FButton.onDoubleTap` callback.
+* Add `FButtonStyles.primary`, `FButtonStyles.secondary`, `FButtonStyles.destructive`, `FButtonStyles.outline`, and
+  `FButtonStyles.ghost` getters.
+* Add `FButtonSizeStyles.xs`, `FButtonSizeStyles.sm`, and `FButtonSizeStyles.lg` getters.
+
+* **Breaking** Remove `FButtonSizes` typedef. Use `FButtonSizeStyles` instead.
+
+
+### `FDivider`
+* Add `FDividerStyles.horizontal` and `FDividerStyles.vertical` getters.
+
+
+### `FHeader`
+* Add `FHeaderAction.onDoubleTap` callback.
+* Add `FHeaderStyles.root` and `FHeaderStyles.nested` getters.
+
+
+### `FItem`
+* Add `FItemStyles.primary` and `FItemStyles.destructive` getters.
+
+
+### `FResizable`
+* Add `FResizableAxisVariant.horizontal`.
+* Add `FResizableStyles.horizontal` and `FResizableStyles.vertical` getters.
+
+
+### `FSelect` & `FMultiSelect`
+* Add `FMultiSelectTag.onDoubleTap` callback.
+
+
+### `FSlider`
+* Add `FSliderAxisVariant.horizontal`.
+* Add `FSliderStyles.horizontal` and `FSliderStyles.vertical` getters.
+
+
+### `FTappable`
+* Add `FTappable.onDoubleTap` callback.
+
+* Fix bounce animation triggering for all pointer types instead of only those with matching callbacks.
+* Fix `onVariantChange` callback receiving a mutated set instead of the original previous set.
+
+
+### `FThemeData`
+* **Breaking** Change `FThemeData` variant-based field types to use wrapped extension types (`FAlertStyles`,
+  `FBadgeStyles`, etc.).
+
+
+### `FTile`
+* Add `FTileStyles.primary` and `FTileStyles.destructive` getters.
+
+
+### `FToaster`
+* Add `dismissThreshold` to `showFToast`, `showRawFToast`, and `FToasterState.show`.
+
+
+### Others
+* Add `DecorationDelta`, `EdgeInsetsGeometryDelta`, `EdgeInsetsDelta`, `EdgeInsetsDirectionalDelta`, and 
+  `ShapeDecorationDelta` delta classes.
+
+* **Breaking** Change `TextStyleDelta.delta(decoration: ...)` from `TextDecoration?` to
+  `TextDecoration? Function()?`. `TextDecoration` is slated to become final in a future Flutter release.
+* **Breaking** Change `EdgeInsets`, `EdgeInsetsDirectional`, and `EdgeInsetsGeometry` fields in style deltas to accept
+  delta types (`EdgeInsetsDelta`, `EdgeInsetsDirectionalDelta`, `EdgeInsetsGeometryDelta`) instead of raw values.
+
+
+## 0.18.1
+* Fix lifted controls causing `setState() during build` assertion error when used inside a `Form`.
+
+
+## 0.18.0+1
+Fix banner image.
+
+
+## 0.18.0
+
+This update overhauls the Styling API as outlined in [Styling 2.0](https://github.com/duobaseio/forui/blob/main/design_docs/shipped/styling_2.0.md). 
+It also adjusts the default styling and colors.
+
+### Key Styling 2.0 Improvements
+
+Simplified style modification using deltas:
+
+```dart
+// Before:
+FAutocomplete(
+  style: (style) => style.copyWith(
+    contentStyle: (content) => content.copyWith(
+      sectionStyle: (section) => section.copyWith(
+        itemStyle: (item) => item.copyWith(
+          tappableStyle: (tappable) => tappable.copyWith(
+            motion: FTappableMotion.none,
+          ),
+        ),
+      ),
+    ),
+  ),
+)
+
+// After:
+FAutocomplete(
+  style: .delta(
+    contentStyle: .delta(
+      sectionStyle: .delta(
+        itemStyle: .delta(
+          tappableStyle: .delta(
+            motion: FTappableMotion.none,
+          ),
+        ),
+      ),
+    ),
+  ),
+)
+```
+
+`FVariants` replaces `FWidgetStateMap` with order-independent, tier-based resolution:
+
+```dart
+// Before
+FWidgetStateMap({
+  WidgetState.hovered: A(),            // Matches first for {hovered, focused}
+  WidgetState.hovered & .focused: B(), // Never reached
+  WidgetState.any: base,               // Easy to omit
+})
+
+// After
+FVariants(
+  base, // Required — no more accidentally omitted defaults
+  variants: {
+    [.hovered.and(.focused)]: A(), // More specific than .hovered alone
+    [.hovered]: B(),               // Order doesn't matter
+    [.disabled]: C(),              // Semantic tier always beats interaction variants, avoiding hovered from being applied when disabled.
+  },
+)
+```
+
+Widget-specific variants replace `WidgetState`s for better type-safety and discoverability:
+
+```dart
+// Before: compiles fine, but scrolledUnder is meaningless for a tappable
+FTappableStyle(
+  decoration: FWidgetStateMap({
+    WidgetState.scrolledUnder: BoxDecoration(...),  // Does FTappableStyle support scrolledUnder? Who knows.
+  }),
+)
+
+// After:
+extension type const FTappableVariant {
+  /// The semantic variant when this widget is disabled and cannot be interacted with.
+  static const disabled = FTappableVariant();
+
+  /// The interaction variant when the user drags their mouse cursor over the given widget.
+  static const hovered = FTappableVariant();
+
+  /// The interaction variant when the user is actively pressing down on the given widget.
+  static const pressed = FTappableVariant();
+}
+
+FTappableStyle(
+  decoration: FVariants(
+    const BoxDecoration(),
+    variants: {
+      [.hovered]: BoxDecoration(...), // Only FTappableVariant allowed (which works well with autocomplete)
+    }
+  ),
+)
+```
+
+Automated fixes via [Data Driven Fixes](https://github.com/flutter/flutter/blob/master/docs/contributing/Data-driven-Fixes.md)
+are not available for most of these changes due to the tool's limitations.
+
+
+### `FAccordion`
+* **Breaking** Rename `FAccordionItem.onStateChange` to `FAccordionItem.onVariantChange`.
+
+
+### `FAlert`
+* Change variants to match latest shadcn/ui.
+
+
+### `FBadge`
+* Change destructive variant to match latest shadcn/ui.
+
+
+### `FBottomNavigationBarItem`
+* **Breaking** Rename `FBottomNavigationBarItem.onStateChange` to `FBottomNavigationBarItem.onVariantChange`.
+
+
+### `FButton`
+* Add `FButton.variant`.
+* Add `FButton.size`.
+* Add `FButtonSizeVariant`
+* Add `FButtonSizeVariantConstraint`.
+* Add `FButtonSizeStyles` extension type.
+* Add `FButtonSizes` type alias.
+* Add `FButtonSizesDelta` type alias.
+
+* Change destructive variant to match latest shadcn/ui.
+* Change base `FButtonStyle` values to scale more appropriately with different sizes.
+* Change `FButtonVariant.outline` default background color from transparent to `background`.
+* **Breaking** Remove `FButtonStyle.inherit`. Use `FButtonSizeStyles.inherit` instead.
+* **Breaking** Remove `FButtonContentStyle.inherit`. Construct `FButtonContentStyle` directly instead.
+* **Breaking** Remove `FButtonIconContentStyle.inherit`. Construct `FButtonIconContentStyle` directly instead.
+* **Breaking** Rename `FButton.onStateChange` to `FButton.onVariantChange`.
+* **Breaking** Rename `FButtonData.states` to `FButtonData.variants`.
+
+* Fix `FButton` not having default styles for selected state.
+
+
+### `FCalendar`
+* Change default background color to `card`.
+
+
+### `FCard`
+* Change default background color to `card`.
+
+
+### `FCircularProgress`
+* **Breaking** Remove `FCircularProgress.loader(icon: ...)`. This shouldn't have been included.
+* **Breaking** Remove `FCircularProgress.pinwheel(icon: ...)`. This shouldn't have been included.
+
+
+### `FDateField`
+* **Breaking** Rename `FDateFieldStyle.selectFieldStyle` to `FDateFieldStyle.fieldStyle`.
+* **Breaking** Remove `FDateFieldStyle.iconStyle`. Use nested `FDateFieldStyle.fieldStyle.iconStyle` instead.
+
+
+### `FDialog`
+* Add `FDialogContentStyle.titleSpacing`, `FDialogContentStyle.bodySpacing`, and `FDialogContentStyle.contentSpacing`.
+
+* Change default styling to be more visually pleasing.
+* **Breaking** Change `FDialog` and `FDialog.adaptive` to use "primary first" action ordering. In horizontal layouts,
+  the actions list is reversed so the primary action is at the end.
+* **Breaking** Change `showFDialog`'s `style` parameter from `FDialogStyle Function(FDialogStyle)?` to `FDialogStyleDelta?`.
+* **Breaking** Change `showFDialog`'s `routeStyle` parameter from `FDialogRouteStyle Function(FDialogRouteStyle)?` to
+  `FDialogRouteStyleDelta?`.
+
+
+### `FSheet` & `FPersistentSheet`
+* **Breaking** Change `showFSheet`'s `style` parameter from `FModalSheetStyle Function(FModalSheetStyle)?` to
+  `FModalSheetStyleDelta?`.
+* **Breaking** Change `showFPersistentSheet`'s `style` parameter from `FPersistentSheetStyle Function(FPersistentSheetStyle)?`
+  to `FPersistentSheetStyleDelta?`.
+
+
+### `FHeaderAction`
+* **Breaking** Rename `FHeaderAction.onStateChange` to `FHeaderAction.onVariantChange`.
+
+
+### `FLabel`
+* Add transition between different states.
+* Add `FLabelMotion`.
+
+
+### `FItem` & `FItemGroup`
+* Add destructive `FItem` variant.
+* Add default styling for selected `FItem`s.
+
+* **Breaking** Change `FItemGroupStyle.itemStyle` to `FItemStyles` instead of `FItemStyle`.
+* **Breaking** Change `FItemData.style` to `FItemStyles?` instead of `FItemStyle?`.
+* **Breaking** Change `FInheritedItemData.merge(style: ...)` to `FInheritedItemData.merge(styles: ...)`.
+* **Breaking** Change `FItemContentStyle.inherit(...)` signature.
+* **Breaking** Change `FRawItemContentStyle.inherit(...)` signature.
+* **Breaking** Rename `FItem.onStateChange` to `FItem.onVariantChange`.
+
+
+### `FPicker`
+* Change error message when given unbounded constraints to be more descriptive.
+
+
+### `FPopover`
+* Change default background color to `card`.
+* Change `FPopoverController(motion: ...)` from `FPopoverMotion` to `FPopoverMotionDelta`.
+
+
+### `FRadio`
+* Add transition between different states. 
+* Add `FRadioMotion.transitionDuration`.
+* Add `FRadioMotion.transitionCurve`.
+
+* **Breaking** Rename `FRadioMotion.duration` to `FRadioMotion.selectDuration`.
+* **Breaking** Rename `FRadioMotion.reverseDuration` to `FRadioMotion.unselectDuration`.
+* **Breaking** Rename `FRadioMotion.curve` to `FRadioMotion.selectCurve`.
+
+
+### `FSelect` & `FMultiSelect`
+* **Breaking** Add `enabled` parameter to `FMultiSelectTagBuilder`.
+
+* Change default background color to `card`.
+* **Breaking** Change `FMultiSelectFieldStyle.iconStyle` type from `IconThemeData` to `FWidgetStateMap<IconThemeData>`.
+  Wrap existing values with `.all(...)`, e.g. `.all(IconThemeData(...))`.
+* **Breaking** Change `FSelectSearchFieldProperties.autofocus` to default to true on desktop and false on touch devices.
+* **Breaking** Rename `FSelectStyle.selectFieldStyle` to `FSelectStyle.fieldStyle`.
+* **Breaking** Rename `FSelectSearchStyle.textFieldStyle` to `FSelectSearchStyle.fieldStyle`.
+* **Breaking** Remove `FSelectStyle.iconStyle`. Use `FSelectStyle.fieldStyle.iconStyle` instead.
+* **Breaking** Remove `FSelectSearchStyle.iconStyle`. Use `FSelectSearchStyle.fieldStyle.iconStyle` instead.
+* **Breaking** Rename `FMultiSelectTag.onStateChange` to `FMultiSelectTag.onVariantChange`.
+* Unmark `FSelect.contentScrollHandle` as deprecated.
+
+* Fix search field not receiving focus when popover opens even with `FSelectSearchFieldProperties.autofocus` set to `true`.
+* Fix `FMultiSelect` still allowing tags to be removed when disabled.
+
+
+### `FSelectGroup`
+* Add transition between different states.
+
+* Fix `FSelectGroupItem`s not inheriting disabled and error state from `FSelectGroup`.
+
+
+### `FSelectTile`
+* **Breaking** Rename `FSelectTile.onStatesChange` to `FSelectTile.onVariantChange`.
+
+
+### `FSidebar`
+* **Breaking** Rename `FSidebarGroup.onActionStateChange` to `FSidebarGroup.onActionVariantChange`.
+* **Breaking** Rename `FSidebarItem.onStateChange` to `FSidebarItem.onVariantChange`.
+
+
+### `FSlider`
+* Change `FSlider`'s default error style to not affect the entire slider.
+
+
+### `FTabs`
+* Add `FTabs.expands`.
+
+* Change `FTabController(motion: ...)` from `FTabMotion` to `FTabMotionDelta`.
+
+
+### `FTappable`
+* Add `FTappableMotion.bounceFloor` to limit maximum shrink to an absolute pixel value regardless of widget size.
+
+* **Breaking** Change `FTappableVariantChangeCallback` signature from `void Function(Set<FTappableVariant>)` to
+`void Function(Set<FTappableVariant> previous, Set<FTappableVariant> current)`.
+* **Breaking** Rename `FTappable.onStateChange` to `FTappable.onVariantChange`.
+
+* Fix disabled `FTappable` still being able to receive focus.
+
+
+### `FTile` & `FTileGroup`
+* Add destructive `FTile` variant.
+* Add `FTileContentStyle`.
+* Add `FRawTileContentStyle`.
+* Add `FTileStyles`.
+
+* Change default background color to `card`.
+* **Breaking** Rename `FTile.onStateChange` to `FTile.onVariantChange`.
+* **Breaking** Change `FTileGroupStyle.tileStyle` to `FTileGroupStyle.tileStyles` (`FTileStyles` instead of `FTileStyle`).
+
+
+### `FTextField` & `FTextFormField`
+* Add `FTextFieldStyle.iconStyle`.
+
+* Change default cursor color from blue to `primary`.
+* Change default background color to `card`.
+* Change `FTextFieldStyle.clearButtonStyle` to not bounce by default.
+* Change `FTextFieldStyle.obscureButtonStyle` to not bounce by default.
+* **Breaking** Change `FTextFieldStyle.fillColor` to color.
+* **Breaking** Change `FFieldBuilder` to use `Set<FTextFieldVariant>` instead of `Set<WidgetState>`.
+* **Breaking** Change `FFieldIconBuilder` to use `Set<FTextFieldVariant>` instead of `Set<WidgetState>`.
+* **Breaking** Change `FPasswordFieldIconBuilder` to use `Set<FTextFieldVariant>` instead of `Set<WidgetState>`.
+* **Breaking** Remove `FTextField.statesController`.
+* **Breaking** Remove `FTextFormField.statesController`.
+* **Breaking** Remove `FTextFieldStyle.filled`.
+
+
+### `FTheme` & `FThemes`
+* Add `FThemes.neutral`.
+* Add `FTheme.textDirection`.
+* Add `FTheme.tooltipGroupActiveDuration`.
+* Add `FBasicTheme.tooltipGroupActiveDuration`.
+* Add `FThemeData.itemStyles`.
+* Add `FThemeData.tileStyles`.
+* Add `FColors.card`.
+* Add `FColors.lerpColor(...)`.
+
+* **Breaking** Change `FThemes` colors to match latest shadcn/ui.
+* **Breaking** Rename `FTheme` to `FBasicTheme`.
+* **Breaking** Rename `FAnimatedTheme` to `FTheme`.
+* **Breaking** Rename `FAnimatedThemeMotion` to `FThemeMotion`.
+* **Breaking** Change `FThemeData.copyWith(...)` to accept `Delta`s instead of callbacks.
+* **Breaking** Change `FColors.disabledOpacity` to be a multiplicative factor rather than an absolute opacity value.
+* **Breaking** Change `FColors.disable` to multiply the color's existing opacity by `disabledOpacity` instead of
+  alpha-blending against a background.
+
+
+### `FTooltip`
+* Add `FTooltipGroup` for grouping tooltips so subsequent ones appear instantly after the first.
+
+* Change default background color to `card`.
+* Change `FTooltip` fields to be nullable and inherit from the enclosing `FTooltipGroup`.
+* Change `FTooltipController(motion: ...)` from `FTooltipMotion` to `FTooltipMotionDelta`.
+
+
+### `FTimeField`
+* Change error message when localizations are missing to be more descriptive.
+* **Breaking** Rename `FTimeFieldStyle.selectFieldStyle` to `FTimeFieldStyle.fieldStyle`.
+* **Breaking** Remove `FTimeFieldStyle.iconStyle`. Use `FTimeFieldStyle.fieldStyle.iconStyle` instead.
+
+* Fix `FTimeField` incorrectly handling traversal when no localizations are provided.
+
+
+### `FTimePicker`
+* Change error message when given unbounded constraints to be more descriptive.
+
+
+### `FToast`
+* Change default background color to `card`.
+* Change `FToastAlignment` from an enum to final class to allow fine-grained control over positioning.
+
+
+### Others
+
+* Change all widget styles to implement their widget-specific delta types.
+* **Breaking** Change all widget `style` parameters from callback type `FXxxStyle Function(FXxxStyle)?` to delta type
+  `FXxxStyleDelta?`. Pass a style or `.delta(param: value)` to partially modify specific properties.
+* **Breaking** Change `copyWith` for all styles to uses delta instead of callbacks for nested styles/motions, sentinel
+  values for nullable fields.
+* **Breaking** Replace all instances of `FWidgetStateMap` with `FVariants`.
+* **Breaking** Remove `call` method from all styles.
+* **Breaking** Remove `FWidgetStatesDelta`.
+* **Breaking** Remove `FValueNotifier` - use `ValueNotifier` instead.
+
+* Fix default styles across various widgets incorrectly using `primary` color.
+* Fix CLI incorrectly parsing `FStyle`.
+
+
+## 0.17.0
+
+This update overhauls the API by introducing [controls](https://forui.dev/docs/concepts/controls) to support declarative state
+and adding support for the new dot-shorthand syntax.
+
+To simplify updating to the latest version, we've included [Data Driven Fixes](https://github.com/flutter/flutter/blob/master/docs/contributing/Data-driven-Fixes.md).
+This allows you to run automated fixes on your codebase to update it to be compatible with the latest version of `forui`.
+
+After updating to the latest version, run:
+```dart
+dart fix --apply
+```
+
+
+### `FAccordion`
+* Add `FAccordionControl`.
+
+* **Breaking** Remove `FAccordion.controller`. Use `FAccordion(control: .managed(...))` instead.
+* Fix `FAccordionItem` not being properly disposed.
+
+
+### `FAutocomplete`
+* Add `FAutocomplete.popoverControl`.
+* Add `FAutocompleteControl`.
+* Add `FAutocompleteItemMixin.item(...)`.
+* Add `FAutocompleteItemMixin.raw(...)`.
+* Add `FAutocompleteItemMixin.section(...)`.
+* Add `FAutocompleteItemMixin.richSection(...)`.
+* Add `FAutocompleteItem.item(...)`.
+* Add `FAutocomplete.contentGroupId`.
+
+* **Breaking** Rename `FAutocomplete.anchor` to `FAutocomplete.contentAnchor`.
+* **Breaking** Rename `FAutocomplete.popoverConstraints` to `FAutocomplete.contentConstraints`.
+* **Breaking** Rename `FAutocomplete.spacing` to `FAutocomplete.contentSpacing`.
+* **Breaking** Rename `FAutocomplete.shift` to `FAutocomplete.contentOverflow`.
+* **Breaking** Rename `FAutocomplete.offset` to `FAutocomplete.contentOffset`.
+* **Breaking** Rename `FAutocomplete.hideRegion` to `FAutocomplete.contentHideRegion`.
+* **Breaking** Rename `FAutocomplete.onTapHide` to `FAutocomplete.contentOnTapHide`.
+* **Breaking** Remove `FAutocomplete.controller`. Use `FAutocomplete(control: .managed(...))` instead.
+* **Breaking** Remove `FAutocomplete.initialText`. Use `FAutocomplete(control: .managed(...))` instead.
+* **Breaking** Remove `FAutocompleteController.vsync`. Use `FAutocomplete(popoverControl: ...)` instead.
+* **Breaking** Remove `FAutocompleteController.popoverMotion`. Use `FAutocomplete(popoverControl: .managed(motion: ...))` instead.
+* **Breaking** Remove `FAutocompleteController.content`. Use `FAutocomplete(popoverControl: .managed(controller: ...))` instead.
+* **Breaking** Remove `FAutocompleteControl.lifted(popoverShown: ...)`. Use `FAutocomplete(popoverControl: .lifted(...))` instead.
+* **Breaking** Remove `FAutocompleteControl.lifted(onPopoverChange: ...)`. Use `FAutocomplete(popoverControl: .lifted(...))` instead.
+* **Breaking** Remove `FAutocompleteControl.lifted(motion: ...)`. Use `FAutocomplete(popoverControl: .managed(motion: ...))` instead.
+* **Breaking** Remove `FAutocompleteControl.managed(motion: ...)`. Use `FAutocomplete(popoverControl: .managed(motion: ...))` instead.
+* **Breaking** Change `FAutocompleteContentStyle` to extend `FPopoverStyle`.
+* **Breaking** Remove `FAutocompleteStyle.popoverStyle` - use `FAutocompleteStyle.contentStyle` instead.
+
+### `FBottomNavigationBar`
+* Add `FBottomNavigationBar.safeAreaTop`.
+* Add `FBottomNavigationBar.safeAreaBottom`.
+
+* Change `FBottomNavigationBarItem.label` to be optional.
+
+
+### `FBreadcrumb`
+* **Breaking** Rename `FBreadcrumb.shift` to `FBreadcrumb.overflow`.
+* **Breaking** Remove `FBreadcrumbItem.collapsed(popoverController: ...)`. Use `FBreadcrumbItem.collapsed(popoverControl: .managed(...))` instead.
+* **Breaking** Remove `FBreadcrumbItem.collapsedTiles(popoverController: ...)`. Use `FBreadcrumbItem.collapsedTiles(popoverControl: .managed(...))` instead.
+
+
+### `FCalendar`
+Unfortunately, `FCalendar` cannot be easily migrated using data driven fixes due to the complexity of its API changes.
+
+* Add `FCalendarControl`.
+
+* **Breaking** Rename `FCalendarController.date(initialSelection: ...)` to `FCalendarController.date(initial: ...)`.
+* **Breaking** Rename `FCalendarController.dates(initialSelections: ...)` to `FCalendarController.dates(initial: ...)`.
+* **Breaking** Rename `FCalendarController.range(initialSelection: ...)` to `FCalendarController.range(initial: ...)`.
+* **Breaking** Remove `FCalendar.controller`. Use `FCalendar(control: .managedDate(...))` instead.
+
+
+### `FCard`
+* **Breaking** Add `FCard.mainAxisSize`, which defaults to `MainAxisSize.min`.
+
+
+### `FCheckbox`
+* **Breaking** Remove `FCheckbox.grouped(...)`. Use `FSelectGroupItemMixin.checkbox(...)` instead.
+
+
+### `FDateField`
+* Add `FDateFieldControl`.
+* Add `FDateField(popoverControl: ...)`.
+* Add `FDateField.calendar(popoverControl: ...)`.
+* Add `FDateField.calendar(groupId: ...)`.
+* Add `FDateFieldCalendarProperties.groupId`.
+
+* Change `FDateField`'s input to preserve text selection when changing dates programmatically or via the calendar.
+* **Breaking** Rename `FDateField.shift` to `FDateField.overflow`.
+* **Breaking** Rename `FDateFieldCalendarProperties.inputAnchor` to `FDateFieldCalendarProperties.fieldAnchor`.
+* **Breaking** Rename `FDateField.calendar(inputAnchor: ...)` to `FDateField.calendar(fieldAnchor: ...)`.
+* **Breaking** Rename `FDateFieldController.calendar` to `FDateFieldController.popover`.
+* **Breaking** Rename `FDateFieldController(initialDate: ...)` to `FDateFieldController(date: ...)`.
+* **Breaking** Remove `FDateField.controller`. Use `FDateField(control: .managed(controller: ...))` instead.
+* **Breaking** Remove `FDateField.initialDate`. Use `FDateField(control: .managed(initial: ...))` instead.
+* **Breaking** Remove `FDateField.onChange`. Use `FDateField(control: .managed(onChange: ...))` instead.
+* **Breaking** Remove `FDateFieldController(vsync: ..., popoverMotion: ...)`. Use `FDateField(popoverControl: ...)` instead.
+* **Breaking** Remove `FDateFieldController(truncateAndStripTimezone: ...)`.
+
+
+### `FItem` & `FItemGroup`
+* Add `FItemMixin.tile(...)`.
+* Add `FItemMixin.raw(...)`.
+* Add `FItemGroup.group(...)`.
+* Add `FItemGroupMixin.group(...)`.
+* Add `FItemGroupMixin.builder(...)`.
+* Add `FItemGroupMixin.merge(...)`.
+
+
+### `FLineCalendar`
+* Add `FLineCalendarControl`.
+
+* **Breaking** Remove `FLineCalendar.controller`. Use `FLineCalendar(control: .managed(controller: ...))` instead.
+* **Breaking** Remove `FLineCalendar.initialSelection`. Use `FLineCalendar(control: .managed(initial: ...))` instead.
+* **Breaking** Remove `FLineCalendar.onChange`. Use `FLineCalendar(control: .managed(onChange: ...))` instead.
+* **Breaking** Remove `FLineCalendar.toggleable`. Use `FLineCalendar(control: .managed(toggleable: ...))` instead.
+
+* Fix `FLineCalendar` not respecting `FCalendarcontroller.selectable`.
+
+
+### `FPagination`
+* Add `FPaginationControl`.
+
+* **Breaking** Remove `FPagination.controller`. Use `FPagination(control: .managed(controller: ...))` instead.
+* **Breaking** Remove `FPagination.initialPage`. Use `FPagination(control: .managed(initialPage: ...))` instead.
+* **Breaking** Remove `FPagination.pages`. Use `FPagination(control: .managed(pages: ...))` instead.
+* **Breaking** Remove `FPagination.onChange`. Use `FPagination(control: .managed(onChange: ...))` instead.
+* **Breaking** Change `FPaginationController` to extend `ValueNotifier<int>` instead of `FChangeNotifier`.
+* **Breaking** Rename `FPaginationController(initialPage: ...)` to `FPaginationController(page: ...)`.
+* **Breaking** Rename `FPaginationController.page` to `FPaginationController.value`.
+
+
+### `FPicker`
+* Add `FPickerControl`.
+* Add `FPickerController.animateTo(...)`.
+
+* **Breaking** Rename `FPickerController(initialIndexes: ...)` to `FPickerController(indexes: ...)`.
+* **Breaking** Remove `FPicker.controller`. Use `FPicker(control: .managed(...))` instead.
+* **Breaking** Remove `FPicker.onChange`. Use `FPicker(control: .managed(...))` instead.
+
+
+### `FPopover`
+* Add `FPopoverControl`.
+* Add `FPopoverController.shown`.
+
+* **Breaking** Change `FPopover.shift` to `FPopover.overflow`.
+* **Breaking** Remove `FPopover.controller`. Use `FPopover(control: .managed(...))` instead.
+
+* Fix `FPopover` not interrupting ongoing animations when toggled again.
+
+
+### `FPopoverMenu`
+* **Breaking** Change `FPopoverMenu.shift` to `FPopoverMenu.overflow`.
+* **Breaking** Remove `FPopoverMenu.popoverController`. Use `FPopoverMenu(control: .managed(...))` instead.
+
+
+### `FPortal`
+* Add `FPortalSpacing.spacing(...)`.
+
+* **Breaking** Rename `FPortalBox` to `FPortalRect`.
+* **Breaking** Rename `FPortalChildBox` to `FPortalChildRect`.
+* **Breaking** Rename `FPortalShift` to `FPortalOverflow`.
+* **Breaking** Change `FPortalShift` from a function to a class. While this makes custom shift implementations slightly
+  more verbose, it allows the consts to synergize with dot shorthands.
+* **Breaking** Rename `FPortalShift.along` to `FPortalShift.slide`.
+* **Breaking** Rename `FPortal.shift` to `FPortal.overflow`.
+* **Breaking** Rename `FPortalSpacing.resolve` to `FPortalSpacing.call`.
+
+
+### `FRadio`
+* **Breaking** Remove `FRadio.grouped(...)`. Use `FSelectGroupItemMixin.radio(...)` instead.
+
+
+### `FResizable`
+* Add `FResizable.region(...)`.
+* Add `FResizableControl`.
+* Add `FResizableManagedControl`.
+
+* **Breaking** Remove `FResizable.controller`. Use `FResizable(control: .managed(...))` or `FResizable(control: .managedCascade(...))` instead.
+* **Breaking** Remove `FResizable.onChange`. Use `FResizable(control: .managed(...))` instead.
+
+
+### `FSelect` & `FMultiSelect`
+* Add `FSelectControl`.
+* Add `FSelectItemMixin.item(...)`.
+* Add `FSelectItemMixin.raw(...)`.
+* Add `FSelectItemMixin.section(...)`.
+* Add `FSelectItemMixin.richSection(...)`.
+* Add `FSelectItem.item(...)`.
+* Add `FSelect.contentGroupId`.
+* Add `FMultiSelect.contentGroupId`.
+
+* **Breaking** Rename `FSelect.anchor` to `FSelect.contentAnchor`.
+* **Breaking** Rename `FSelect.popoverConstraints` to `FSelect.contentConstraints`.
+* **Breaking** Rename `FSelect.spacing` to `FSelect.contentSpacing`.
+* **Breaking** Rename `FSelect.shift` to `FSelect.contentOverflow`.
+* **Breaking** Rename `FSelect.offset` to `FSelect.contentOffset`.
+* **Breaking** Rename `FSelect.hideRegion` to `FSelect.contentHideRegion`.
+* **Breaking** Remove `FSelect.controller`. Use `FSelect(control: .managed(...))` instead.
+* **Breaking** Remove `FSelect.onChange`. Use `FSelect(control: .managed(...))` instead.
+* **Breaking** Remove `FSelect.initialValue`. Use `FSelect(control: .managed(...))` instead.
+* **Breaking** Remove `FSelectController(vsync: ..., popoverMotion: ...)`. Use `FSelect(popoverControl: ...)` instead.
+* **Breaking** Remove `FSelectSearchFieldProperties.controller`. Use `FSelectSearchFieldProperties(control: .managed(...))` instead.
+* **Breaking** Rename `FMultiSelect.anchor` to `FMultiSelect.contentAnchor`.
+* **Breaking** Rename `FMultiSelect.popoverConstraints` to `FMultiSelect.contentConstraints`.
+* **Breaking** Rename `FMultiSelect.spacing` to `FMultiSelect.contentSpacing`.
+* **Breaking** Rename `FMultiSelect.shift` to `FMultiSelect.contentOverflow`.
+* **Breaking** Rename `FMultiSelect.offset` to `FMultiSelect.contentOffset`.
+* **Breaking** Rename `FMultiSelect.hideRegion` to `FMultiSelect.contentHideRegion`.
+* **Breaking** Remove `FMultiSelect.controller`. Use `FMultiSelect(control: .managed(...))` instead.
+* **Breaking** Remove `FMultiSelect.onChange`. Use `FMultiSelect(control: .managed(...))` instead.
+* **Breaking** Remove `FMultiSelect.initialValue`. Use `FMultiSelect(control: .managed(...))` instead.
+* **Breaking** Remove `FMultiSelect.min`. Use `FMultiSelect(control: .managed(...))` instead.
+* **Breaking** Change `FSelectContentStyle` to extend `FPopoverStyle`.
+* **Breaking** Remove `FSelectStyle.popoverStyle` - use `FSelectStyle.contentStyle` instead.
+* **Breaking** Remove `FMultiSelectStyle.popoverStyle` - use `FMultiSelectStyle.contentStyle` instead.
+* **Breaking** Remove `FMultiSelect.max`. Use `FMultiSelect(control: .managed(...))` instead.
+* **Breaking** Remove `FMultiSelectController`. Use `FMultiValueNotifier` instead.
+* Fix `FSelect.mouseCursor` defaulting to `SystemMouseCursors.click` instead of `MouseCursor.defer`.
+* Deprecate `FSelect.contentScrollHandles`. Please [open an issue](https://github.com/duobaseio/forui/issues) if you use & and need this.
+
+
+### `FSelectGroup` & `FSelectTileGroup`
+* Add `FSelectGroupItemMixin.checkbox(...)`.
+* Add `FSelectGroupItemMixin.radio(...)`.
+
+* **Breaking** Remove `FSelectGroup.controller`. Use `FSelectGroup(control: .managed(...))` instead.
+* **Breaking** Remove `FSelectGroup.onChange`. Use `FSelectGroup(control: .managed(...))` instead.
+* **Breaking** Remove `FSelectGroup.onSelect`.
+* **Breaking** Remove `FSelectGroupController`. Use `FMultiValueNotifier` instead.
+* **Breaking** Rename `FSelectGroupItem` to `FSelectGroupItemMixin`.
+
+
+### `FSelectMenuTile`
+* Add `FSelectMenuTile.menuGroupId`.
+
+* **Breaking** Rename `FSelectMenuTile.shift` to `FSelectMenuTile.menuOverflow`.
+* **Breaking** Rename `FSelectMenuTile.spacing` to `FSelectMenuTile.menuSpacing`.
+* **Breaking** Rename `FSelectMenuTile.offset` to `FSelectMenuTile.menuOffset`.
+* **Breaking** Rename `FSelectMenuTile.hideRegion` to `FSelectMenuTile.menuHideRegion`.
+* **Breaking** Rename `FSelectMenuTile.onTapHide` to `FSelectMenuTile.menuOnTapHide`.
+* **Breaking** Rename `FSelectMenuTile.focusNode` to `FSelectMenuTile.menuFocusNode`.
+* **Breaking** Rename `FSelectMenuTile.onFocusChange` to `FSelectMenuTile.menuOnFocusChange`.
+* **Breaking** Rename `FSelectMenuTile.traversalEdgeBehavior` to `FSelectMenuTile.menuTraversalEdgeBehavior`.
+* **Breaking** Rename `FSelectMenuTile.barrierSemanticsLabel` to `FSelectMenuTile.menuBarrierSemanticsLabel`.
+* **Breaking** Rename `FSelectMenuTile.barrierSemanticsDismissible` to `FSelectMenuTile.menuBarrierSemanticsDismissible`.
+* **Breaking** Remove `FSelectMenuTile.selectController`. Use `FSelectMenuTile(selectControl: .managed(...))` instead.
+* **Breaking** Remove `FSelectMenuTile.popoverController`. Use `FSelectMenuTile(popoverControl: .managed(...))` instead.
+* **Breaking** Remove `FSelectMenuTile.onChange`. Use `FSelectMenuTile(selectControl: .managed(...))` instead.
+* **Breaking** Remove `FSelectMenuTile.initialValue`. Use `FSelectMenuTile(selectControl: .managed(...))` instead.
+* **Breaking** Remove `FSelectMenuTile.onSelect`.
+* **Breaking** Remove `FSelectMenuTileController`. Use `FMultiValueNotifier` instead.
+
+
+### `FSelectTileGroup`
+* **Breaking** Remove `FSelectTileGroupController`. Use `FMultiValueNotifier` instead.
+* **Breaking** Remove `FSelectGroupController`. Use `FMultiValueNotifier` instead.
+* **Breaking** Remove `FSelectTileGroup.selectController`. Use `FSelectTileGroup(control: .managed(...))` instead.
+* **Breaking** Remove `FSelectTileGroup.onChange`. Use `FSelectTileGroup(control: .managed(...))` instead.
+* **Breaking** Remove `FSelectTileGroup.onSelect`.
+
+
+### `FScaffold`
+* **Breaking** Remove `FToaster` from `FScaffold`. This was causing toasts to be cleared when switching between pages.
+  Use `FToaster` directly instead.
+
+
+### `FSheet`
+* **Breaking** Add `showFSheet(resizeToAvoidBottomInset: ...)`. Set to false to restore previous behavior.
+* **Breaking** Add `showFPersistentSheet(resizeToAvoidBottomInset: ...)`. Set to false to restore previous behavior.
+* **Breaking** Add `FModalSheetRoute.resizeToAvoidBottomInset`. Set to false to restore previous behavior.
+
+
+### `FSlider`
+* Add `FSlider.onEnd`.
+* Add `FSliderMark.mark(...)`.
+* Add `FSliderControl`.
+* Add `FSliderManagedControl`.
+
+* **Breaking** Rename `FSliderSelection` to `FSliderValue`.
+* **Breaking** Remove `FSliderController.tooltips`. Use `FSlider.tooltipControls`. instead.
+* **Breaking** Remove `FSliderTooltipsController`. Use `FSliderTooltipControls` instead.
+* **Breaking** Remove `FSlider.controller`. Use `FSlider(control: .managed(...))` instead.
+* **Breaking** Remove `FSlider.onChange`. Use `FSlider(control: .managed(...))` instead.
+* **Breaking** Remove `FSlider.initialSelection`. Use `FSlider(control: .managed(...))` instead.
+
+
+### `FTabs`
+* Add `FTabControl`.
+* Add `FTabEntry.entry(...)`.
+* Add `FTabs.mouseCursor`.
+
+* **Breaking** Remove `FTabs.controller`. Use `FTabs(control: .managed(...))` instead.
+* **Breaking** Remove `FTabs.initialIndex`. Use `FTabs(control: .managed(...))` instead.
+* **Breaking** Remove `FTabs.onChange`. Use `FTabs(control: .managed(...))` instead.
+* **Breaking** Rename `FTabController(initialIndex: ...)` to `FTabController(index: ...)`.
+
+
+### `FTappable`
+*  Change `FTappable` to only update focused state when it has primary focus.
+
+
+### `FTextField`
+* Add `FFieldClearIconBuilder`.
+* Add `FObscureTextControl`.
+* Add `FTextFieldControl`.
+* Add `FTextField.control`.
+* Add `FTextField.clearIconBuilder`.
+* Add `FTextField.password.clearIconBuilder`.
+* Add `FTextFormField.control`.
+
+* **Breaking** Remove `FTextField.controller`. Use `FTextField(control: .managed(...))` instead.
+* **Breaking** Remove `FTextField.onChange`. Use `FTextField(control: .managed(...))` instead.
+* **Breaking** Remove `FTextField.initialText`. Use `FTextField(control: .managed(...))` instead.
+* **Breaking** Remove `FTextFormField.controller`. Use `FTextFormField(control: .managed(...))` instead.
+* **Breaking** Remove `FTextFormField.onChange`. Use `FTextFormField(control: .managed(...))` instead.
+* **Breaking** Remove `FTextFormField.initialText`. Use `FTextFormField(control: .managed(...))` instead.
+* **Breaking** Remove `FTextField.password(obscureTextController: ...)`. Use `FTextField.password(obscureTextControl: ...)` instead.
+* **Breaking** Remove `FTextFormField.password(obscureTextController: ...)`. Use `FTextFormField.password(obscureTextControl: ...)` instead.
+
+
+### `FTile` & `FTileGroup`
+* Add `FTileMixin.selectMenu(...)`.
+* Add `FTileMixin.selectMenuFromMap(...)`.
+* Add `FTileMixin.selectMenuBuilder(...)`.
+* Add `FTileMixin.tile(...)`.
+* Add `FTileMixin.raw(...)`.
+* Add `FTileGroupMixin.selectGroup(...)`.
+* Add `FTileGroupMixin.selectGroupBuilder(...)`.
+* Add `FTileGroupMixin.group(...)`.
+* Add `FTileGroupMixin.builder(...)`.
+* Add `FTileGroupMixin.merge(...)`.
+
+* **Breaking** Remove `FTileMixin.selectMenu(selectController: ...)`. Use `FTileMixin.selectMenu(selectControl: .managed(...))` instead.
+* **Breaking** Remove `FTileMixin.selectMenu(popoverController: ...)`. Use `FTileMixin.selectMenu(popoverControl: .managed(...))` instead.
+* **Breaking** Remove `FTileMixin.selectMenu(onChange: ...)`. Use `FTileMixin.selectMenu(selectControl: .managed(...))` instead.
+* **Breaking** Remove `FTileMixin.selectMenu(onSelect: ...)`.
+* **Breaking** Remove `FTileMixin.selectMenu(initialValue: ...)`. Use `FTileMixin.selectMenu(selectControl: .managed(...))` instead.
+* **Breaking** Remove `FTileMixin.selectMenuFromMap(selectController: ...)`. Use `FTileMixin.selectMenuFromMap(selectControl: .managed(...))` instead.
+* **Breaking** Remove `FTileMixin.selectMenuFromMap(popoverController: ...)`. Use `FTileMixin.selectMenuFromMap(popoverControl: .managed(...))` instead.
+* **Breaking** Remove `FTileMixin.selectMenuFromMap(onChange: ...)`. Use `FTileMixin.selectMenuFromMap(selectControl: .managed(...))` instead.
+* **Breaking** Remove `FTileMixin.selectMenuFromMap(onSelect: ...)`.
+* **Breaking** Remove `FTileMixin.selectMenuFromMap(initialValue: ...)`. Use `FTileMixin.selectMenuFromMap(selectControl: .managed(...))` instead.
+* **Breaking** Remove `FTileMixin.selectMenuBuilder(selectController: ...)`. Use `FTileMixin.selectMenuBuilder(selectControl: .managed(...))` instead.
+* **Breaking** Remove `FTileMixin.selectMenuBuilder(popoverController: ...)`. Use `FTileMixin.selectMenuBuilder(popoverControl: .managed(...))` instead.
+* **Breaking** Remove `FTileMixin.selectMenuBuilder(onChange: ...)`. Use `FTileMixin.selectMenuBuilder(selectControl: .managed(...))` instead.
+* **Breaking** Remove `FTileMixin.selectMenuBuilder(onSelect: ...)`.
+* **Breaking** Remove `FTileMixin.selectMenuBuilder(initialValue: ...)`. Use `FTileMixin.selectMenuBuilder(selectControl: .managed(...))` instead.
+* **Breaking** Remove `FTileGroupMixin.selectGroup(selectController: ...)`. Use `FTileGroupMixin.selectGroup(control: .managed(...))` instead.
+* **Breaking** Remove `FTileGroupMixin.selectGroup(onChange: ...)`. Use `FTileGroupMixin.selectGroup(control: .managed(...))` instead.
+* **Breaking** Remove `FTileGroupMixin.selectGroup(onSelect: ...)`.
+* **Breaking** Remove `FTileGroupMixin.selectGroupBuilder(selectController: ...)`. Use `FTileGroupMixin.selectGroupBuilder(control: .managed(...))` instead.
+* **Breaking** Remove `FTileGroupMixin.selectGroupBuilder(onChange: ...)`. Use `FTileGroupMixin.selectGroupBuilder(control: .managed(...))` instead.
+* **Breaking** Remove `FTileGroupMixin.selectGroupBuilder(onSelect: ...)`.
+
+
+### `FTimeField`
+* Add `FTimeFieldControl`.
+* Add `FTimeField.picker(groupId: ...)`.
+
+* **Breaking** Rename `FTimeField.shift` to `FTimeField.overflow`.
+* **Breaking** Rename `FTimeField.picker(inputAnchor: ...)` to `FTimeField.picker(fieldAnchor: ...)`.
+* **Breaking** Move `FTimeFieldStyle.popoverConstraints` to `FTimeField.picker(constraints: ...)`.
+* **Breaking** Remove `FTimeField.controller`. Use `FTimeField(control: .managed(...))` instead.
+* **Breaking** Remove `FTimeField.onChange`. Use `FTimeField(control: .managed(...))` instead.
+* **Breaking** Remove `FTimeField.initialTime`. Use `FTimeField(control: .managed(...))` instead.
+* **Breaking** Remove `FTimeFieldController(vsync: ..., popoverMotion: ...)`. Use `FTimeField(popoverControl: ...)` instead.
+* **Breaking** Rename `FTimeFieldController(initialTime: ...)` to `FTimeFieldController(time: ...)`.
+
+
+### `FTimePicker`
+* Add `FTimePickerControl`.
+
+* **Breaking** Remove `FTimePicker.controller`. Use `FTimePicker(control: .managed(...))` instead.
+* **Breaking** Remove `FTimePicker.onChange`. Use `FTimePicker(control: .managed(...))` instead.
+* **Breaking** Rename `FTimePickerController(initial: ...)` to `FTimePickerController(time: ...)`.
+
+* Fix `FTimePickerController.animateTo(...)` not working with period-first locales (e.g. Korean).
+
+
+### `FTooltip`
+* Add `FTooltipControl`.
+* Add `FTooltipController.shown`.
+
+* Change `FTooltip` to not be focusable.
+* Change `FTooltip`'s focus-triggered behavior to only show if its immediate focusable descendant has primary focus.
+* **Breaking** Rename `FTooltip.shift` to `FTooltip.overflow`.
+* **Breaking** Remove `FTooltip.controller`. Use `FTooltip(control: .managed(...))` instead.
+
+* Fix `FTooltip` not interrupting ongoing animations when toggled again.
+
+
+### `FToast`
+* Change `FToasterMotion.collapseCurve`'s default value from `easeOutCubic` to `easeOut`.
+
+
+### Others
+* Add `FMultiValueControl`.
+* Add `FTypeaheadController.fromValue(...)`.
+* Add `FTypeheadTextStyles`.
+
+* **Breaking** Remove `FSidebar.width`. This field was never intended for public usage - Use `FSidebarStyle.constraints`
+  instead.
+* Deprecate `FValueNotifier`. Please [open an issue](https://github.com/duobaseio/forui/issues) if there's a use-case that isn't covered.
+* Deprecate `FValueNotifier.addValueListener(...)`. Please [open an issue](https://github.com/duobaseio/forui/issues) if there's a use-case that isn't covered.
+* Deprecate `FValueNotifier.removeValueListener(...)`. Please [open an issue](https://github.com/duobaseio/forui/issues) if there's a use-case that isn't covered.
+* Deprecate `FMultiValueNotifier.addUpdateListener(...)`. Please [open an issue](https://github.com/duobaseio/forui/issues) if there's a use-case that isn't covered.
+* Deprecate `FMultiValueNotifier.removeUpdateListener(...)`. Please [open an issue](https://github.com/duobaseio/forui/issues) if there's a use-case that isn't covered.
+* Fix generated style docs being malformed.
+
+
+## 0.16.0
+
+### Better Generated Documentation
+
+We've improved the styles' generated documentation. They should be much easier to navigate and understand.
+
+
+### `FAccordion`
+* Add `FAccordionMotion`.
+
+* **Breaking** Move animation related fields from `FAccordionStyle` to `FAccordionMoton`.
+
+
+### `FAutocomplete`
+* Add `FAutocomplete.onReset`.
+* Add `FAutocompletController(popoverMotion: ...)`.
+
+* **Breaking** Change `FAutocompleteContentStyle.loadingIndicatorStyle` to `FAutocompleteContentStyle.progressStyle`.
+
+
+### `FCheckbox`
+* Add `FCheckboxMotion`.
+
+* **Breaking** Move animation related fields from `FCheckboxStyle` to `FCheckboxMotion`.
+* Fix `FCheckbox` flickering when rapidly hovering.
+
+
+### `FDateField`
+* Add `FDateField.onReset`.
+
+* **Breaking** Replace `FDateFieldController(animationDuration: ...)` with `FDateFieldController(popoverMotion: ...)`.
+
+
+### `FDialog`
+* Add `FDialogRouteStyle`.
+* Add `FDialogRouteMotion`.
+* Add `showFDialog(routeStyle: ...)`.
+* Add `FDialogMotion`.
+
+* **Breaking** Move barrier related fields from `FDialogStyle` to `FDialogRouteStyle`.
+* **Breaking** Move animation related fields from `FDialogStyle` to `FDialogMotion`.
+
+* Fix `FDialog.body` not allowing `ScrollView`s.  
+
+
+### `FFormField`
+* **Breaking** Add `FFormField(onReset: ...)`.
+* **Breaking** Add `FFormFieldProperties(onReset: ...)`.
+
+
+### `FHeader`
+
+* Fix `FHeader(...)` not vertically centering title.
+* Fix `FHeader(...)` not respecting RTL locales.
+* Fix `FHeader.nested(...)` not vertically centering title.
+* Fix `FHeader.nested(...)` not respecting RTL locales.
+
+
+### `FItem`
+
+* Fix `GestureDetector` being absorbed in focused `FItem`s.
+
+
+### `FPopover` & `FPopoverMenu`
+* Add `FPopoverMotion`.
+
+* Change default animations to be more subtle.
+* **Breaking** Replace `FPopoverController(animationDuration: ...)` with `FPopoverController(motion: ...)`.
+* **Breaking** Change `FPopoverMenu.hideRegion`'s default value from `FHidePopoverRegion.anywhere` to `FHidePopoverRegion.excludeChild`.
+
+
+### `FProgress`
+We've reworked `FProgress` to be more customizable and easier to use.
+
+* Add `FCircularProgress` which represents indeterminate circular progress.
+* Add `FCircularProgressStyle`.
+* Add `FInheritedCircularProgressStyle`.
+* Add `FDeterminateProgress` which represents determinate linear progress.
+* Add `FDeterminateProgressStyle`.
+
+* **Breaking** Change `FProgress` to represent indeterminate linear progress.
+* **Breaking** Remove `FProgressStyles`.
+
+
+### `FRadio`
+* Add `FRadioMotion`.
+
+* **Breaking** Move animation related fields from `FRadioStyle` to `FRadioMotion`.
+
+
+### `FSelect` & `FMultiSelect`
+* Add `FSelect.onReset`.
+* Add `FMultiSelect.onReset`.
+
+* **Breaking** Rename `FSelectSearchStyle.loadingIndicatorStyle` to `FSelectSearchStyle.progressStyle`.
+* **Breaking** Replace `FSelectController(animationDuration: ...)` with `FSelectController(popoverMotion: ...)`.
+* **Breaking** Replace `FMultiSelectController(animationDuration: ...)` with `FMultiSelectController(popoverMotion: ...)`.
+
+
+### `FSelectGroup`
+* Add `FSelectGroup.onReset`.
+
+
+### `FSelectMenuTile`
+* Add `FSelectMenuTile.onReset`.
+
+
+### `FSelectTileGroup`
+* Add `FSelectTileGroup.onReset`.
+
+
+### `FSheet`
+* Add `FModalSheetStyle`.
+* Add `FPersistentSheetStyle`.
+* Add `FSheetMotion`.
+* Add `FModalSheetMotion`.
+* Add `FPersistentSheetMotion`.
+* Add `FModalSheet(onClosing: ...)`.
+* Add `FPersistentSheet(onClosing: ...)`.
+
+* **Breaking** Split `FSheetStyle` into `FModalSheetStyle` and `FPersistentSheetStyle`.
+* **Breaking** Move animation related fields from `FSheetStyle` to `FSheetMotion`.
+
+
+### `FSidebar`
+* Add `FSidebarItemMotion`.
+
+* **Breaking** Move animation related fields from `FSiderbarItemStyle` to `FSiderbarItemMotion`.
+
+
+### `FSlider`
+* Add `FSlider.onReset`.
+* Add `FSliderStyle.tooltipMotion`.
+
+
+### `FTab`
+* Add `FTabMotion`.
+* Add `FTabs.mouseCursor`.
+
+* **Breaking** Replace `FTabController(animationDuration: ...)` with `FTabController(motion: ...)`.
+
+
+### `FTappable`
+* Add `FTappableMotion`.
+
+* **Breaking** Move animation related fields from `FTappableStyle` to `FTappableMotion`.
+
+
+### `FTextField` & `FTextFormField`
+We've added a password visibility toggle to password fields.
+
+* Add password visibility toggle to `FTextField.password(...)`.
+* Add password visibility toggle to `FTextFormField.password(...)`.
+* Add `FTextFormField.onReset`.
+
+* Change `FTextField.email(label: ...)` to be localized.
+* Change `FTextField.password(label: ...)` to be localized.
+* Change `FTextFormField.email(label: ...)` to be localized.
+* Change `FTextFormField.password(label: ...)` to be localized.
+
+
+### `FThemeData`
+We've added support for animated theme transitions. This should make transitions between themes gradual instead of abrupt.
+
+* Add `FThemeData.lerp(...)`.
+
+* Change `FThemeData.copyWith(...)` to accept style builder functions.
+
+
+### `FTimeField`
+* Add `FTimeField.onReset`.
+
+* **Breaking** Replace `FTimeFieldController(animationDuration: ...)` with `FTimeFieldController(popoverMotion: ...)`.
+
+
+### `FToast`
+* Add `FToastMotion`.
+* Add `FToasterMotion`.
+
+* Change animation to be more subtle.
+* **Breaking** Move animation related fields from `FToastStyle` to `FToastMotion`.
+* **Breaking** Move animation related fields from `FToasterStyle` to `FToasterMotion`.
+
+* Remove no-op `FToast.onDismiss` parameter that was accidentally included.
+
+
+### `FTooltip`
+* Add `FTooltipMotion`.
+
+* **Breaking** Replace `FTooltipController(animationDuration: ...)` with `FTooltipController(motion: ...)`.
+
+
+### `FWidgetStateMap`
+* Add `FWidgetStateMap.lerpBoxDecoration(...)`.
+* Add `FWidgetStateMap.lerpColor(...)`.
+* Add `FWidgetStateMap.lerpIconThemeData(...)`.
+* Add `FWidgetStateMap.lerpTextStyle(...)`.
+* Add `FWidgetStateMap.lerpWhere(...)`.
+
+
+### `FToaster`
+* Add `FToaster.of(...)`.
+
+* Make `FToasterState.show(context: ...)` optional.
+
+
+### Others
+* Add `FImmutableTween`.
+* Add `FLabel.expands`.
+
+* Fix `FTextField.expands` causing a render error.
+
+
+## 0.15.1
+* Fix CLI generating incorrect icon mappings.
+* Fix CLI generating theme that references private constant.
+
+
+## 0.15.0
+
+### Cursors
+We've changed the default cursor for many widgets from `MouseCursor.click` to `MouseCursor.defer`. This is in line with 
+[native desktop behavior](https://medium.com/simple-human/buttons-shouldnt-have-a-hand-cursor-b11e99ca374b) and [W3C User Interface guidelines](https://www.w3.org/TR/css-ui-3/#valdef-cursor-pointer).
+
+
+### `FThemeData`
+Hover colors now use lightness-based adjustments rather than alpha blending, providing better visual feedback across all 
+color variants, especially `FColors.secondary`.
+
+We've also added support for theme extensions. This allows you to add custom application-specific properties to the theme 
+without having to manage them around separately.
+
+* Add `FThemeData.extension()`.
+* Add `FThemeData.extensions`.
+
+* Remove `foreground` parameter from `FColors.hover(...)`.
+
+
+### `FAccordion`
+* Add `FAccordionItem.onHoverChange`
+* Add `FAccordionItem.onStateChange`
+
+* **Breaking** Make `FAccordionController.controllers` private.
+* **Breaking** Change `FAccordionItem.onStateChange` from `ValueChanged<Set<WidgetState>>` to `ValueChanged<FWidgetStatesDelta>`.
+* **Breaking** Remove `FAccordionController.radio(...)` - use `FAccrdionController(max: 1)` instead.
+* **Breaking** Remove `FAccordionController.validate(...)`.
+
+
+### `FAutocomplete` (new)
+* Add `FAutocomplete`.
+* Add `FAutocompleteController`.
+* Add `FAutocompleteStyle`.
+* Add `FAutocompleteSection`.
+* Add `FAutocompleteItem`.
+
+
+### `FBottomNavigationBar`
+* **Breaking** Change `FBottomNavigationBarItem.onStateChange` from `ValueChanged<Set<WidgetState>>` to `ValueChanged<FWidgetStatesDelta>`.
+
+
+### `FButton`
+* **Breaking** Change `FButton.onStateChange` from `ValueChanged<Set<WidgetState>>` to `ValueChanged<FWidgetStatesDelta>`.
+
+
+### `FBreadcrumb`
+* Add `onTapHide` to `FBreadcrumb.collapsed(...)`.
+
+* **Breaking** Change `FBreadcrumb.hideOnTapOutside` to `FBreadcrumb.hideRegion`.
+
+
+### `FDateField`
+* Add `onTapHide` to `FDateField.calendar(...)`.
+* Add `FDateFieldCalendarProperties.onTapHide`.
+
+* **Breaking** Change `FDateField.hideOnTapOutside` to `FDateField.hideRegion`.
+* **Breaking** Change `FDateField.builder` from `ValueWidgetBuilder<(FTextFieldStyle, Set<WidgetState>)>` to
+  `FFieldBuilder<FDateFieldStyle>`.
+* **Breaking** Change `FDateField.prefixBuilder` from `ValueWidgetBuilder<(FTextFieldStyle, Set<WidgetState>)>` to
+  `FFieldIconBuilder<FDateFieldStyle>`.
+* **Breaking** Change `FDateField.suffixBuilder` from `ValueWidgetBuilder<(FTextFieldStyle, Set<WidgetState>)>` to
+  `FFieldIconBuilder<FDateFieldStyle>`.
+
+
+### `FHeader`
+* **Breaking** Change `FHeaderAction.onStateChange` from `ValueChanged<Set<WidgetState>>` to `ValueChanged<FWidgetStatesDelta>`.
+
+
+### `FItem`
+* **Breaking** Change `FItem.onStateChange` from `ValueChanged<Set<WidgetState>>` to `ValueChanged<FWidgetStatesDelta>`.
+
+
+
+### `FMultiSelect` (new)
+* Add `FMultiSelect`.
+* Add `FMultiSelectController`.
+* Add `FMultiSelectStyle`.
+* Add `FMultiSelectTag`.
+
+
+### `FPopover` & `FPopoverMenu`
+* Add `FPopover.onTapHide`.
+* Add `FPopoverMenu.onTapHide`.
+
+* **Breaking** Change `FPopover.hideOnTapOutside` to `FPopover.hideRegion`.
+* **Breaking** Change `FPopoverMenu.hideOnTapOutside` to `FPopoverMenu.hideRegion`.
+* **Breaking** Change `FHidePopoverRegion` to `FPopoverHideRegion`.
+* **Breaking** Change `FHidePopoverRegion.excludeTarget` to `FHidePopoverRegion.excludeChild`.
+
+
+### `FSelect`
+We've done an overhaul of `FSelect` to make it more consistent and easier to use.
+
+* Add `FSelect.contentEmptyBuilder`.
+* Add `FSelectItem.raw(...)`
+
+* Change `FSelect`'s vertical padding for default loading and empty indicators to be the same height.
+* **Breaking** Rename `FSelect.divider` to `FSelect.contentDivider`.
+* **Breaking** Replace `FSelect.hideOnTapOutside` with `FSelect.hideRegion`.
+* **Breaking** Change `FSelect.builder` from `ValueWidgetBuilder<(FTextFieldStyle, Set<WidgetState>)>` to
+  `FFieldBuilder<FTextFieldStyle>`.
+* **Breaking** Change `FSelect.prefixBuilder` from `ValueWidgetBuilder<(FTextFieldStyle, Set<WidgetState>)>` to
+  `FFieldIconBuilder<FTextFieldStyle> prefixBuilder`.
+* **Breaking** Change `FSelect.suffixBuilder` from `ValueWidgetBuilder<(FTextFieldStyle, Set<WidgetState>)>` to
+  `FFieldIconBuilder<FTextFieldStyle> suffixBuilder`.
+* **Breaking** Change `FSelectSearchFieldProperties.builder` from `ValueWidgetBuilder<(FTextFieldStyle, Set<WidgetState>)>` to
+  `FFieldBuilder<FTextFieldStyle>`.
+* **Breaking** Change `FSelectSearchFieldProperties.prefixBuilder` from `ValueWidgetBuilder<(FTextFieldStyle, Set<WidgetState>)>` to
+  `FFieldIconBuilder<FTextFieldStyle> prefixBuilder`.
+* **Breaking** Change `FSelectSearchFieldProperties.suffixBuilder` from `ValueWidgetBuilder<(FTextFieldStyle, Set<WidgetState>)>` to
+  `FFieldIconBuilder<FTextFieldStyle> suffixBuilder`.
+* Change `FSelectSearchContentBuilder` from `List<FSelectItemMixin> Function(BuildContext context, FSelectSearchData<T> data);`
+  to `List<FSelectItemMixin> Function(BuildContext context, String query, Iterable<T> values)`.
+* **Breaking** Remove `FSelectSearchFilter<T>` typedef - use the literal function signature instead.
+* **Breaking** Remove `FSelectSearchData<T>` typedef.
+* **Breaking** Replace `FSelect.emptyBuilder` with `FSelect.contentEmptyBuilder`.
+* **Breaking** Replace `FSelect.searchLoadingBuilder` with `FSelect.contentLoadingBuilder`.
+* **Breaking** Replace `FSelect.searchErrorBuilder` with `FSelect.contentErrorBuilder`.
+* **Breaking** Replace `FSelect.defaultEmptyBuilder` with `FSelect.defaultContentEmptyBuilder`.
+* **Breaking** Replace `FSelect.defaultSearchLoadingBuilder` with `FSelect.defaultContentLoadingBuilder`.
+* **Breaking** Replace `FSelect.fromMap(...)` with `FSelectSection.new(...)`.
+* **Breaking** Replace `FSelect(...)` with `FSelectSection.rich(...)`.
+* **Breaking** Replace `FSelect.searchFromMap(...)` with `FSelectSection.search(...)`.
+* **Breaking** Replace `FSelect.search(...)` with `FSelectSection.searchBuilder(...)`.
+* **Breaking** Replace `FSelectSection.new(...)` with `FSelectSection.rich(...)`
+* **Breaking** Replace `FSelectSection.fromMap(...)` with `FSelectSection.new(...)`.
+* **Breaking** Change `FSelectItem(...)`'s parameters to no longer accept string parameter.
+* **Breaking** Change `FSelectItem.onStateChange` from `ValueChanged<Set<WidgetState>>` to `ValueChanged<FWidgetStatesDelta>`.
+* **Breaking** Replace `FSelectItemStyle` with underlying `FItemStyle`.
+
+* Fix first focused item not unfocusing when other items are pressed on touch devices.
+
+
+### `FSelectMenuTile`
+* Add `FSelectMenuTile.onTapHide`.
+
+* **Breaking** Change `FSelectMenuTile.hideOnTapOutside` to `FSelectMenuTile.hideRegion`.
+
+
+### `FSelectTileGroup`
+* **Breaking** Change `FSelectTile.onStateChange` from `ValueChanged<Set<WidgetState>>` to `ValueChanged<FWidgetStatesDelta>`.
+
+
+### `FSidebar`
+* **Breaking** Change `FSidebarGroup.onStateChange` from `ValueChanged<Set<WidgetState>>` to `ValueChanged<FWidgetStatesDelta>`.
+* **Breaking** Change `FSidebarItem.onStateChange` from `ValueChanged<Set<WidgetState>>` to `ValueChanged<FWidgetStatesDelta>`.
+
+
+### `FTappable`
+* **Breaking** Change `FTappable.onStateChange` from `ValueChanged<Set<WidgetState>>` to `ValueChanged<FWidgetStatesDelta>`.
+
+
+### `FTextField` & `FTextFormField`
+* Add `FFieldBuilder.`
+* Add `FFieldIconBuilder.
+* Add `FTextField.selectAllOnFocus`.
+* Add `FTextFormField.selectAllOnFocus`.
+
+* **Breaking** Change `FTextField.builder` from `ValueWidgetBuilder<(FTextFieldStyle, Set<WidgetState>)>` to 
+  `FFieldBuilder<FTextFieldStyle>`.
+* **Breaking** Change `FTextField.prefixBuilder` from `ValueWidgetBuilder<(FTextFieldStyle, Set<WidgetState>)>` to
+  `FFieldIconBuilder<FTextFieldStyle> prefixBuilder`.
+* **Breaking** Change `FTextField.suffixBuilder` from `ValueWidgetBuilder<(FTextFieldStyle, Set<WidgetState>)>` to
+  `FFieldIconBuilder<FTextFieldStyle> suffixBuilder`.
+* **Breaking** Change `FTextFormField.builder` from `ValueWidgetBuilder<(FTextFieldStyle, Set<WidgetState>)>` to
+  `FFieldBuilder<FTextFieldStyle>`.
+* **Breaking** Change `FTextFormField.prefixBuilder` from `ValueWidgetBuilder<(FTextFieldStyle, Set<WidgetState>)>` to
+  `FFieldIconBuilder<FTextFieldStyle> prefixBuilder`.
+* **Breaking** Change `FTextFormField.suffixBuilder` from `ValueWidgetBuilder<(FTextFieldStyle, Set<WidgetState>)>` to
+  `FFieldIconBuilder<FTextFieldStyle> suffixBuilder`.
+
+
+### `FTile`
+* **Breaking** Change `FTile.onStateChange` from `ValueChanged<Set<WidgetState>>` to `ValueChanged<FWidgetStatesDelta>`.
+
+
+### `FTimeField`
+* Add `onTapHide` to `FTimeField.picker(...)`.
+
+* **Breaking** Change `FTimeField.hideOnTapOutside` to `FTimeField.hideRegion`.
+* **Breaking** Change `FTimeField.builder` from `ValueWidgetBuilder<(FTextFieldStyle, Set<WidgetState>)>` to
+  `FFieldBuilder<FDateFieldStyle>`.
+* **Breaking** Change `FTimeField.prefixBuilder` from `ValueWidgetBuilder<(FTextFieldStyle, Set<WidgetState>)>` to
+  `FFieldIconBuilder<FDateFieldStyle>`.
+* **Breaking** Change `FTimeField.suffixBuilder` from `ValueWidgetBuilder<(FTextFieldStyle, Set<WidgetState>)>` to
+  `FFieldIconBuilder<FDateFieldStyle>`.
+
+* Fix regression in Flutter 3.35.2 by reducing `FTextFieldStyle.contentPadding` from `EdgeInsets.symmetric(horizontal: 14, vertical: 10)` 
+  to `EdgeInsets.symmetric(horizontal: 10, vertical: 10)`.
+
+
+### Others
+* Add `FSelectMenuTile.onTapHide`.
+* Add `FTypeaheadController`.
+* Add `FWidgetStatesDelta`.
+
+* Change `FMultiValueNotifier` to be non-abstract.
+* **Breaking** Change `FMultiValueNotifier.radio({T? value})` to `FMultiValueNotifier.radio([T? value])`.
+* **Breaking** Change `ValueWidgetBuilder<FToasterEntry>? suffixBuilder` to `Widget Function(BuildContext, FToasterEntry)? suffixBuilder` 
+  in `showFToast(...)`.
+
+* Fix `FProgress.circularIcon()` using incorrect color.
+* Fix `FScaffold` not propagating `IconTheme` from `FStyle.iconStyle`.
+* Fix `FSelectGroup` throwing a duplicate error when rapidly hovering over several `FCheckbox`es. 
+* Fix `FTabs` throwing an assertion error if `FTabController` is provided with a `initialIndex` > 0.
+
+
+## 0.14.1
+* Fix `FToaster`sometimes crashing due to an incorrect update of a late final variable.
+
+
+## 0.14.0
+
+### `FButton`
+* Add `FButton.onSecondaryPress`.
+* Add `FButton.onSecondaryLongPress`.
+
+
+### `FHeaderAction`
+* Add `FHeaderAction.onSecondaryPress`.
+* Add `FHeaderAction.onSecondaryLongPress`.
+* Add `FHeaderAction.actions`.
+* Add `FHeaderAction.shortcuts`.
+
+
+### `FItemData` 
+
+* **Breaking** Change `FItemData` to store fields in separate data class instead of directly in an inherited widget.
+* **Breaking** Rename `FItemData` to `FInheritedItemData`.
+
+
+### `FPopover`
+* **Breaking** Change `FPopoverController.shown` to `FPopoverController.status`.
+
+* Fix `FPopover` not respecting `FPopover.traversalEdgeBehavior`.
+
+
+### `FSelect`
+* Change `FSelect`'s default popover animation duration from `50ms` to `100ms`.
+* Change `FSelect.anchor`'s default value from `Alignment.topLeft` to `AlignmentDirectional.topStart`.
+* Change `FSelect.fieldAnchor`'s default value from `Alignment.bottomLeft` to `AlignmentDirectional.bottomStart`.
+
+* Fix `FSelect` flickering when selecting an item on desktop.
+* Fix `FSelect` not scrolling to selected item when opened if the item is really far down the list.
+* Fix `FSelect` layout shifting when scrolling through a long list of items.
+
+
+### `FSelectMenuTile`
+* Add `FSelectMenuTile.fromMap(...)`.
+
+* Fix `FSelectMenuTile` throwing an error when wrapped in a `FTileGroup`.
+
+
+### `FSidebar`
+* Add `FSidebar.focusNode`.
+* Add `FSidebar.traversalEdgeBehavior`.
+
+* Change `FSidebarItemStyle.focusedOutlineStyle.spacing` from 3 to 0.
+
+* Fix `FSidebar`'s focus traversal behavior.
+
+
+### `FTappable`
+* Add `FTappable.onSecondaryPress`.
+* Add `FTappable.onSecondaryLongPress`.
+
+
+### `FTile`
+* Add `FTile.onSecondaryPress`.
+* Add `FTile.onSecondaryLongPress`.
+
+
+### Others
+* Add `FToasterStyle.toastAlignment`.
+
+* Change default `hideOnTapOutside` in `FDateField.calendar(...)` from `FHidePopoverRegion.anywhere` to `FHidePopoverRegion.excludeTarget`.
+* Change default `hideOnTapOutside` in `FTimeField.picker(...)` from `FHidePopoverRegion.anywhere` to `FHidePopoverRegion.excludeTarget`.
+* **Breaking** Change `FPersistentSheetController.shown` to `FPersistentSheetController.status`.
+* **Breaking** Change `FTooltipController.shown` to `FTooltipController.status`.
+
+* Fix `FPopoverMenu` throwing an error when wrapped in a `FTileGroup`.
+* Fix `FTextField` applying different padding on mobile & desktop.
+
+
+## 0.13.1
+
+* Fix `FSelectTile` mixing in `FItemMixin` instead of `FTileMixin`.
+* Fix `FSelectMenuTile` mixing in `FItemMixin` instead of `FTileMixin`.
+
+
+## 0.13.0
+This update focuses on polishing & improving the usability of existing widgets.
+
+### Animations
+We've updated the animations in Forui to feel more nature and be origin aware. This should make the animations feel more
+polished.
+
+### Blur & glassmorphic support
+We've updated most overlay widgets to support background blur & glassmorphic styles. This is disabled by default. It can
+be enabled by setting a `barrierFilter` & `backgroundFilter` in the widget's style.
+
+### Styles
+We've updated styles to be easier to configure and use without the CLI. All widgets now accept a style builder function
+rather than a style object. Similarly, all nested styles inside styles have been replaced with style builder functions.
+This makes it easier to customize styles based on the existing styles.
+
+Previously:
+```dart
+FFCheckbox(
+  style: context.theme.checkBoxStyle.copyWith(
+    tappableStyle: context.theme.checkBoxStyle.copyWith(...),
+  ),
+);
+```
+
+Now:
+```dart
+FFCheckbox(
+  style: (style) => style.copyWith(
+    tappableStyle: (style) => style.copyWith(...),
+  ),
+);
+```
+
+In most cases, this is **not** a breaking change. Styles have been updated to implement the `call` function. This means
+that you can still pass in a style object as before.
+```dart
+// Long-form
+FFCheckbox(
+  style: (style) => FCheckBoxStyle(...),
+);
+
+// Short-form
+FFCheckbox(
+  style: FCheckBoxStyle(...),
+);
+```
+
+
+### `FThemeData`
+* Add `FColors.systemOverlayStyle`.
+
+
+### `FAccordion`
+* Add `FAccordionItemStyle.expandDuration`.
+* Add `FAccordionItemStyle.expandCurve`.
+* Add `FAccordionItemStyle.collapseDuration`.
+* Add `FAccordionItemStyle.collapseCurve`.
+
+* Refine `FAccordion`'s collapsible animation.
+* **Breaking** Change `FAccordionStyle.iconStyle`'s default icon color from `primary` to `mutedForeground`.
+* **Breaking** Remove `FAccordionItemStyle.animationDuration` - use `FAccordionItemStyle.expandDuration` instead.
+
+
+### `FAlert`
+* **Breaking** Change `FAlertStyle.primary`'s signature - pass `FAlertStyle.primary()` instead of `FAlert.primary` to `FAlert`.
+* **Breaking** Change `FAlertStyle.destructive`'s signature - pass `FAlertStyle.destructive()` instead of `FAlert.destructive` to `FAlert`.
+
+
+### `FBadge`
+* **Breaking** Change `FBadgeStyle.primary`'s signature - pass `FBadgeStyle.primary()` instead of `FBadgeStyle.primary` to `FBadgeStyle`.
+* **Breaking** Change `FBadgeStyle.secondary`'s signature - pass `FBadgeStyle.secondary()` instead of `FBadgeStyle.secondary` to `FBadgeStyle`.
+* **Breaking** Change `FBadgeStyle.destructive`'s signature - pass `FBadgeStyle.destructive()` instead of `FBadgeStyle.destructive` to `FBadgeStyle`.
+* **Breaking** Change `FBadgeStyle.outline`'s signature - pass `FBadgeStyle.outline()` instead of `FBadgeStyle.outline` to `FBadgeStyle`.
+
+
+### `FBottomNavigationBar`
+* Add `FBottomNavigationBarStyle.backgroundFilter`.
+
+
+### `FBreadcrumb`
+We've added support for an alternative popover menu which uses `FItem` and more closely resembles Shadcn/ui's popover
+menu suited for desktop.
+
+* Add `FBreadcrumbItem.collapsedTiles(...)`.
+
+* **Breaking** Change `FBreadcrumbItem.collapsed` to use `FItem` instead of `FTile` - use `FBreadcrumb.collapsedTiles(...)`
+  instead.
+
+
+### `FButton`
+* Add `FButton.actions`.
+* Add `FButton.shortcuts`.
+* Add `mainAxisAlignment` to `FButton(...)`.
+* Add `crossAxisAlignment` to `FButton(...)`.
+* Add `textBaseline` to `FButton(...)`.
+* Add `FButtonContentStyle.spacing`.
+
+* **Breaking** Change `instrinicWidth` in `FButton(...)` to `mainAxisSize`.
+* **Breaking** Change `FButtonStyle.primary`'s signature - pass `FButtonStyle.primary()` instead of `FButtonStyle.primary` to `FButtonStyle`.
+* **Breaking** Change `FButtonStyle.secondary`'s signature - pass `FButtonStyle.secondary()` instead of `FButtonStyle.secondary` to `FButtonStyle`.
+* **Breaking** Change `FButtonStyle.destructive`'s signature - pass `FButtonStyle.destructive()` instead of `FButtonStyle.destructive` to `FButtonStyle`.
+* **Breaking** Change `FButtonStyle.outline`'s signature - pass `FButtonStyle.outline()` instead of `FButtonStyle.outline` to `FButtonStyle`.
+* **Breaking** Change `FButtonStyle.ghost`'s signature - pass `FButtonStyle.ghost()` instead of `FButtonStyle.ghost` to `FButtonStyle`.
+
+
+### `FDialog`
+* Add `showFDialog`.
+* Add `FDialog.animation`.
+* Add `FDialogRoute`.
+* Add `FDialogStyle.barrierFilter`.
+* Add `FDialogStyle.backgroundFilter`.
+* Add `FDialogStyle.entranceExitDuration`.
+* Add `FDialogStyle.entranceCurve`.
+* Add `FDialogStyle.exitCurve`.
+* Add `FDialogStyle.fadeTween`.
+* Add `FDialogStyle.scaleTween`.
+
+
+### `FHeader`
+* Add `FHeaderStyle.backgroundFilter`.
+* Add `FHeaderStyle.decoration`.
+
+
+### `FItem` (new)
+An `FItem` is typically used to group related information together. It is a more generic version of `FTile` that is used
+to build more complex widgets.
+
+* Add `FItem`.
+* Add `FItemData`.
+* Add `FItemDivider`.
+* Add `FItemGroup`.
+* Add `FItemStyle`.
+* Add `FItemContentStyle`.
+
+
+### `FPopover`
+* Add `FPopover.barrierSemanticsLabel`.
+* Add `FPopover.barrierSemanticsDismissible`.
+* Add `FPopover.builder`.
+* Add `FPopoverStyle.barrierFilter`.
+* Add `FPopoverStyle.backgroundFilter`.
+
+* Change `FPopover`'s animation to be origin aware.
+* Change `FPopover(...)`'s `controller` to be optional.
+* **Breaking** Change `FPopover.hideOnTapOutside` default value from `FHidePopoverRegion.anywhere` to 
+  `FHidePopoverRegion.excludeTarget`.
+* **Breaking** Change `FPopover.popoverBuilder`'s signature from `ValueWidgetBuilder<FPopoverStyle>` to 
+  `Widget Function(BuildContext, FPopoverController)`.
+* **Breaking** Remove `FPopover.automatic` - This was a bad abstraction in hindsight, use `FPopover.new` instead.
+
+
+### `FPopoverMenu`
+We've added support for an alternative popover menu which uses `FItem` and more closely resembles Shadcn/ui's popover
+menu suited for desktop.
+
+* Add `FPopoverMenu.tiles(...)`
+* Add `FPopoverMenu.barrierSemanticsLabel`.
+* Add `FPopoverMenu.barrierSemanticsDismissible`.
+* Add `FPopoverMenu.builder`.
+* Add `FPopoverMenu.menuBuilder`.
+
+* Change `FPopoverMenu`'s animation to be origin aware.
+* Change `FPopoverMenu(...)`'s `controller` to be optional.
+* **Breaking** Remove `FPopoverMenu.automatic` - This was a bad abstraction in hindsight, use `FPopoverMenu.new` instead.
+* **Breaking** Change `FPopoverMenu(...)` to use `FItem`s instead of `FTile`s - use `FPopoverMenu.tiles(...)` instead.
+
+
+### `FPortal`
+* Add `FPortal.barrier`.
+* Add `FPortal.builder(...)`.
+
+* Change `FPortal.controller` to be optional.
+* **Breaking** Change `FPortal.portalBuilder`'s signature from `WidgetBuilder` to 
+  `Widget Function(BuildContext, FPortalController)`.
+
+### `FSelect`
+We've updated `FSelect` to support dividers & `FSelectItem` to support prefixes & subtitles.
+
+* Add `FSelect.divider`.
+* Add `FSelectSection.divider`.
+* Add `FSelectItem.prefix`.
+* Add `FSelectItem.subtitle`.
+* Add `FSelectItemStyle.prefixIconStyle`.
+* Add `FSelectItemStyle.prefixIconSpacing`.
+* Add `FSelectItemStyle.titleSpacing`
+* Add `FSelectItemStyle.subtitleStyle`.
+
+* **Breaking** Rename `FSelectItem.child` to `FSelectItem.title`.
+* **Breaking** Rename `FSelectItemStyle.textStyle` to `FSelectItem.titleTextStyle`.
+* **Breaking** Rename `FSelectItemStyle.iconStyle` to `FSelectItem.suffixIconStyle`.
+
+* Fix `FSelect.search(...)` always focusing on 1st item even when there is a selected item.
+* Fix `FSelect.search(...)` expanding items unnecessarily.
+
+
+### `FSelectMenuTile`
+* Add `FSelectMenuTile.actions`.
+* Add `FSelectMenuTile.barrierSemanticsLabel`.
+* Add `FSelectMenuTile.barrierSemanticsDismissible`.
+* Add `FSelectMenuTile.detailsBuilder`.
+* Add `FSelectMenuTile.shortcuts`.
+
+* Change `FSelectMenuTile.selectController` to be optional.
+
+
+### `FSheet`
+* Change `FSSheet`'s transition animation.
+* **Breaking** Change `FSheetStyle.barrierColor` to `FSheetStyle.barrierFilter`.
+* **Breaking** Remove `FSheetStyle.backgroundColor`.
+
+
+### `FSidebar`
+* Add `FSidebarStyle.backgroundFilter`.
+* Add `FSidebarStyle.decoration`.
+* Add `FSidebarItemStyle.expandDuration`.
+* Add `FSidebarItemStyle.expandCurve`.
+* Add `FSidebarItemStyle.collapseDuration`.
+* Add `FSidebarItemStyle.collapseCurve`.
+
+* Refine `FSidebar`'s collapsible animation.
+* **Breaking** Change `FSidebar` to not bounce.
+* **Breaking** Change `FSidebar.child` to be non-nullable.
+* **Breaking** Change `FSidebarStyle.width` to `FSidebarStyle.constraints`.
+* **Breaking** Remove `FSidebarStyle.bordeColor` - use `FSidebarStyle.decoration` instead.
+* **Breaking** Remove `FSidebarStyle.bordeWidth` - use `FSidebarStyle.decoration` instead.
+* **Breaking** Remove `FSidebarItemStyle.collapsibleAnimationDuration` - use `FSidebarItemStyle.expandDuration` instead.
+
+* Fix `FSidebarItem`'s style not updating when passed in style changes.
+
+
+### `FTappable`
+* Add `FTappable.actions`.
+* Add `FTappable.shortcuts`.
+* Add `FTappableStyle.bounceDuration`.
+* Add `FTappableStyle.bounceDownCurve`.
+* Add `FTappableStyle.bounceUpCurve`.
+
+* **Breaking** Rename `FTappableStyle.animationTween` to `FTappableStyle.bounceTween`.
+* **Breaking** Remove `FTappableAnimations` - use `FTappableStyle.defaultBounceTween` and `FTappableStyle.noBounceTween`
+  instead.
+
+
+### `FTile`
+We have refactored `FTile`'s implementation to be simpler & its styling to be easier to understand & use. It now uses
+`FItem` internally.
+
+* Add `FTile.actions`.
+* Add `FTile.shortcuts`.
+* Add `FTile.raw(...)`.
+* Add `FTileGroupStyle.border`.
+* Add `FTileGroupStyle.divierColor`.
+* Add `FTileGroupStyle.dividerWidth`.
+
+* **Breaking** Change `FTileGroup` to render the border even if it contains no groups/tiles - while this isn't desirable
+  this allows us to draw the border in a single pass rather than having each tile draw its part of the border and stitching
+  the results.
+* **Breaking** Change `FTile` to default to `FThemeData.tileStyle` instead of `FThemeData.tileGroupStyle.tileStyle` when
+  `FTile` is not inside a `FTileGroup`.
+* **Breaking** Remove `FTileGroupStyle.borderColor` - use `FTileGroupStyle.border` instead.
+* **Breaking** Remove `FTileGroupStyle.borderWidth` - use `FTileGroupStyle.border` instead.
+* **Breaking** Change `prefixIcon` to `prefix` in FTile(...)`.
+* **Breaking** Change `suffixIcon` to `suffix` in FTile(...)`.
+* **Breaking** Change `FTile` to ignore `WidgetState`s when neither `onPress` nor `orLongPress` is given.
+* Change `FTile`'s focused outline to be a rounded rectangle even if the tile is inside a `FTileGroup`.
+* Change `FTile` to no longer wrap its content inside a `FTileData` if it is not part of a `FTileGroup`.
+* **Breaking** Remove `FTileDivider` - use `FItemDivider` instead.
+* **Breaking** Remove `FTileData` - use `FItemData` instead.
+* **Breaking** Remove `FTileGroupData` - use `FItemData`s instead.
+* **Breaking** Change `FTileStyle` to extend `FItemStyle`.
+* **Breaking** Remove `FTileStateStyle`.
+* **Breaking** Remove `FTileStateStyle.backgroundColor` - use `FTileStyle.decoration` instead.
+* **Breaking** Remove `FTileStateStyle.borderColor` - use `FTileStyle.decoration` instead.
+* **Breaking** Remove `FTileStateStyle.borderRadius` - use `FTileStyle.decoration` instead.
+
+* Fix `FTileGroup.merge(...)` ignoring `physics` property.
+* Fix `FTile`'s focused outline being drawn even when explicitly disabled.
+
+
+### `FToast`
+We've made toasts dismissable by swiping.
+
+* Add `swipeToDismiss` to `showFToast(...)`.
+* Add `swipeToDismiss` to `showRawFToast(...)`.
+* Add `FToastStyle.backgroundFilter`.
+* Add `FToasterStyle.swipeCompletionDuration`.
+* Add `FToasterStyle.swipeCompletionCurve`.
+
+* Fix `FToaster` auto-dismissing when hovering over non-first toast when expanded.
+* Fix `FToaster` expanded state persisting after all toasts has been dismissed on touch devices.
+* Fix `showFToast` & `showRawFToast` not using custom style passed to `FToaster`.
+
+
+### `FTooltip`
+* Add `FTooltip.builder`.
+* Add `FTooltipStyle.backgroundFilter`.
+
+* **Breaking** Replace `FTooltipStyle.margin` with `FTooltip.spacing`.
+* **Breaking** Change `FTooltip.tipBuilder`'s signature from `ValueWidgetBuilder<FTooltipStyle>` to
+  `Widget Function(BuildContext, FTooltipController)`.
+* Change `FTooltip`'s animation to be origin aware.
+
+
+### `FScaffold`
+* Add `FScaffold.toasterSwipeToDismiss`.
+* Add `FScaffold.systemOverlayStyle`.
+
+
+### `FSelectMenuTile`
+* **Breaking** Change `FSelectMenuTile.prefixIcon` to `FSelectMenuTile.suffix`.
+* **Breaking** Change `FSelectMenuTile.suffixIcon` to `FSelectMenuTile.suffix`.
+
+
+### `FSelectTile`
+* **Breaking** Change `prefixIcon` to `prefix` in FSelectTile.suffix(...)`.
+* **Breaking** Change `suffixIcon` to `suffix` in FSelectTile(...)`.
+
+
+### Others
+* Add `FAnimatedModalBarrier`.
+* Add `FModalBarrier`.
+* Add `FPaginationStyle.focusedOutlineStyle`.
+* Add `FLocalizations.popoverSemanticsLabel`.
+* Add `FSelectTile.actions`.
+* Add `FSelectTile.shortcuts`.
+
+* **Breaking** Remove `defaultFontFamily` from `FTypography.copyWith(...)`.
+* **Breaking** Change `FSelectTileGroup.divider` from `FTileDivider` to `FItemDivider`.
+* **Breaking** Change `FSelectMenuTile.autoHide` default value from `false` to `true`.
+* **Breaking** Change `FSelectMenuTile.divider` from `FTileDivider` to `FItemDivider`.
+* **Breaking** Remove `FTransformable`.
+
+* Fix `FTappable` persisting pressed effect even after pointer is moved outside the widget.
+* Fix `FTextFormField` not passing correct value to validator when no controller is provided.
+
+
+## 0.12.0
+
+Bumps minimum Flutter SDK version to 3.32.0.
+
+### CLI
+
+* Add `icon-mapping` snippet.
+
+* **Breaking** Improve how style aliases are generated - Certain style aliases may be removed or renamed.
+
+* Fix style suggestions always displaying actual style name instead of alias.
+
+
+### `FCollapsible` (new)
+A widget that collapses and expands its child.
+
+* Add `FCollapsible`.
+
+
+### `FDateField`
+
+* Enhance `FDateField.calendar`'s focus management.
+
+* Fix `FDateField` not closing calendar popover when enter is pressed.
+
+
+### `FScaffold`
+
+* Add `FScaffold.sidebar`.
+* add `FScaffold.toasterSwipeToDismiss`.
+* Add `FScaffoldStyle.sidebarBackgroundColor`.
+
+
+### `FSelect`
+
+* Add `FSelect.searchFromMap(...)`.
+* Add `FSelectItem.raw(...)`.
+* Add `FSelectSection.fromMap(...)`.
+
+* **Breaking** Change `format` in `FSelect.new(...)` to be required. 
+* **Breaking** Change `format` in `FSelect.search(...)` to be required.
+* **Breaking** Remove `FSelect.defaultFormat`.
+* **Breaking** Change `FSelectItem(...)` to require a String text instead of Widget child.
+
+
+### `FSidebar` (new)
+A sidebar widget that usually resides on the side of the screen for navigation.
+
+* Add `FSidebar`.
+* Add `FSidebarGroup`.
+* Add `FSidebarItem`.
+
+
+### `FTextField` & `FTextFormField`
+
+* Add `FTextField.onTapOutside`.
+* Add `FTextFormField.onTapOutside`.
+
+
+### `FToast` & `FToaster` (new)
+An optional toast.
+
+* Add `showFToast(...)`.
+* Add `showRawFToast(...)`.
+* Add `FToast`.
+* Add `FToastStyle`.
+* Add `FToaster`.
+* Add `FToasterEntry`.
+* Add `FToasterExpandBehavior`.
+* Add `FToasterStyle`.
+
+
+### Others
+
+* Add `toggleable` parameter to `FCalendarController.date(...)`.
+* Add `toggleable` parameter to `FLineCalendar(...)`.
+* Add `FPopover.shortcuts`.
+* Add `FTabs.onPress`.
+
+* **Breaking** Change `FLineCalendar` to be un-toggleable by default.
+* **Breaking** Change `FThemeData.headerStyle` to `FThemeData.headerStyles`.
+* Enhance `FSelect`'s focus management.
+* Enhance `FTimeField.picker`'s focus management.
+
+
+## 0.11.1
+
+* Add optional named parameters with their default values to CLI generated styles. 
+* Fix `FTileStyle.pressable` not changing background color on press & hold.
+* Fix typo in CLI generated styles' documentation.
+
+
+## 0.11.0
+
+### Styles
+We added a CLI to generate styles for Forui widgets. See forui.dev/docs/cli for more information. 
+
+We made several breaking changes to styles and widgets that rely on state styles to improve consistency and usability 
+(too many to list sanely). Generally, all styles have been updated to use `WidgetState`s, becoming more customizable and 
+concise.
+
+* **Breaking** Rename `FThemeData.colorScheme` to `FThemeData.colors`.
+* **Breaking** Rename all `F<Style>.inherit(colorScheme: ...)` to `F<Style>.inherit(colors: ...)`.
+
+
+### Semantics Labels
+
+Both `semanticsLabel` and `semanticLabel` were used interchangeably throughout the library. All `semanticLabel`s
+have been renamed to `semanticsLabel` for consistency.
+
+* **Breaking** Rename `semanticLabel` to `semanticsLabel` in `FAvatar.new`.
+* **Breaking** Rename `semanticLabel` to `semanticsLabel` in `FBreadcrumb.collapsed`.
+* **Breaking** Rename `FCheckbox.semanticLabel` to `FCheckbox.semanticsLabel`.
+* **Breaking** Rename `FDialog.semanticLabel` to `FDialog.semanticsLabel`.
+* **Breaking** Rename `FHeaderAction.semanticLabel` to `FHeaderAction.semanticsLabel`.
+* **Breaking** Rename `FPopover.semanticLabel` to `FPopover.semanticsLabel`.
+* **Breaking** Rename `FPopoverMenu.semanticLabel` to `FPopoverMenu.semanticsLabel`.
+* **Breaking** Rename `FRadio.semanticLabel` to `FRadio.semanticsLabel`.
+* **Breaking** Rename `FSelectGroupItem.semanticLabel` to `FSelectGroupItem.semanticsLabel`.
+* **Breaking** Rename `FSelectMenuTile.semanticLabel` to `FSelectMenuTile.semanticsLabel`.
+* **Breaking** Rename `FSelectTile.semanticLabel` to `FSelectTile.semanticsLabel`.
+* **Breaking** Rename `FSelectTileGroup.semanticLabel` to `FSelectTileGroup.semanticsLabel`.
+* **Breaking** Rename `FSwitch.semanticLabel` to `FSwitch.semanticsLabel`.
+* **Breaking** Rename `FTappable.semanticLabel` to `FTappable.semanticsLabel`.
+* **Breaking** Rename `FTile.semanticLabel` to `FTile.semanticsLabel`.
+* **Breaking** Rename `FTileGroup.semanticLabel` to `FTileGroup.semanticsLabel`.
+
+
+### `FAccordion`
+
+* Add `FAccordionItemMixin`.
+
+* **Breaking** Change `FAccordion.items` to `FAccordion.children`.
+* Change `FAccordion.children` from `List<FAccordionItem>` to `List<FAccordionIteMixin`.
+
+
+### `FBottomNavigationBar`
+
+The tappable logic has been moved from `FBottomNavigationBar` to `FBottomNavigationBarItem` to improve
+`FBottomNavigationBarItem`'s usability. Unfortunately, this means that custom navigation items have to implement
+`FTappable` on their own moving forward.
+
+* Add `FBottomNavigationBarItem.autofocus`.
+* Add `FBottomNavigationBarItem.focusNode`.
+* Add `FBottomNavigationBarItem.onFocusChange`.
+* Add `FBottomNavigationBarItem.onHoverChange`.
+* Add `FBottomNavigationBarItem.onStateChange`.
+* Add `FBottomNavigationItemStyle.spacing`.
+
+* **Breaking** Move `FBottomNavigationBarStyle.tappableStyle` to `FBottomNavigationBarItemStyle.tappableStyle`.
+* **Breaking** Move `FBottomNavigationBarStyle.focusedOutlineStyle` to `FBottomNavigationBarItemStyle.focusedOutlineStyle`.
+
+
+### `FButton`
+
+* Add `FButton.onChange`.
+* Add `FButton.onHoverChange`.
+* Add `FButton.selected`.
+* Add `intrinsicWidth` to `FButton(...)`.
+
+* **Breaking** Change `FButton(label: ...)` to `FBadge(child: ...)`.
+
+
+### `FBreadcrumb`
+
+* Add `traversalEdgeBehavior` to `FBreadcrumbItem.collapsed`.
+* Add `autofocus` to `FBreadcrumbItem(...)`.
+* Add `focusNode` to `FBreadcrumbItem(...)`.
+* Add `onFocusChange` to `FBreadcrumbItem(...)`.
+* Add `onHoverChange` to `FBreadcrumbItem(...)`.
+* Add `onStateChange` to `FBreadcrumbItem(...)`.
+* Add `spacing` to `FBreadcrumbItem.collapsed(...)`. 
+* Add `offset` to `FBreadcrumbItem.collapsed(...)`.
+* Add `onHoverChange` to `FBreadcrumbItem.collapsed(...)`.
+* Add `onStateChange` to `FBreadcrumbItem.collapsed(...)`.
+* Add `FBreadcrumbStyle.focusedOutlineStyle`.
+
+* **Breaking** Change `focusNode` from `FocusNode` to `FocusScopeNode` in `FBreadcrumbItem.collapsed`.
+* **Breaking** Remove `directionPadding` from `FBreadcrumbItem.collapsed(...)`.
+
+
+### `FDateField`
+
+* Add `FDateField.builder`.
+* Add `FDateField.initialDate`.
+* Add `FDateField.onChange`.
+* Add `spacing` to `FDateField.calendar(...)`.
+* Add `offset` to `FDateField.calendar(...)`.
+* Add `spacing` to `FDateField(...)`.
+* Add `offset` to `FDateField(...)`.
+
+* **Breaking** Remove `directionalPadding` from `FDateField.calendar(...)`.
+* **Breaking** Remove `directionalPadding` from `FDateField(...)`.
+
+
+### `FDialog`
+
+* **Breaking** Change `FDialog` to not automatically wrap actions in `InstrinicWidth`.
+* **Breaking** Change `FDialog` to not automatically wrap body in `IntrinsicWidth`.
+* **Breaking** Move `FDialog.insetAnimationDuration` to `FDialogStyle.insetAnimationDuration`.
+* **Breaking** Move `FDialog.insetAnimationCurve` to `FDialogStyle.insetAnimationCurve`.
+* **Breaking** Combine `FDialogStyle.minWidth` and `FDialogStyle.maxWidth` into `FDialog.constraints.`.
+* **Breaking** Combine `FDialogStyle.minWidth` and `FDialogStyle.maxWidth` to `FDialog.constraints.`.
+
+* * Fix `FDialog` not handling infinitely sized body correctly.
+
+
+### `FHeader`
+
+* Add `FHeaderAction.onHoverChange`.
+* Add `FHeaderAction.onStateChange`.
+* Add `FHeaderAction.selected`.
+* Add `titleAlignment` to `FHeader.nested(...)`. Thanks @a-man-called-q!
+
+* Change `FHeader(title: ...)` to be optional.
+* Change `FHeader.nested(title: ...)` to be optional.
+* **Breaking** Change `FHeader(actions: ...)` to `FHeader(suffixes: ...)`.
+* **Breaking** Change `FHeader(prefixActions: ...)` to `FHeader(prefixes: ...)`.
+* **Breaking** Change `FHeader(suffixActions: ...)` to `FHeader(suffixes: ...)`.
+
+* Fix `FHeader` spacing appearing in incorrect order.
+
+
+### `FIcon` (removed)
+
+`FIcon` has been removed in favor of Flutter's `Icon` class. `FIcon` was designed with only monochrome icons in mind
+and is not able to support multicolored icons. This coincides with replacement of `FAssets` with `FIcons` and svg icons 
+with font icons. In addition, all `iconColor` and `iconSize` style properties have been replaced with `IconThemeData`.
+
+* **Breaking** Remove `FIcon` - use Flutter's `Icon`.
+* **Breaking** Remove `FIconStyle` - use Flutter's `IconThemeData` instead.
+* **Breaking** Replace `FAssets` with `FIcons`.
+* **Breaking** Replace `FAccordionStyle` `iconColor` and `iconSize` with `iconStyle`.
+* **Breaking** Replace `FBottomNavigationBarItemStyle ` `activeIconColor`, `inactiveIconColor` and `iconSize` with 
+  `selectedIconStyle` and `unselectedIconStyle`.
+* **Breaking** Replace `FBottomNavigationBarItemStyle` `activeTextStyle` and `inactiveTextStyle` with `selectedTextStyle` 
+  and `unselectedTextStyle`.
+* **Breaking** Replace `FButtonIconContentStyle` `enabledColor`, `disabledColor` and `iconSize` with `enabledStyle` and
+  `disabledStyle`.
+* **Breaking** Replace `FButtonContentStyle` `enabledIconColor`, `disabledIconColor` and `iconSize` with `enabledIconStyle` 
+  and `disabledIconStyle`.
+* **Breaking** Replace `FButtonIconContentStyle` `enabledColor`, `disabledColor` and `iconSize` with `enabledStyle` and
+  `disabledStyle`.
+* **Breaking** Remove `FCalendarHeaderStyle` `enabledIconColor` and `disabledIconColor` - configure 
+  `buttonStyle.iconContentStyle` instead.
+* **Breaking** Change `FDateFieldStyle.iconStyle` from `FIconStyle` to `IconThemeData`.
+* **Breaking** Replace `FHeaderActionStyle` `enabledColor`, `disabledColor` and `size` with `enabledStyle` and 
+  `disabledStyle`.
+* **Breaking** Change `FPaginationStyle.iconStyle` from `FIconStyle` to `IconThemeData`.
+* **Breaking** Change `FTileContentStateStyle.prefixIconStyle` from `FIconStyle` to `IconThemeData`.
+* **Breaking** Change `FTileContentStateStyle.suffixIconStyle` from `FIconStyle` to `IconThemeData`.
+* **Breaking** Change `FTimeFieldStyle.iconStyle` from `FIconStyle` to `IconThemeData`.
+* **Breaking** Replace `FAlertCustomStyle` `iconColor` and `iconSize` with `iconStyle`.
+* **Breaking** Change `FBreadcrumbStyle.iconStyle` from `FIconStyle` to `IconThemeData`.
+* **Breaking** Replace `FCheckboxStateStyle` `iconColor` with `iconStyle`.
+
+
+### `FLineCalendar`
+
+* Add `FLineCalendar.onChange`.
+* Add `FLineCalendar.initialSelection`.
+* Add `FLineCalendar.physics`.
+* Add `FLineCalendar.keyboardDismissBehavior`.
+* Change `FLineCalendar.controller` to be optional.
+* **Breaking** Rename `FLineCalendar.initialDateAlignment` to `FLineCalendar.initialScrollAlignment`.
+* **Breaking** Rename `FLineCalendar.initial` to `FLineCalendar.initialScroll`.
+
+
+### `FPagination`
+
+* Add `FPagination.initialPage`.
+* Add `FPagination.pages`.
+
+* Change `FPagination.controller` to be optional.
+* Change `FPagination.onChange` from `VoidCallback?` to `ValueChanged<int>?`
+* **Breaking** Change `FPaginationController` to require `pages` parameter.
+
+
+### `FPopover` & `FPopoverMenu`.
+The traversal-edge behavior of `FPopover` and Forui widgets that depend on it have been fixed.
+
+* Add `FPopover.traversalEdgeBehavior`.
+* Add `traversalEdgeBehavior` to `FPopoverMenu`.
+* Add `FPopover.constraints`.
+* Add `FPopover.spacing`.
+* Add `FPopover.offset`.
+* Add `FPopover.groupId`.
+* Add `FPopoverMenu.spacing`.
+* Add `FPopoverMenu.offset`.
+* Add `FPopoverMenu.groupId`.
+
+* **Breaking** Change `FPopover.focusNode` from `FocusNode` to `FocusScopeNode`.
+* **Breaking** Change `FPopoverMenu.focusNode` from `FocusNode` to `FocusScopeNode`.
+* **Breaking** Remove `FPopover.directionPadding`.
+* **Breaking** Remove `FPopoverMenu.directionPadding`.
+
+* Fix `FPopover` unconditionally calling `FPopoverController.hide()` when tapping outside a `FPopover`.
+
+
+### `FPortal`
+`FPortal` has been re-implemented to support size alignment, directional spacing & fix a series of longstanding issues.
+
+* Add `FPortal.viewInsets`.
+* Add `FPortal.spacing`.
+* Add `FPortalConstraints`.
+* Add `FPortalSpacing`.
+* Fix `FPortal` not positioning portals correctly when wrapped in a `RepaintBoundary`/`Padding`.
+* Fix `FPortal` not updating portals when child's offset/size changes.
+* Fix `FPortal` displaying portal when child is not rendered.
+
+
+### `FProgress`
+`FProgress` has been updated to support indeterminate progress and fix some longstanding issues.
+
+* Add `FProgress.circularIcon`.
+* **Breaking** Change `FProgressStyle` to `FLinearProgressStyle`.
+* **Breaking** Remove `FButtonSpinner` - use `FProgress.circularIcon(...)` instead.
+
+
+### `FSelect` (new)
+A select displays a list of options for the user to pick from. It is searchable and supports both async & sync loading
+of items.
+
+* Add `FSelect`.
+* Add `FSelectController`.
+
+
+### `FSelectGroup`, `FSelectGroupController` & controller callbacks
+`FSelectGroupController` has been replaced with `FMultiValueNotifier` to allow usage across other non-select group 
+widgets. This applies to all Forui widgets that use `FSelectGroupController`. 
+
+A new `onChange` and `onSelect` callback has been added to most Forui widgets.
+
+* Add `FMultiValueNotifier`.
+* Add `FSelectTileGroupController` typedef.
+* Add `FSelectMenuTileController` typedef.
+* Add `FSelectGroup.onChange`.
+* Add `FSelectGroup.onSelect`.
+* Add `FSelectTileGroup.onChange`.
+* Add `FSelectTileGroup.onSelect`.
+* Add `FSelectMenuTile.onChange`.
+* Add `FSelectMenuTile.onSelect`.
+
+* **Breaking** Change `FSelectGroup(items: ...)` to `FBadge(children: ...)`.
+* **Breaking** Replace `FSelectGroupItem` with `FCheckbox.grouped(...)` and `FRadio.grouped(...)`.
+* **Breaking** Replace `FSelectGroupController` with a typedef of `FMultiValueNotifier`.
+* **Breaking** Remove `FMultiSelectGroupController` - use `FSelectGroupController(...)` instead.
+* **Breaking** Remove `FRadioSelectGroupController` - use `FSelectGroupController.radio(...)` instead.
+* **Breaking** Rename `FSelectTileGroup.groupController` to `FSelectTileGroup.selectController`.
+* **Breaking** Rename `FSelectMenuTile.groupController` to `FSelectMenuTile.selectController`.
+* **Breaking** Rename `FSelectMenuTile.menuTileBuilder` to `FSelectMenuTile.menuBuilder`.
+
+* Fix `FSelectGroup` not setting its `FormField`'s initial value.
+
+
+### `FSelectMenuTile`
+
+* Add `FSelectMenuTile.traversalEdgeBehavior`.
+* Add `FSelectMenuTile.spacing`.
+* Add `FSelectMenuTile.offset`.
+
+* **Breaking** Change `focusNode` from `FocusNode` to `FocusScopeNode` in `FSelectMenuTile`.
+* **Breaking** Remove `FSelectMenuTile.directionalPadding`.
+
+
+### `FSelectTile` & `FSelectTileGroup`
+
+* Add `FSelectTile.onHoverChange`.
+* Add `FSelectTile.onStatesChange`.
+
+* Fix `FSelectTileGroup` not setting its `FormField`'s initial value.
+
+
+### `FSlider`
+
+* Add `FSlider.initialSelection`.
+* Add `FSlider.onChange`.
+
+* Change `FSlider.controller` to be optional.
+
+* Fix `FSlider` not setting its `FormField`'s initial value.
+
+
+### `FTabs`
+
+* Add `FTabs.physics`.
+
+* **Breaking** Change `FTabs(tabs: ...)` to `FTabs(children: ...)`.
+* **Breaking** Rename `FTabs.onPress` to `FTabs.onChange` to better reflect its purpose.
+* **Breaking** Change `FTabEntry(content: ...)` to `FTabEntry(child: ...)`.
+
+
+### `FTappable`
+`FTappable` has been updated to support animations by default. This applies to all Forui widgets that use `FTappable`.
+The `hovered` state has also been split into `hovered` and `pressed` states.
+
+* Add `FTappableStyle`.
+* Add `FAccordionStyle.tappableStyle`.
+* Add `FBottomNavigationBarStyle.tappableStyle`.
+* Add `FBreadcrumbStyle.tappableStyle`.
+* Add `FButtonStyle.tappableStyle`.
+* Add `FCalendarDayPickerStyle.tappableStyle`.
+* Add `FCalendarEntryStyle.tappableStyle`.
+* Add `FCalendarHeaderStyle.tappableStyle`.
+* Add `FHeaderActionStyle.tappableStyle`.
+* Add `FLineCalendarStyle.tappableStyle`.
+* Add `FPaginationStyle.tappableStyle`.
+* Add `FTileStyle.tappableStyle`.
+
+* Add `FTappable.onStateChange`.
+* Add `FTappable.onHoverChange`.
+* Add `FTappableStyle.cursor`.
+* **Breaking** Replace `FTappable.semanticsSelected` with `FTappable.selected`.
+* **Breaking** Rename `FTappable` to `FTappable.static`.
+* **Breaking** Rename `FTappable.animated` to `FTappable`.
+* **Breaking** Split `FTappableData.hovered` into `FTappableData.hovered` and `FTappableData.pressed`.
+* Fix `FTappable`'s animation sometimes being invoked after it is unmounted.
+
+
+### `FTextField` & `FTextFormField` (new)
+We've split `FTextField` into `FTextField` and `FTextFormField`. This change was necessary to allow `FTextField` to be 
+used in other widgets and allowing those widgets to properly implement `FormField`.
+
+* Add `FTextField.groupId`.
+* Add `FTextField.obscuringCharacter`. Thanks @MrHeer!
+* Add `FTextField.filled` and `FTextField.fillColor`. Thanks @MrHeer!
+* Add `FTextFormField`.
+
+* **Breaking** Change `FTextField` to not support form-related operations. Use `FTextFormField` instead.
+
+* Fix `FTextField` not setting its `FormField`'s initial value.
+* Fix `FTextField(...)` not setting the max lines to 1 default.
+
+
+### `FTile`
+
+* Add `FTile.onHoverChange`.
+* Add `FTile.onStateChange`.
+* Add `FTile.selected`.
+
+
+### `FTimeField`
+
+* Add `FTimeField.builder`.
+* Add `FTimeField.initialTime`.
+* Add `FTimeField.onChange`.
+* Add `spacing` to `FTimeField.picker(...)`.
+* Add `offset` to `FTimeField.picker(...)`.
+
+* **Breaking** Remove `directionalPadding` from `FTimeField.picker(...)`.
+
+
+### Others
+* **Breaking** Rename `FAlertStyle` to `FBaseAlertStyle`.
+* **Breaking** Rename `FAlertCustomStyle` to `FAlertStyle`.
+* **Breaking** Move constants in `FBaseAlertStyle` to `FAlertStyle`.
+
+* **Breaking** Change `FBadge(label: ...)` to `FBadge(child: ...)`.
+
+* Add `FCardContentStyle.imageSpacing`.
+* Add `FCardContentStyle.subtitleSpacing`.
+
+* Add `FLerpBorderRadius`.
+
+* Add `FPicker.onChange`.
+
+* Add `FResizable.onChange`.
+* Fix `FResizable` not guarding against precision errors in assertions.
+
+* **Breaking** Change `FScaffold(content: ...)` to `FScaffold(child: ...)`.
+
+* Add `FTimePicker.onChange`.
+
+
+## 0.10.0+1
+
+Fix bad build caused by generated files not being published.
+
+
+## 0.10.0
+
+### Additions
+
+* Add `FTextField.counterBuilder`.
+* Add `FTransformable`.
+* Add `FTransformables`.
+* Add `FTextField.clearable`.
+* Add `FTextField.stylusHandwritingEnabled`.
+* Add `FPickerWheelMixin`.
+* Add `FTimeField`.
+* Add `FTimeFieldController`.
+* Add `FTimeFieldProperties`.
+* Add `FThemeData.toApproximateMaterialTheme()`.
+* Add `FTimePicker`.
+* Add `FTimePickerStyle`.
+* Add `FPickerStyle.selectionHeightAdjustment`.
+* Add `FDateField.clearable`.
+* Add `FTileGroup.physics`.
+* Add `FSelectTileGroup.physics`.
+* Add `FSelectMenuTile.physics`.
+* Add `FPagination`.
+
+### Changes
+
+* Change all widget styles to use code generated functions.
+* Change spacing between `FDateField`'s default prefix icon and content.
+* Change most occurrences of `Alignment` to `AlignmentGeometry`.
+* Change most occurrences of `BorderRadius` to `BorderRadiusGeometry`.
+* Change most occurrences of `EdgeInsets` to `EdgeInsetsGeometry`.
+* **Breaking** Rename `FDatePicker` to `FDateField`.
+* **Breaking** Rename `FDatePickerController` to `FDateFieldController`.
+* **Breaking** Rename `FDatePickerController.calendar` to `FDateFieldController.popover`.
+* **Breaking** Rename `FDatePickerCalendarProperties` to `FDateFieldCalendarProperties`.
+* **Breaking** Rename `FLocalizations.datePickerHint` to `FLocalizations.dateFieldHint`.
+* **Breaking** Rename `FLocalizations.datePickerInvalidDateError` to `FLocalizations.dateFieldInvalidDateError`.
+* **Breaking** Change `FThemeData(...)` to automatically configure styles not passed in.
+* **Breaking** Remove `FThemeData.inherit`. Use `FThemeData(...)` instead.
+* **Breaking** Remove FTextField.scribbleEnabled. Use `stylusHandwritingEnabled` instead.
+* **Breaking** Change `FDialogContentStyle.actionPadding` to `FDialogContentStyle.actionSpacing`.
+* **Breaking** Change default `FPickerStyle.textStyle` size from `lg` to `base`.
+* **Breaking** Change `FTimePicker` to use `FTimePickerStyle` instead of `FPickerStyle`.
+* **Breaking** Rename `FLocalizations.sheetLabel` to `FLocalizations.sheetSemanticsLabel`.
+* **Breaking** Rename `FBadgeStyle` to `FBaseBadgeStyle`.
+* **Breaking** Rename `FBadgeCustomStyle` to `FBadgeStyle`.
+* **Breaking** Move constants in `FBaseBadgeStyle` to `FBadgeStyle`.
+* **Breaking** Rename `FButtonStyle` to `FBaseButtonStyle`.
+* **Breaking** Rename `FButtonCustomStyle` to `FButtonStyle`.
+* **Breaking** Move constants in `FBaseButtonStyle` to `FButtonStyle`.
+
+
+### Fixes
+* Fix `FDateField.input` to show default icon.
+* Fix `FTab` not updating when using controller to switch tabs.
+* Fix `FPicker` incorrectly detecting number of wheels when controller is not given and placeholder is used.
+* Fix `FDateField` not handling `bg`, `en`, `sr`, `sr_Latn` and `zu` locales properly.
+* Fix `FDateField` not updating when locale changes.
+* Fix `FHeader` not respecting `FHeaderStyle.actionSpacing`.
+
+
+## 0.9.1+1
+Fix documentation not publishing.
+
+
+## 0.9.1
+
+### Changes
+* Bump Sugar from 3.1.0 to 4.0.0.
+
+### Fixes
+* Fix `FAccordion` disposing passed in controllers.
+* Fix `FPicker` incorrectly handling widget updates.
+* Fix `FPopover` incorrectly handling widget updates.
+
+
+## 0.9.0
+
+### Additions
+
+* Add `FDatePicker`.
+* Add `FFormProperties`.
+* Add `FPagination`.
+* Add `FPicker`.
+* Add `FPopoverTagRegion`.
+* Add `FBreadcrumb`.
+* Add `FTextField.builder`.
+* Add `FTextField.onTap`.
+* Add `FTextField.onTapAlwaysCalled`.
+* Add `FSelectGroupController.onUpdate`.
+* Add `animationTween` to `FTappable.animated(...)`.
+* Add `FValueNotifier.addValueListener(...)`.
+* Add `FValueNotifier.removeValueListener(...)`.
+
+### Changes
+
+* **Breaking** Change `FPopover.hideOnTapOutside`'s type from `bool` to `FHidePopoverRegion`. The default behavior for hiding behavior for `FPopover()` has changed from excluding the target to not.
+* **Breaking** Change `FPopoverStyle.shadow` to `FStyle.shadow`.
+* **Breaking** Change `FPopoverMenu.tappable(...)` to `FPopoverMenu.automatic(...)`.
+* **Breaking** Change `FPopover.controller(...)` to `FPopover.popoverController(...)`.
+* **Breaking** Change `FPopover.tappable(...)` to `FPopover.automatic(...)`.
+* **Breaking** Change `FPopover.followerAnchor` to `FPopover.popoverAnchor`.
+* **Breaking** Change `FPopover.targetAnchor` to `FPopover.childAnchor`.
+* **Breaking** Change `FPortal.followerAnchor` to `FPortal.portalAnchor`.
+* **Breaking** Change `FPortal.targetAnchor` to `FPortal.childAnchor`.
+* **Breaking** Change `FPortal.followerBuilder` to `FPortal.portalBuilder`.
+* **Breaking** Change `FPortalFollowerShift` to `FPortalShift`.
+* **Breaking** Remove `onChange` parameter from `FSelectTile`. This was accidentally include from early prototyping.
+* **Breaking** Change `FSelectGroupController.select(...)` to `FSelectGroupController.update(...)`
+* **Breaking** Change `FSelectGroupController` to be a `ValueNotifier`.
+* **Breaking** Change `FTileGroup.prefix` from `Widget` to `ValueWidgetBuilder<FTextFieldStateStyle>`.
+* **Breaking** Change `FTileGroup.suffix` from `Widget` to `ValueWidgetBuilder<FTextFieldStateStyle>`.
+* **Breaking** Change `FTileGroup.controller` to `FTileGroup.scrollController`.
+
+### Fixes
+
+* Fix `FCalendar` rebuilding whenever the given `initialType` and/or `initialMonth` changes.
+* Fix `FCalendar`'s day picker not updating when a new start and/or end date is given.
+* Fix `FHeader.nested(...)` not rendering the title when no prefix and suffix actions are given.
+* Fix `FPopover` not handling focus changes in popover properly.
+* Fix `FTabs`'s scrollable alignment not being correct.
+* Fix `FTappable` remaining in a hovered or touched state when its `onPress`/`onLongPress` callbacks were nulled after being non-null.
+* Fix `FTextField` ignoring `enableInteractiveSelection` parameter.
+* Fix `FTextField` ignoring `FTextFieldStyle.cursorColor`.
+
+
+## 0.8.0
+
+Bump minimum Flutter version to 3.27.0.
+
+### Additions
+
+* Add `showFSheet(...)`.
+
+* Add `showFPersistentSheet(...)`.
+
+* Add `FModalSheetRoute`.
+
+* Add `FSheets`.
+
+* Add `FSheets` internally to `FScaffold`.
+
+* Add `truncateAndStripTimezone` to `FCalendarController.date(...)`.
+
+* Add `truncateAndStripTimezone` to `FCalendarController.dates(...)`.
+
+* Add `truncateAndStripTimezone` to `FCalendarController.range(...)`.
+
+* Add `FCalendar.dayBuilder`.
+
+* Add `FLineCalendar`.
+
+* Add `FTileGroup.builder`.
+
+* Add `FSelectTileGroup.builder`.
+
+* Add `FSelectMenuTile.builder`.
+
+* Add `FScaffold.resizeToAvoidBottomInset`.
+
+* Add `FThemeData.debugLabel`.
+
+### Changes
+
+* Change `FCalendarController.date(...)` to automatically strip and truncate all DateTimes to dates in UTC timezone.
+
+* Change `FCalendarController.dates(...)` to automatically strip and truncate all DateTimes to dates in UTC timezone.
+
+* Change `FCalendarController.ranges(...)` to automatically strip and truncate all DateTimes to dates in UTC timezone.
+
+* Change `FCalendar.start` to be optional and default to 1st January 1900.
+
+* Change `FCalendar.end` to be optional and default to 1st January 2100.
+
+* Change `FTheme` to internally extend `InheritedTheme`.
+
+* Change `FTileGroup` to be scrollable.
+
+* Change `FPopoverMenu` to be scrollable.
+
+* Change `FSelectTileGroup` to be scrollable.
+
+* Change `FSelectMenuTile` to be scrollable.
+
+* Change `ThemeBuildContext` to `FThemeBuildContext`.
+
+* **Breaking** Change `Layout` to `FLayout`.
+
+* **Breaking**  Change `FLocalizations.of(...)` to return `FLocalizations?` instead of `FLocalizations` - do `FLocalizations.of(...) ?? FDefaultLocalizations()`.
+  This change is sadly needed as Flutter now forcefully regenerates `FLocalizations` each time `flutter pub get` is called.
+
+* **Breaking** Change `FTileData.index` to `FTileData.last`.
+
+* **Breaking** Change `FPopoverMenu.controller` to `FPopoverMenu.popoverController`.
+
+* **Breaking** Change `FSelectTileGroup.controller` to `FSelectTileGroup.groupController`.
+
+* **Breaking** Change `FPopoverController.duration` to `FPopoverController.animationDuration`.
+
+* **Breaking** Change `FTooltipController.duration` to `FTooltipController.animationDuration`.
+
+* **Breaking** Change `FTabController.ignoreDirectionalPadding` to `FTabController.directionPadding`.
+
+* **Breaking** Change `FPopover.ignoreDirectionalPadding` to `FPopover.directionPadding` - the value should be inverted.*
+
+* **Breaking** Change `FPopoverMenu.ignoreDirectionalPadding` to `FPopoverMenu.directionPadding` - the value should be inverted.
+
+* **Breaking** Change `FSelectMenuTile.ignoreDirectionalPadding` to `FSelectMenuTile.directionPadding` - the value should be inverted.
+
+### Fixes
+
+* Resolved an issue where `FLabel` exhibited incorrect padding when used with `Axis.horizontal` and RTL layouts.
+
+## 0.7.0
+
+This update adds responsive breakpoints, focused outlines & localization! It also introduces several new tile widgets.
+
+### Additions
+
+* Add `FButtonSpinner`.
+
+* Add `FBreakpoints`.
+
+* Add `FIcon.empty()`.
+
+* Add `FTappable`.
+
+* Add `FTile`.
+
+* Add `FTileGroup`.
+
+* Add `FSelectMenuTile`.
+
+* Add `FSelectTile`.
+
+* Add `FSelectTileGroup`.
+
+* Add `FCalendarDayPickerStyle.tileSize`.
+
+* Add `FPopover.ignoreDirectionalPadding`.
+
+* Add `FPopover.tappable(...)`.
+
+* Add `FPopoverMenu`.
+
+* Add `FPortal.offset`.
+
+* Add `FLocalizations`.
+
+* Add `FFocusedOutline`.
+
+* Add `FDialog.adaptive(...)`.
+
+* **Breaking** Add `focusedOutlineStyle` to `FAccordionStyle` - this only affect users which use the primary constructor.
+
+* **Breaking** Add `focusedOutlineStyle` to `FBottomNavigationBar` - this only affect users which use the primary constructor.
+
+* **Breaking** Add `focusedOutlineStyle` to `FButtonStyle` - this only affect users which use the primary constructor.
+
+* **Breaking** Add `focusedOutlineStyle` to `FHeaderActionStyle` - this only affect users which use the primary constructor.
+
+* **Breaking** Add `focusedOutlineStyle` to `FResizableDividerStyle` - this only affect users which use the primary constructor.
+
+* **Breaking** Add `focusedOutlineStyle` to `FCheckboxStyle` - this only affect users which use the primary constructor.
+
+* **Breaking** Add `focusedOutlineStyle` to `FRadioStyle` - this only affect users which use the primary constructor.
+
+* **Breaking** Add `focusedBorder` to `FTileStyle` - this only affect users which use the primary constructor.
+
+* **Breaking** Add `focusedDividerStyle` to `FTileStyle` - this only affect users which use the primary constructor.
+
+* **Breaking** Add `focusedOutlineStyle` to `FTabsStyle` - this only affect users which use the primary constructor.
+
+* **Breaking** Add `focusedOutlineStyle` to `FSliderThumbStyle` - this only affect users which use the primary constructor.
+
+### Changes
+
+* **Breaking** Change `FPopover()` to not automatically wrap a target in a `GestureDetector` - use `FPopover.tappable(...)`
+  instead.
+
+* **Breaking** Change `FSlider` to default to the current text direction instead of `Layout.ltr`.
+
+* Change `FCalendar` to support localization.
+
+### Fixes
+
+* Change FButton's animation to only start on mouse down and up.
+
+* Fix `FLabel` not showing error message if label and description are null.
+
+* Fix `FSelectGroup` not properly disposing callbacks.
+
+
+## 0.6.1
+
+* Fix range slider not displaying tooltip for minimum thumb.
+
+
+## 0.6.0
+
+### Additions
+
+* Add `FAccordion`.
+
+* Add `FSlider`.
+
+* Add `FButtonStyles.ghost`.
+
+* Add `FButtonCustomStyle.enabledHoverBoxDecoration`.
+
+* Add `FTextField.contentInsertionConfiguration`.
+
+* Add `FTextField.mouseCursor`.
+
+* Add `FTextField.forceErrorText`.
+
+* Add `FIcon`.
+
+* Add `FColorScheme.disable(...)`.
+
+* Add `FColorScheme.disableOpacity`.
+
+* Add `FColorScheme.hover(...)`.
+
+* Add `FColorScheme.enabledHoveredOpacity`.
+
+* Add `FChangeNotifier`.
+
+* Add `FValueNotifier`.
+
+### Changes
+
+* Change button to change color when hovering over it.
+
+* Change `FCalendar` year picker to update the header whenever a year is selected.
+
+* Increase `FCalendar`'s default text size from `FTypography.sm` to `FTypography.base`.
+
+* **Breaking** Change `FBottomNavigationBarItem.label` from `String` to `Widget`.
+
+* **Breaking** Split `FCalendarHeaderStyle.iconColor` into `FCalendarHeaderStyle.enabledIconColor` and
+  `FCalendarHeaderStyle.disabledIconColor`.
+
+* **Breaking** Change `FTextField` to use `FLabel`.
+
+* **Breaking** Remove `FTextFieldErrorStyle.animatioDuration`.
+
+* **Breaking** Rename `FLabelStateStyle` to `FLabelStateStyles`.
+
+* **Breaking** Rename `FTextField.onSave` to `FTextField.onSaved`.
+
+* **Breaking** Remove FAlertIcon & FAlertIconStyle - use `FIcon` instead.
+
+* **Breaking** Remove FButtonIcon & FAlertIconStyle - use `FIcon` instead.
+
+* **Breaking** Change FButtonCustomStyle to better represent the style's layout - this will only affect users that
+  create a custom `FButtonCustomStyle`.
+
+* **Breaking** Change `FBottomNavigationBarItem.icon` from `SvgAsset` to `Widget` - wrap the asset in ` FIcon` instead.
+
+* **Breaking** Change `FHeaderAction.icon` from `SvgAsset` to `Widget` - wrap the asset in ` FIcon` instead.
+
+* **Breaking** Change `FSelectGroup.builder` parameters.
+
+* **Breaking** Change `FBadgeCustomStyle.content` to `FBadgeCustomStyle.contentStyle`.
+
+* **Breaking** Change `FAvatarStyle.text` to `FAvatarStyle.textStyle`.
+
+* **Breaking** Change `FDialogStyle.horizontal` to `FDialogStyle.horizontalStyle`.
+
+* **Breaking** Change `FDialogStyle.selectedLabel` to `FDialogStyle.selectedLabelTextStyle`.
+
+* **Breaking** Change `FDialogStyle.unselectedLabel` to `FDialogStyle.unselectedLabelTextStyle`.
+
+* **Breaking** Change `FDividerStyle.horizontal` to `FDividerStyle.horizontalStyle`.
+
+* **Breaking** Change `FDividerStyle.vertical` to `FDividerStyle.verticalStyle`.
+
+* **Breaking** Change `FDialogStyle.indicator` to `FDialogStyle.indicatorDecoration`.
+
+* **Breaking** Change `FHeader.leftActions` to `FHeader.prefixActions`.
+
+* **Breaking** Change `FHeader.rightActions` to `FHeader.suffixActions`.
+
+* **Breaking** Change `FLabelStyle.horizontal` to `FLabelStyle.horizontalStyle`.
+
+* **Breaking** Change `FLabelStyle.vertical` to `FLabelStyle.verticalStyle`.
+
+* **Breaking** Change `FButtonStyles.outline`'s background to transparent.
+
+### Fixes
+
+* Fix `FBottomNavigationBar` items hit region being smaller than intended.
+
+* Fix `FCalendar` showing focused outline when pressing and long pressing a date.
+
+* Fix `FCalendar` year and month picker applying incorrect initial top padding.
+
+* Fix `FCalendar` year and month picker incorrectly calculating start and end dates.
+
+* Fix `FTextfield` being vertically larger than intended.
+
+* Fix `FTextfield` description text's odd transition animation whenever an error occurs.
+
+* Fix `FSwitch` not using correct label style.
+
+* Fix `FCheckbox`, `FRadio`, `FSelectGroup`, `FSwitch` and `FTextField` styles causing the widget inspector to crash.
+
+* Fix `FSelectGroup` not applying correct style if a custom widget-specific style is given.
+
+## 0.5.1
+
+###
+
+* Fix `FTabs` not showing correct tab entry when switching tabs.
+  [Issue #203](https://github.com/duobaseio/forui/issues/203).
+
+## 0.5.0
+
+The minimum Flutter version has been increased from `3.19.0` to `3.24.0`.
+
+### Additions
+
+* Add `FButton.icon(...)`.
+
+* Add `FBottomNavigationBarData`.
+
+* Add `FButtonData`.
+
+* Add `FCalendarHeaderStyle.buttonStyle`.
+
+* Add `FFormFieldStyle`.
+
+* Add `FHeaderData`.
+
+* Add `FResizable.semanticFormatterCallback`.
+
+* Add `FLabel`.
+
+* Add label and description to `FCheckbox`.
+
+* Add label and description to `FSwitch`.
+
+* Add `FPortal`.
+
+* Add `FPopover`.
+
+* Add `FTooltip`.
+
+* Add `FSelectGroup`.
+
+* Add `FRadio`.
+
+### Changes
+
+* **Breaking:** Change `FAlertIconStyle.height` to `FAlertIconStyle.size`.
+
+* **Breaking:** Rename `FBottomNavigationBar.items` to `FBottomNavigationBar.children`.
+
+* **Breaking:** Remove `FBottomNavigationBar.raw(...)` - use the default constructor instead.
+
+* **Breaking:** Rename `FButtonIconStyle.height` to `FButtonIconStyle.size`.
+
+* **Breaking:** Change `FDivider.vertical` to `FDivider.axis`.
+
+* Change `FResizable` to resize by `FResizable.resizePercentage` when using a keyboard.
+
+* **Breaking:** Change `FResiableDividerStyle.thickness` to `FResizableDividerStyle.width`.
+
+* Change `FTextFieldStyle` to inherit from `FFormFieldStyle`.
+
+* Change `FTextField` to display error under description instead of replacing it.
+
+* **Breaking:** Change `FTextField.help` to `FTextField.description`.
+
+* **Breaking:** Change how `FTextFieldStyle` stores various state-dependent styles.
+
+* **Breaking:** Remove `FTextField.error` - use `FTextField.forceErrorText` instead.
+
+* Change `FTabController` to implement `ChangeNotifier` instead of `Listenable`.
+
+* **Breaking:** Flattened `FStyle.formFieldStyle` - use `FStyle.enabledFormFieldStyle`, `FStyle.disabledFormFieldStyle`,
+  and`FStyle.errorFormFieldStyle`.
+
+* Improve platform detection for web when initializing platform-specific variables.
+
+* **Breaking:** `FCheckbox` and `FSwitch` no longer wraps `FormField` - consider wrapping them in a `FormField` if
+  required.
+
+* **Breaking:** Require `FTheme` to be wrapped in a `CupertinoApp`, `MaterialApp` or `WidgetsApp`.
+
+### Fixes
+
+* Fix `FResizable` not rendering properly in an expanded widget when its crossAxisExtent is null.
+
+* Fix `FTextField` not changing error text color when an error occurs.
+
+* Fix `FTextField` error message replacing the description text.
+
+* Fix `FCheckboxStyle.inherit(...)` icon color inheriting from the wrong color.
+
+* Fix `FTabs` not handling indexes properly.
+
+## 0.4.0
+
+### Additions
+
+* Add `FAvatar`.
+
+* **Breaking:** Add `FCalendarEntryStyle.focusedBorderColor`. This only affects users that
+  customized `FCalendarEntryStyle`.
+
+* Add `FResizable`.
+
+* Add `image` parameter to `FCard`.
+
+### Changes
+
+* Change number of years displayed per page in `FCalendar` from 12 to 15.
+
+* **Breaking:** Move `FCalendar.enabled` to `FCalendarController.selectable(...)`.
+
+* **Breaking:** Rename `FCalendarController.contains(...)` to `FCalendarController.selected(...)`.
+
+* **Breaking:** Rename `FCalendarController.onPress(...)` to `FCalendarController.select(...)`.
+
+* **Breaking:** Rename `FCalendarEntryStyle.focusedBackgroundColor` to `FCalendarEntryStyle.hoveredBackgroundColor`.
+  This only affects users that customized `FCalendarEntryStyle`.
+
+* **Breaking:** Rename `FCalendarEntryStyle.focusedTextStyle` to `FCalendarEntryStyle.hoveredTextStyle`.
+  This only affects users that customized `FCalendarEntryStyle`.
+
+* **Breaking:** Move `FCalendarSingleValueController` to `FCalendarController.date(...)`.
+
+* **Breaking:** Move `FCalendarMultiValueController` to `FCalendarController.dates(...)`.
+
+* **Breaking:** Rename `FCalendarSingleRangeController` to `FCalendarRangeController.range(...)`.
+
+* **Breaking:** Rename `FSeparator` to `FDivider`.
+
+* **Breaking:** Remove `colorScheme`, `typography` and `style` parameters from `FThemeData.copyWith(...)`.
+  The problem was widget-specific styles not being re-created after the removed parameters were updated.
+  This led to unintuitive behavior where the style of a widget was not updated when the `FThemeData` was updated.
+  This should only affect people that customize `FThemeData`. Use the `FThemeData.inherit(...)` constructor instead.
+
+### Fixes
+
+* Fix `FCalendar` dates & `FButton`s not being toggleable using `Enter` key.
+
+* Fix `FCalendar` dates sometimes not being navigable using arrow keys.
+
+## 0.3.0
+
+### Additions
+
+* Add `FAlert`
+
+* Add `FCalendar`
+
+* Add `FBottomNavigationBar`
+
+### Enhancements
+
+* **Breaking** Change `FSwitch` to be usable in `Form`s.
+
+* **Breaking** Rename `FThemeData.checkBoxStyle` to `FThemeData.checkboxStyle` for consistency.
+
+### Fixes
+
+* Fix missing `style` parameter for `FCheckbox`.
+
+## 0.2.0+3
+
+### Fixes
+
+* Fix broken images in README.md (yet again).
+
+## 0.2.0+2
+
+### Fixes
+
+* Fix broken images in README.md.
+
+## 0.2.0+1
+
+### Fixes
+
+* Fix broken images in README.md.
+
+## 0.2.0
+
+### Additions
+
+* Add `FCheckbox`.
+
+* Add `FHeader.nested`.
+
+* Add `FProgress`.
+
+### Enhancements
+
+* **Breaking** Move `FHeaderStyle` to `FHeaderStyles.rootStyle`.
+
+* **Breaking** Move `FHeaderActionStyle.padding` to `FRootHeaderStyle.actionSpacing`.
+
+* **Breaking** Suffix style parameters with `Style`, i.e. `FRootHeaderStyle.action` has been renamed to
+  `FRootHeaderStyle.actionStyle`.
+
+* **Breaking** Raw fields have been removed, wrap strings with the Text() widget. E.g. `FButton(label: 'Hello')` or
+  `FButton(rawLabel: 'Hello')` should be replaced with `FButton(label: Text('Hello'))`.
+
+* Change `FTextField` to be usable in `Form`s.
+
+* Change `FTextFieldStyle`'s default vertical content padding from `5` to `15`.
+
+* Split exports in `forui.dart` into sub-libraries.
+
+### Fixes
+
+* Fix missing `key` parameter in `FTextField` constructors.
+
+* **Breaking** `FButton.prefixIcon` and `FButton.suffixIcon` have been renamed to `FButton.prefix` and `FButton.suffix`.
+
+* Fix padding inconsistencies in `FCard` and `FDialog`.
+
+## 0.1.0
+
+* Initial release! 🚀

@@ -1,0 +1,121 @@
+import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
+
+import 'package:forui/forui.dart';
+
+@internal
+extension Control on Never {
+  /// {@template forui.foundation.doc_templates.control}
+  /// A `Control` defines how a widget's state is managed:
+  ///
+  /// * **Managed**: The widget manages its own controller. Pass configuration parameters directly
+  ///   or provide an external controller for programmatic access.
+  ///
+  /// ```dart
+  /// // Let widget create controller with configuration
+  /// FPopover(control: .managed(motion: myMotion, onChange: print));
+  ///
+  /// // Or provide your own controller
+  /// FPopover(control: .managed(controller: _myController));
+  /// ```
+  ///
+  /// * **Lifted**: The parent owns the state. Pass the current value and an `onChange` callback.
+  ///   Useful for unidirectional data flow or integrating with external state management.
+  ///
+  /// ```dart
+  /// FPopover(
+  ///   control: .lifted(
+  ///     shown: _shown,
+  ///     onChange: (shown) => setState(() => _shown = shown),
+  ///   ),
+  /// )
+  /// ```
+  /// {@endtemplate}
+  static const control = '';
+
+  /// {@template forui.foundation.doc_templates.managed}
+  /// Subclass `ManagedControl` to create variants with different defaults or behaviors, e.g., `FCalendarControl.date()`
+  /// vs `FCalendarControl.range()`.
+  /// {@endtemplate}
+  static const managed = '';
+}
+
+@internal
+extension Focus on Never {
+  /// {@template forui.foundation.doc_templates.autofocus}
+  /// True if this widget will be selected as the initial focus when no other node in its scope is currently focused.
+  ///
+  /// Ideally, there should be only one widget with autofocus set in each FocusScope. If there is more than one widget with
+  /// autofocus set, then the first one added to the tree will get focus.
+  ///
+  /// Defaults to false.
+  /// {@endtemplate}
+  static const autofocus = '';
+
+  /// {@template forui.foundation.doc_templates.focusNode}
+  /// An optional focus node to use as the focus node for this widget.
+  ///
+  /// If one is not supplied, then one will be automatically allocated, owned, and managed by this widget. The widget
+  /// will be focusable even if a focus node is not supplied. If supplied, the given focus node will be hosted by this
+  /// widget, but not owned. See [FocusNode] for more information on what being hosted and/or owned implies.
+  ///
+  /// Supplying a focus node is sometimes useful if an ancestor to this widget wants to control when this widget has the
+  /// focus. The owner will be responsible for calling [FocusNode.dispose] on the focus node when it is done with it,
+  /// but this widget will attach/detach and reparent the node when needed.
+  /// {@endtemplate}
+  static const focusNode = '';
+
+  /// {@template forui.foundation.doc_templates.onFocusChange}
+  /// Handler called when the focus changes.
+  ///
+  /// Called with true if this widget's node gains focus, and false if it loses focus.
+  /// {@endtemplate}
+  static const onFocusChange = '';
+}
+
+@internal
+extension Semantics on Never {
+  /// {@template forui.foundation.doc_templates.semanticsLabel}
+  /// The semantic label used by accessibility frameworks.
+  /// {@endtemplate}
+  @internal
+  static const semanticsLabel = '';
+}
+
+@internal
+extension TappableGroup on Never {
+  /// {@template forui.foundation.doc_templates.overlay}
+  /// ## Why do tappables inside [OverlayPortal]s sometimes not respond to taps?
+  ///
+  /// Wrap the overlay content in [FTappableGroup.isolate].
+  ///
+  /// This is probably caused by the [OverlayPortal] being wrapped in an [FTappableGroup]. Since an [OverlayPortal]
+  /// reparents inherited widgets, the [FTappable]s are registered with the ancestor [FTappableGroup] which does not hit
+  /// test across rendering layers.
+  ///
+  /// [FPortal]-based widgets handle this automatically.
+  /// {@endtemplate}
+  static const overlay = '';
+}
+
+@internal
+extension FormFieldKey on Never {
+  /// {@template forui.foundation.doc_templates.formFieldKey}
+  /// The key to use for the internal [FormField].
+  ///
+  /// This can be used to obtain the [FormFieldState] using a [GlobalKey] to externally validate or access
+  /// the form field's state.
+  /// {@endtemplate}
+  static const formFieldKey = '';
+}
+
+@internal
+extension Scroll on Never {
+  /// {@template forui.foundation.doc_templates.cacheExtent}
+  /// The scrollable area's cache extent in logical pixels.
+  ///
+  /// Items that fall in this cache area are laid out even though they are not (yet) visible on screen. It describes
+  /// how many pixels the cache area extends before the leading edge and after the trailing edge of the viewport.
+  /// {@endtemplate}
+  static const cacheExtent = '';
+}

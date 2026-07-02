@@ -1,0 +1,9 @@
+include: package:flint/analysis_options.flutter.yaml
+analyzer:
+  errors:
+    prefer_asserts_with_message: ignore
+    unused_result: ignore # Re-enable once Dart 3.12 lands
+
+linter:
+  rules:
+    - use_key_in_widget_constructors

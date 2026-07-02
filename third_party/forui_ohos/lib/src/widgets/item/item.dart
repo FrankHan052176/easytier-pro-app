@@ -1,0 +1,608 @@
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
+
+import 'package:meta/meta.dart';
+
+import 'package:forui/forui.dart';
+import 'package:forui/src/foundation/annotations.dart';
+import 'package:forui/src/theme/variant.dart';
+import 'package:forui/src/widgets/item/item_content.dart';
+import 'package:forui/src/widgets/item/raw_item_content.dart';
+
+@Variants('FItem', {'primary': (1, 'The primary item style.'), 'destructive': (2, 'The destructive item style.')})
+@SentinelValues(FItemStyle, {'focusedOutlineStyle': 'Sentinels.focusedOutlineStyle', 'shape': 'Sentinels.shapeBorder'})
+part 'item.design.dart';
+
+/// An item that is typically used to group related information together.
+///
+/// ## Using [FItem] in a [FPopover] when wrapped in a [FItemGroup]
+/// When a [FPopover] is used inside an [FItemGroup], items inside the popover will inherit styling from the parent group.
+/// This happens because [FPopover]'s content shares the same `BuildContext` as its child, causing data inheritance
+/// that may lead to unexpected rendering issues.
+///
+/// To prevent this styling inheritance, wrap the popover in a [FInheritedItemData] with null data to reset the
+/// inherited data:
+/// ```dart
+/// FItemGroup(
+///   children: [
+///     FItem(title: Text('Item with popover')),
+///     FPopoverWrapperItem(
+///       popoverBuilder: (_, _) => FInheritedItemData(
+///         child: FItemGroup(
+///           children: [
+///             FItem(title: Text('Popover Item 1')),
+///             FItem(title: Text('Popover Item 2')),
+///           ],
+///         ),
+///       ),
+///       child: FButton(child: Text('Open Popover')),
+///     ),
+///   ],
+/// );
+/// ```
+///
+/// {@macro forui.foundation.doc_templates.overlay}
+///
+/// See:
+/// * https://forui.dev/docs/data/item for working examples.
+/// * [FTile] for a specialized item for touch devices.
+/// * [FItemStyle] for customizing an item's appearance.
+class FItem extends StatelessWidget with FItemMixin {
+  /// The variant used to resolve the style from [FItemStyles].
+  ///
+  /// Defaults to [FItemVariant.primary]. The current platform variant is automatically included during style resolution.
+  ///
+  /// To change the platform variant, update the enclosing [FTheme.platform]/[FAdaptiveScope.platform].
+  ///
+  /// For example, to create a destructive item:
+  /// ```dart
+  /// FItem(
+  ///   variant: .destructive,
+  ///   title: Text('Delete'),
+  /// )
+  /// ```
+  final FItemVariant variant;
+
+  /// The item's style. Defaults to [FItemData.styles] if present.
+  ///
+  /// Provide a style to prevent inheritance from [FInheritedItemData].
+  ///
+  /// To modify the current style:
+  /// ```dart
+  /// style: .delta(...)
+  /// ```
+  ///
+  /// To replace the style:
+  /// ```dart
+  /// style: FItemStyle(...)
+  /// ```
+  ///
+  /// ## CLI
+  /// To generate and customize this style:
+  ///
+  /// ```shell
+  /// dart run forui style create item
+  /// ```
+  final FItemStyleDelta style;
+
+  /// Whether the item is enabled. Defaults to true.
+  final bool? enabled;
+
+  /// True if this item is currently selected. Defaults to false.
+  final bool selected;
+
+  /// {@macro forui.foundation.doc_templates.semanticsLabel}
+  final String? semanticsLabel;
+
+  /// {@macro forui.foundation.doc_templates.autofocus}
+  final bool autofocus;
+
+  /// {@macro forui.foundation.doc_templates.focusNode}
+  final FocusNode? focusNode;
+
+  /// {@macro forui.foundation.doc_templates.onFocusChange}
+  final ValueChanged<bool>? onFocusChange;
+
+  /// {@macro forui.foundation.FTappable.onHoverChange}
+  final ValueChanged<bool>? onHoverChange;
+
+  /// {@macro forui.foundation.FTappable.onVariantChange}
+  final FTappableVariantChangeCallback? onVariantChange;
+
+  /// A callback for when the item is pressed.
+  ///
+  /// The item is not interactable if the following are all null:
+  /// * [onPress]
+  /// * [onLongPress]
+  /// * [onDoubleTap]
+  /// * [onSecondaryPress]
+  /// * [onSecondaryLongPress]
+  final VoidCallback? onPress;
+
+  /// A callback for when the item is long pressed.
+  ///
+  /// The item is not interactable if the following are all null:
+  /// * [onPress]
+  /// * [onLongPress]
+  /// * [onDoubleTap]
+  /// * [onSecondaryPress]
+  /// * [onSecondaryLongPress]
+  final VoidCallback? onLongPress;
+
+  /// {@macro forui.foundation.FTappable.onDoubleTap}
+  final VoidCallback? onDoubleTap;
+
+  /// A callback for when the widget is pressed with a secondary button (usually right-click on desktop).
+  ///
+  /// The item is not interactable if the following are all null:
+  /// * [onPress]
+  /// * [onLongPress]
+  /// * [onDoubleTap]
+  /// * [onSecondaryPress]
+  /// * [onSecondaryLongPress]
+  final VoidCallback? onSecondaryPress;
+
+  /// A callback for when the widget is pressed with a secondary button (usually right-click on desktop).
+  ///
+  /// The item is not interactable if the following are all null:
+  /// * [onPress]
+  /// * [onLongPress]
+  /// * [onDoubleTap]
+  /// * [onSecondaryPress]
+  /// * [onSecondaryLongPress]
+  final VoidCallback? onSecondaryLongPress;
+
+  /// {@macro forui.foundation.FTappable.shortcuts}
+  final Map<ShortcutActivator, Intent>? shortcuts;
+
+  /// {@macro forui.foundation.FTappable.actions}
+  final Map<Type, Action<Intent>>? actions;
+
+  final Widget Function(
+    BuildContext context,
+    FItemStyle style,
+    double top,
+    double bottom,
+    Set<FTappableVariant> variants,
+    FVariants<FItemGroupVariantConstraint, FItemGroupVariant, Color, Delta>? color,
+    Color? background,
+    double? width,
+    FItemDivider divider,
+  )
+  _builder;
+
+  /// {@template forui.widgets.FItem.new}
+  /// Creates a [FItem].
+  ///
+  /// Assuming LTR locale:
+  /// ```diagram
+  /// -----------------------------------------------------
+  /// | [prefix] [title]       [details] [suffix]         |
+  /// |          [subtitle]                               |
+  /// -----------------------------------------------------
+  /// ```
+  ///
+  /// The order is reversed for RTL locales.
+  ///
+  /// ## Overflow behavior
+  /// [FItem] has custom layout behavior to handle overflow of its content. If [details] is text, it is truncated,
+  /// else [title] and [subtitle] are truncated.
+  ///
+  /// ## Why isn't my [title] [subtitle], or [details] rendered?
+  /// Using widgets that try to fill the available space, such as [Expanded] or [FTextField], as [details] will cause
+  /// the [title] and [subtitle] to never be rendered.
+  ///
+  /// Use [FItem.raw] in these cases.
+  /// {@endtemplate}
+  FItem({
+    required Widget title,
+    this.variant = .primary,
+    this.style = const .context(),
+    this.enabled,
+    this.selected = false,
+    this.semanticsLabel,
+    this.autofocus = false,
+    this.focusNode,
+    this.onFocusChange,
+    this.onHoverChange,
+    this.onVariantChange,
+    this.onPress,
+    this.onLongPress,
+    this.onDoubleTap,
+    this.onSecondaryPress,
+    this.onSecondaryLongPress,
+    this.shortcuts,
+    this.actions,
+    Widget? prefix,
+    Widget? subtitle,
+    Widget? details,
+    Widget? suffix,
+    super.key,
+  }) : _builder = ((context, style, top, bottom, variants, color, background, width, divider) => ItemContent(
+         style: style.contentStyle,
+         margin: style.margin,
+         top: top,
+         bottom: bottom,
+         variants: variants,
+         dividerForeground: color,
+         dividerBackground: background,
+         dividerWidth: width,
+         dividerType: divider,
+         prefix: prefix,
+         title: title,
+         subtitle: subtitle,
+         details: details,
+         suffix: suffix,
+       ));
+
+  /// {@template forui.widgets.FItem.raw}
+  /// Creates a [FItem] without custom layout behavior.
+  ///
+  /// Assuming LTR locale:
+  /// ```diagram
+  /// ----------------------------------------
+  /// | [prefix] [child]                     |
+  /// ----------------------------------------
+  /// ```
+  ///
+  /// The order is reversed for RTL locales.
+  /// {@endtemplate}
+  FItem.raw({
+    required Widget child,
+    this.variant = .primary,
+    this.style = const .context(),
+    this.enabled,
+    this.selected = false,
+    this.semanticsLabel,
+    this.autofocus = false,
+    this.focusNode,
+    this.onFocusChange,
+    this.onHoverChange,
+    this.onVariantChange,
+    this.onPress,
+    this.onLongPress,
+    this.onDoubleTap,
+    this.onSecondaryPress,
+    this.onSecondaryLongPress,
+    this.shortcuts,
+    this.actions,
+    Widget? prefix,
+    super.key,
+  }) : _builder = ((context, style, top, bottom, variants, color, background, width, divider) => RawItemContent(
+         style: style.rawItemContentStyle,
+         margin: style.margin,
+         top: top,
+         bottom: bottom,
+         variants: variants,
+         dividerForeground: color,
+         dividerBackground: background,
+         dividerWidth: width,
+         dividerType: divider,
+         prefix: prefix,
+         child: child,
+       ));
+
+  @override
+  Widget build(BuildContext context) {
+    final callbacks = FInheritedItemCallbacks.maybeOf(context);
+    final data = FInheritedItemData.maybeOf(context) ?? const FItemData();
+    final style = this.style((data.styles ?? context.theme.itemStyles).resolve({variant, context.platformVariant}));
+    final enabled = this.enabled ?? data.enabled;
+    final formVariants = <FTappableVariant>{
+      context.platformVariant as FTappableVariant,
+      if (!enabled) FTappableVariant.disabled,
+    };
+    final divider = data.divider;
+
+    // We increase the bottom margin to draw the divider.
+    final top = data.index == 0 ? data.spacing : 0.0;
+    final bottom = data.last ? data.spacing : 0.0;
+
+    var margin = style.margin.resolve(Directionality.maybeOf(context) ?? .ltr);
+    margin = margin.copyWith(
+      top: margin.top + top,
+      bottom: margin.bottom + bottom + (divider == FItemDivider.none ? 0 : data.dividerWidth),
+    );
+
+    final background = style.backgroundColor.resolve(formVariants);
+    Widget child = DecoratedBox(
+      decoration: data.index == 0 && data.globalLast && style.shape != null
+          ? ShapeDecoration(shape: style.shape!, color: background)
+          : BoxDecoration(color: background),
+      child: Padding(
+        padding: margin,
+        child: switch (onPress != null ||
+            onLongPress != null ||
+            onDoubleTap != null ||
+            onSecondaryPress != null ||
+            onSecondaryLongPress != null) {
+          false => DecoratedBox(
+            decoration: style.decoration.resolve(formVariants),
+            child: _builder(
+              context,
+              style,
+              top,
+              bottom,
+              formVariants,
+              data.dividerColor,
+              background,
+              data.dividerWidth,
+              divider,
+            ),
+          ),
+          true => FTappable(
+            style: style.tappableStyle,
+            semanticsLabel: semanticsLabel,
+            autofocus: autofocus,
+            focusNode: focusNode,
+            onFocusChange: onFocusChange,
+            onHoverChange: onHoverChange,
+            onVariantChange: onVariantChange,
+            selected: selected,
+            onPress: enabled
+                ? () {
+                    callbacks?.onPress?.call();
+                    onPress?.call();
+                  }
+                : null,
+            onLongPress: enabled && (callbacks?.onLongPress != null || onLongPress != null)
+                ? () {
+                    callbacks?.onLongPress?.call();
+                    onLongPress?.call();
+                  }
+                : null,
+            onDoubleTap: enabled ? onDoubleTap : null,
+            onSecondaryPress: enabled ? onSecondaryPress : null,
+            onSecondaryLongPress: enabled ? onSecondaryLongPress : null,
+            shortcuts: shortcuts,
+            actions: actions,
+            builder: (context, variants, _) {
+              final decoration = style.decoration.resolve(variants);
+              return DecoratedBox(
+                position: .foreground,
+                decoration: switch (style.focusedOutlineStyle) {
+                  final outline? when variants.contains(FTappableVariant.focused) => BoxDecoration(
+                    border: .all(color: outline.color, width: outline.width),
+                    borderRadius: outline.borderRadius,
+                  ),
+                  _ => const BoxDecoration(),
+                },
+                child: DecoratedBox(
+                  decoration: decoration,
+                  child: _builder(
+                    context,
+                    style,
+                    top,
+                    bottom,
+                    variants,
+                    data.dividerColor,
+                    decoration.color ?? background,
+                    data.dividerWidth,
+                    divider,
+                  ),
+                ),
+              );
+            },
+          ),
+        },
+      ),
+    );
+
+    if (callbacks case FInheritedItemCallbacks(:final onHoverEnter, :final onHoverExit)) {
+      child = MouseRegion(
+        onEnter: onHoverEnter == null ? null : (_) => onHoverEnter(),
+        onExit: onHoverExit == null ? null : (_) => onHoverExit(),
+        child: child,
+      );
+    }
+
+    return child;
+  }
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties
+      ..add(DiagnosticsProperty('variant', variant))
+      ..add(DiagnosticsProperty('style', style))
+      ..add(FlagProperty('enabled', value: enabled, ifTrue: 'enabled'))
+      ..add(FlagProperty('selected', value: selected, ifTrue: 'selected'))
+      ..add(StringProperty('semanticsLabel', semanticsLabel))
+      ..add(FlagProperty('autofocus', value: autofocus, ifTrue: 'autofocus'))
+      ..add(DiagnosticsProperty('focusNode', focusNode))
+      ..add(ObjectFlagProperty.has('onFocusChange', onFocusChange))
+      ..add(ObjectFlagProperty.has('onHoverChange', onHoverChange))
+      ..add(ObjectFlagProperty.has('onVariantChange', onVariantChange))
+      ..add(ObjectFlagProperty.has('onPress', onPress))
+      ..add(ObjectFlagProperty.has('onLongPress', onLongPress))
+      ..add(ObjectFlagProperty.has('onDoubleTap', onDoubleTap))
+      ..add(ObjectFlagProperty.has('onSecondaryPress', onSecondaryPress))
+      ..add(ObjectFlagProperty.has('onSecondaryLongPress', onSecondaryLongPress))
+      ..add(DiagnosticsProperty('shortcuts', shortcuts))
+      ..add(DiagnosticsProperty('actions', actions));
+  }
+}
+
+/// The item styles.
+extension type FItemStyles(FVariants<FItemVariantConstraint, FItemVariant, FItemStyle, FItemStyleDelta> _)
+    implements FVariants<FItemVariantConstraint, FItemVariant, FItemStyle, FItemStyleDelta> {
+  /// Creates a [FItemStyles] that inherits its properties.
+  factory FItemStyles.inherit({
+    required FColors colors,
+    required FTypography typography,
+    required FStyle style,
+    required bool touch,
+  }) {
+    final primary = FItemStyle.inherit(colors: colors, typography: typography, style: style, touch: touch);
+
+    return FItemStyles(
+      FVariants.from(
+        primary,
+        variants: {
+          [.primary]: primary,
+          [.destructive]: .delta(
+            contentStyle: FItemContentStyle.inherit(
+              colors: colors,
+              typography: typography,
+              prefix: colors.destructive,
+              foreground: colors.destructive,
+              mutedForeground: colors.destructive,
+              suffixedPadding: primary.contentStyle.suffixedPadding,
+              unsuffixedPadding: primary.contentStyle.unsuffixedPadding,
+            ),
+            rawItemContentStyle: FRawItemContentStyle.inherit(
+              colors: colors,
+              typography: typography,
+              prefix: colors.primary,
+              color: colors.primary,
+              padding: primary.rawItemContentStyle.padding,
+            ),
+          ),
+        },
+      ),
+    );
+  }
+
+  /// The primary item style.
+  FItemStyle get primary => resolve({FItemVariant.primary});
+
+  /// The destructive item style.
+  FItemStyle get destructive => resolve({FItemVariant.destructive});
+}
+
+/// A [FItem]'s style.
+class FItemStyle with Diagnosticable, _$FItemStyleFunctions {
+  /// The padding and margin for the item when used in a menu.
+  static ({EdgeInsetsGeometry suffixedPadding, EdgeInsetsGeometry unsuffixedPadding, EdgeInsetsGeometry margin})
+  menuInsets({required bool touch}) => touch
+      ? (
+          suffixedPadding: const .fromSTEB(10, 12.5, 6, 12.5),
+          unsuffixedPadding: const .symmetric(horizontal: 10, vertical: 12.5),
+          margin: const .symmetric(horizontal: 4),
+        )
+      : (
+          suffixedPadding: const .fromSTEB(10, 6.5, 5, 6.5),
+          unsuffixedPadding: const .symmetric(horizontal: 10, vertical: 6.5),
+          margin: const .symmetric(horizontal: 4),
+        );
+
+  /// The padding and margin for the item when used in a autocomplete/select.
+  static ({EdgeInsetsGeometry suffixedPadding, EdgeInsetsGeometry unsuffixedPadding, EdgeInsetsGeometry margin})
+  selectInsets({required bool touch}) => touch
+      ? (
+          suffixedPadding: const .fromSTEB(10, 12.5, 6, 12.5),
+          unsuffixedPadding: const .symmetric(horizontal: 10, vertical: 12.5),
+          margin: const .symmetric(horizontal: 4),
+        )
+      : (
+          suffixedPadding: const .fromSTEB(10, 6.5, 5, 6.5),
+          unsuffixedPadding: const .symmetric(horizontal: 10, vertical: 6.5),
+          margin: const .symmetric(horizontal: 4),
+        );
+
+  /// The item's outer shape when outside of an [FItemGroup] or other similar groups.
+  ///
+  /// If provided, the entire item, including the [backgroundColor] and [margin], is clipped to this shape.
+  @override
+  final ShapeBorder? shape;
+
+  /// The item's background color.
+  ///
+  /// It is applied to the entire item, including [margin]. Since it is applied before [decoration] in the z-layer,
+  /// it is not visible if [decoration] has a background color.
+  ///
+  /// This is useful for setting a background color when [margin] is not zero.
+  @override
+  final FVariants<FTappableVariantConstraint, FTappableVariant, Color?, Delta> backgroundColor;
+
+  /// The margin around the item, including the [decoration].
+  @override
+  final EdgeInsetsGeometry margin;
+
+  /// The item's inner decoration that is drawn above the [backgroundColor] but below the content.
+  @override
+  final FVariants<FTappableVariantConstraint, FTappableVariant, Decoration, DecorationDelta> decoration;
+
+  /// The default item content's style.
+  @override
+  final FItemContentStyle contentStyle;
+
+  /// THe default raw item content's style.
+  @override
+  final FRawItemContentStyle rawItemContentStyle;
+
+  /// The tappable style.
+  @override
+  final FTappableStyle tappableStyle;
+
+  /// The focused outline style.
+  @override
+  final FFocusedOutlineStyle? focusedOutlineStyle;
+
+  /// Creates a [FItemStyle].
+  FItemStyle({
+    required this.backgroundColor,
+    required this.decoration,
+    required this.contentStyle,
+    required this.rawItemContentStyle,
+    required this.tappableStyle,
+    required this.focusedOutlineStyle,
+    required this.margin,
+    this.shape,
+  });
+
+  /// Creates a [FTileGroupStyle] that inherits from the given arguments.
+  factory FItemStyle.inherit({
+    required FColors colors,
+    required FTypography typography,
+    required FStyle style,
+    required bool touch,
+  }) {
+    final (:suffixedPadding, :unsuffixedPadding, :margin) = FItemStyle.menuInsets(touch: touch);
+    return FItemStyle(
+      backgroundColor: FVariants(
+        colors.background,
+        variants: {
+          [.disabled]: colors.background,
+        },
+      ),
+      decoration: .from(
+        ShapeDecoration(
+          shape: RoundedSuperellipseBorder(borderRadius: style.borderRadius.md),
+          color: colors.background,
+        ),
+        variants: {
+          [.hovered, .pressed]: .shapeDelta(color: colors.secondary),
+          //
+          [.disabled]: const .shapeDelta(),
+          //
+          [.selected]: .shapeDelta(color: colors.secondary),
+          [.selected.and(.disabled)]: .shapeDelta(color: colors.disable(colors.secondary)),
+        },
+      ),
+      contentStyle: .inherit(
+        colors: colors,
+        typography: typography,
+        prefix: colors.primary,
+        foreground: colors.foreground,
+        mutedForeground: colors.mutedForeground,
+        suffixedPadding: suffixedPadding,
+        unsuffixedPadding: unsuffixedPadding,
+      ),
+      rawItemContentStyle: .inherit(
+        colors: colors,
+        typography: typography,
+        prefix: colors.foreground,
+        color: colors.foreground,
+        padding: unsuffixedPadding,
+      ),
+      tappableStyle: style.tappableStyle.copyWith(
+        motion: FTappableMotion.none,
+        pressedEnterDuration: .zero,
+        pressedExitDuration: const Duration(milliseconds: 25),
+      ),
+      focusedOutlineStyle: style.focusedOutlineStyle,
+      margin: margin,
+    );
+  }
+}

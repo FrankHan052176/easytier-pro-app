@@ -1,0 +1,252 @@
+import 'dart:ui';
+
+import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
+
+import 'package:meta/meta.dart';
+
+import 'package:forui/forui.dart';
+import 'package:forui/src/foundation/annotations.dart';
+import 'package:forui/src/foundation/debug.dart';
+
+@SentinelValues(FBottomNavigationBarStyle, {'backgroundFilter': 'Sentinels.imageFilter'})
+part 'bottom_navigation_bar.design.dart';
+
+/// A bottom navigation bar.
+///
+/// A bottom navigation bar is usually present at the bottom of root pages. It is used to navigate between a small
+/// number of views, typically between three and five.
+///
+/// See:
+/// * https://forui.dev/docs/navigation/bottom-navigation-bar for working examples.
+/// * [FBottomNavigationBarStyle] for customizing a bottom navigation bar's appearance.
+/// * [FBottomNavigationBarItem] for the items in a bottom navigation bar.
+class FBottomNavigationBar extends StatelessWidget {
+  /// The style.
+  ///
+  /// To modify the current style:
+  /// ```dart
+  /// style: .delta(...)
+  /// ```
+  ///
+  /// To replace the style:
+  /// ```dart
+  /// style: FBottomNavigationBarStyle(...)
+  /// ```
+  ///
+  /// ## CLI
+  /// To generate and customize this style:
+  ///
+  /// ```shell
+  /// dart run forui style create bottom-navigation-bar
+  /// ```
+  final FBottomNavigationBarStyleDelta style;
+
+  /// A callback for when an item is selected.
+  final ValueChanged<int>? onChange;
+
+  /// The index.
+  final int index;
+
+  /// The children.
+  final List<Widget> children;
+
+  /// Whether to avoid system intrusions on the top. Defaults to false.
+  final bool safeAreaTop;
+
+  /// Whether to avoid system intrusions on the bottom. Defaults to false.
+  final bool safeAreaBottom;
+
+  /// Creates a [FBottomNavigationBar] with [FBottomNavigationBarItem]s.
+  ///
+  /// See [FBottomNavigationBarItem] for the items in a bottom navigation bar.
+  const FBottomNavigationBar({
+    required this.children,
+    this.style = const .context(),
+    this.onChange,
+    this.index = -1,
+    this.safeAreaTop = false,
+    this.safeAreaBottom = false,
+    super.key,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final style = this.style(context.theme.bottomNavigationBarStyle);
+    final padding = style.padding.resolve(Directionality.maybeOf(context) ?? .ltr);
+
+    Widget row = Row(
+      mainAxisAlignment: .spaceAround,
+      children: [
+        for (final (i, child) in children.indexed)
+          Expanded(
+            child: FBottomNavigationBarData(
+              itemStyle: style.itemStyle,
+              index: i,
+              selected: i == index,
+              onChange: onChange,
+              child: child,
+            ),
+          ),
+      ],
+    );
+
+    if (style.slideableItems.resolve({context.platformVariant})) {
+      row = FTappableGroup(child: row);
+    }
+
+    Widget bar = DecoratedBox(
+      decoration: style.decoration,
+      child: SafeArea(
+        top: safeAreaTop,
+        bottom: safeAreaBottom,
+        child: Padding(
+          padding: padding.copyWith(bottom: padding.bottom + (MediaQuery.viewPaddingOf(context).bottom * 2 / 3)),
+          child: row,
+        ),
+      ),
+    );
+
+    if (style.backgroundFilter case final filter?) {
+      bar = Stack(
+        children: [
+          Positioned.fill(
+            child: ClipRect(
+              child: BackdropFilter(filter: filter, child: Container()),
+            ),
+          ),
+          bar,
+        ],
+      );
+    }
+
+    return bar;
+  }
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties
+      ..add(DiagnosticsProperty('style', style))
+      ..add(ObjectFlagProperty.has('onChange', onChange))
+      ..add(IntProperty('index', index))
+      ..add(FlagProperty('safeAreaTop', value: safeAreaTop, ifTrue: 'safeAreaTop'))
+      ..add(FlagProperty('safeAreaBottom', value: safeAreaBottom, ifTrue: 'safeAreaBottom'));
+  }
+}
+
+/// A [FBottomNavigationBar]'s data.
+class FBottomNavigationBarData extends InheritedWidget {
+  /// Returns the [FBottomNavigationBarItemStyle] and current states of the [FBottomNavigationBar] in the given [context].
+  @useResult
+  static FBottomNavigationBarData of(BuildContext context) {
+    assert(debugCheckHasAncestor<FBottomNavigationBarData>('$FBottomNavigationBar', context));
+    return context.dependOnInheritedWidgetOfExactType<FBottomNavigationBarData>()!;
+  }
+
+  /// The item's style.
+  final FBottomNavigationBarItemStyle itemStyle;
+
+  /// The item's index.
+  final int index;
+
+  /// True if the item is selected.
+  final bool selected;
+
+  /// A callback for when an item is selected.
+  final ValueChanged<int>? onChange;
+
+  /// Creates a [FBottomNavigationBarData].
+  const FBottomNavigationBarData({
+    required this.itemStyle,
+    required this.index,
+    required this.selected,
+    required this.onChange,
+    required super.child,
+    super.key,
+  });
+
+  @override
+  bool updateShouldNotify(FBottomNavigationBarData old) =>
+      old.itemStyle != itemStyle || old.index != index || old.selected != selected;
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties
+      ..add(DiagnosticsProperty('itemStyle', itemStyle))
+      ..add(IntProperty('index', index))
+      ..add(FlagProperty('selected', value: selected, ifTrue: 'selected', ifFalse: 'not selected'))
+      ..add(ObjectFlagProperty.has('onChange', onChange));
+  }
+}
+
+/// [FBottomNavigationBar]'s style.
+class FBottomNavigationBarStyle with Diagnosticable, _$FBottomNavigationBarStyleFunctions {
+  /// The decoration.
+  ///
+  /// ## Removing the top border
+  /// By default, both [FBottomNavigationBar] and [FScaffold.footer] specify a top border. When used together, the
+  /// top border must be removed from both [FBottomNavigationBarStyle.decoration] and [FScaffoldStyle.footerDecoration]
+  /// for the changes to take effect.
+  @override
+  final Decoration decoration;
+
+  /// An optional background filter. This only takes effect if the [decoration] has a transparent or translucent
+  /// background color.
+  ///
+  /// This is typically combined with a transparent/translucent background to create a glassmorphic effect.
+  ///
+  /// ## Examples
+  /// ```dart
+  /// // Blurred
+  /// ImageFilter.blur(sigmaX: 5, sigmaY: 5);
+  ///
+  /// // Solid color
+  /// ColorFilter.mode(Colors.white, BlendMode.srcOver);
+  ///
+  /// // Tinted
+  /// ColorFilter.mode(Colors.white.withValues(alpha: 0.5), BlendMode.srcOver);
+  ///
+  /// // Blurred & tinted
+  /// ImageFilter.compose(
+  ///   outer: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
+  ///   inner: ColorFilter.mode(Colors.white.withValues(alpha: 0.5), BlendMode.srcOver),
+  /// );
+  /// ```
+  @override
+  final ImageFilter? backgroundFilter;
+
+  /// The padding. Defaults to `EdgeInsets.all(5)`.
+  @override
+  final EdgeInsetsGeometry padding;
+
+  /// The item's style.
+  @override
+  final FBottomNavigationBarItemStyle itemStyle;
+
+  /// Whether the items support pressing an item and sliding to another. Defaults to true.
+  @override
+  final FVariants<FPlatformVariantConstraint, FPlatformVariant, bool, Delta> slideableItems;
+
+  /// Creates a [FBottomNavigationBarStyle].
+  const FBottomNavigationBarStyle({
+    required this.decoration,
+    required this.itemStyle,
+    this.backgroundFilter,
+    this.padding = const .all(5),
+    this.slideableItems = const .all(true),
+  });
+
+  /// Creates a [FBottomNavigationBarStyle] that inherits its properties.
+  FBottomNavigationBarStyle.inherit({required FColors colors, required FTypography typography, required FStyle style})
+    : this(
+        decoration: BoxDecoration(
+          border: Border(
+            top: BorderSide(color: colors.border, width: style.borderWidth),
+          ),
+          color: colors.background,
+        ),
+        itemStyle: .inherit(colors: colors, typography: typography, style: style),
+      );
+}

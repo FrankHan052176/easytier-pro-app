@@ -1,0 +1,250 @@
+import 'dart:math';
+
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
+
+import 'package:forui/forui.dart';
+
+/// The divider between items in a group.
+enum FItemDivider {
+  /// Represents a divider that horizontally spans the entire item.
+  full,
+
+  /// Represents a divider that partially spans the item horizontally.
+  ///
+  /// An item is always responsible for the divider directly below it.
+  ///
+  /// For [FItem.new], the divider spans from the title's left edge to the item's right edge. It is always aligned to
+  /// the title of the item above the divider.
+  /// ```diagram
+  /// -----------------------------
+  /// | [prefix] [title]          | <- Item A
+  /// |          ---------------- |
+  /// | [title]                   | <- Item B
+  /// -----------------------------
+  /// ```
+  ///
+  /// For [FItem.raw], the divider spans from the child's left edge to the item's right edge. It is always aligned to
+  /// the child of the item above the divider.
+  /// ```diagram
+  /// -----------------------------
+  /// | [prefix] [child]          | <- Item A
+  /// |          ---------------- |
+  /// | [child]                   | <- Item B
+  /// -----------------------------
+  indented,
+
+  /// No divider between items.
+  none,
+}
+
+/// Provides inherited interaction callbacks that [FItem] reads and calls alongside its own callbacks.
+///
+/// This is used by parent widgets (e.g. popover menus) to coordinate behavior like showing submenus on hover or
+/// tracking the active item, without requiring each item to manually wire callbacks.
+class FInheritedItemCallbacks extends InheritedWidget {
+  /// Returns the [FInheritedItemCallbacks] in the given [context], or null if not found.
+  static FInheritedItemCallbacks? maybeOf(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<FInheritedItemCallbacks>();
+
+  /// Called when the pointer enters the item.
+  final VoidCallback? onHoverEnter;
+
+  /// Called when the pointer exits the item.
+  final VoidCallback? onHoverExit;
+
+  /// Called when the item is pressed.
+  final VoidCallback? onPress;
+
+  /// Called when the item is long-pressed.
+  final VoidCallback? onLongPress;
+
+  /// Creates a [FInheritedItemCallbacks].
+  const FInheritedItemCallbacks({
+    required super.child,
+    super.key,
+    this.onHoverEnter,
+    this.onHoverExit,
+    this.onPress,
+    this.onLongPress,
+  });
+
+  @override
+  bool updateShouldNotify(FInheritedItemCallbacks old) =>
+      onHoverEnter != old.onHoverEnter ||
+      onHoverExit != old.onHoverExit ||
+      onPress != old.onPress ||
+      onLongPress != old.onLongPress;
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties
+      ..add(ObjectFlagProperty.has('onHoverEnter', onHoverEnter))
+      ..add(ObjectFlagProperty.has('onHoverExit', onHoverExit))
+      ..add(ObjectFlagProperty.has('onPress', onPress))
+      ..add(ObjectFlagProperty.has('onLongPress', onLongPress));
+  }
+}
+
+/// An [FInheritedItemData] is used to provide data about the item's position in the current nesting level, i.e. [FTileGroup].
+///
+/// Users that wish to create their own custom group should pass additional data to the children using a separate
+/// inherited widget.
+final class FInheritedItemData extends InheritedWidget {
+  /// Returns the [FItemData] in the given [context].
+  static FItemData? maybeOf(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<FInheritedItemData>()?.data;
+
+  /// The item's properties.
+  final FItemData? data;
+
+  /// Creates a [FInheritedItemData].
+  const FInheritedItemData({required super.child, this.data, super.key});
+
+  /// Creates a [FInheritedItemData] that merges the given fields with the current [FInheritedItemData].
+  static Widget merge({
+    required bool last,
+    required Widget child,
+    FVariants<FItemVariantConstraint, FItemVariant, FItemStyle, FItemStyleDelta>? styles,
+    double? spacing,
+    FItemDivider? divider,
+    FVariants<FItemGroupVariantConstraint, FItemGroupVariant, Color, Delta>? dividerColor,
+    double? dividerWidth,
+    bool? enabled,
+    bool? intrinsicWidth,
+    int? index,
+  }) => Builder(
+    builder: (context) {
+      final parent = maybeOf(context);
+      final globalLast = last && (parent?.globalLast ?? true);
+
+      return FInheritedItemData(
+        data: FItemData(
+          styles: styles ?? parent?.styles,
+          spacing: max(spacing ?? 0, parent?.spacing ?? 0),
+          dividerColor: dividerColor ?? parent?.dividerColor ?? const .all(Colors.transparent),
+          dividerWidth: dividerWidth ?? parent?.dividerWidth ?? 0,
+          divider: switch ((last, globalLast)) {
+            // The first/middle items of a group.
+            (false, false) => divider ?? .none,
+            // Last of a group which itself isn't the last.
+            // propagatedLast can only be false if parent?.last is false since last must always be true.
+            // Hence, parent!.divider can never be null.
+            (true, false) => parent!.divider,
+            // The last item in the last group.
+            (_, true) => .none,
+          },
+          enabled: enabled ?? parent?.enabled ?? true,
+          intrinsicWidth: intrinsicWidth ?? parent?.intrinsicWidth ?? false,
+          index: index ?? parent?.index ?? 0,
+          last: last,
+          globalLast: globalLast,
+        ),
+        child: child,
+      );
+    },
+  );
+
+  @override
+  bool updateShouldNotify(FInheritedItemData old) => data != old.data;
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(DiagnosticsProperty('data', data));
+  }
+}
+
+/// The item's data.
+final class FItemData with Diagnosticable {
+  /// The item's styles.
+  final FVariants<FItemVariantConstraint, FItemVariant, FItemStyle, FItemStyleDelta>? styles;
+
+  /// The vertical spacing at the top and bottom of each level.
+  final double spacing;
+
+  /// The divider's style.
+  final FVariants<FItemGroupVariantConstraint, FItemGroupVariant, Color, Delta> dividerColor;
+
+  /// The divider's width.
+  final double dividerWidth;
+
+  /// The divider used to visually separate the different items.
+  final FItemDivider divider;
+
+  /// True if enabled.
+  final bool enabled;
+
+  /// The item's index in the current nesting level.
+  final int index;
+
+  /// True if the item is the last item in the current nesting level.
+  final bool last;
+
+  /// True if the item is the last item across all levels.
+  final bool globalLast;
+
+  /// True if the group should intrinsically size to the widest child.
+  final bool intrinsicWidth;
+
+  /// Creates a new [FItemData].
+  const FItemData({
+    this.styles,
+    this.spacing = 0,
+    this.dividerColor = const .all(Colors.transparent),
+    this.dividerWidth = 0,
+    this.divider = FItemDivider.none,
+    this.enabled = true,
+    this.index = 0,
+    this.last = true,
+    this.globalLast = true,
+    this.intrinsicWidth = false,
+  });
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties
+      ..add(DiagnosticsProperty('styles', styles))
+      ..add(DoubleProperty('spacing', spacing))
+      ..add(DiagnosticsProperty('dividerColor', dividerColor))
+      ..add(DoubleProperty('dividerWidth', dividerWidth))
+      ..add(EnumProperty('divider', divider))
+      ..add(FlagProperty('enabled', value: enabled, ifTrue: 'enabled'))
+      ..add(IntProperty('index', index))
+      ..add(FlagProperty('last', value: last, ifTrue: 'last'))
+      ..add(FlagProperty('globalLast', value: globalLast, ifTrue: 'globalLast'))
+      ..add(FlagProperty('intrinsicWidth', value: intrinsicWidth, ifTrue: 'intrinsicWidth'));
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is FItemData &&
+          runtimeType == other.runtimeType &&
+          styles == other.styles &&
+          spacing == other.spacing &&
+          dividerColor == other.dividerColor &&
+          dividerWidth == other.dividerWidth &&
+          divider == other.divider &&
+          enabled == other.enabled &&
+          intrinsicWidth == other.intrinsicWidth &&
+          index == other.index &&
+          last == other.last &&
+          globalLast == other.globalLast;
+
+  @override
+  int get hashCode => Object.hash(
+    styles,
+    spacing,
+    dividerColor,
+    dividerWidth,
+    divider,
+    enabled,
+    intrinsicWidth,
+    index,
+    last,
+    globalLast,
+  );
+}

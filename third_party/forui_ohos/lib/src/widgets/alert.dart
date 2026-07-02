@@ -1,0 +1,205 @@
+import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
+
+import 'package:meta/meta.dart';
+
+import 'package:forui/forui.dart';
+import 'package:forui/src/foundation/annotations.dart';
+import 'package:forui/src/theme/variant.dart';
+
+@Variants('FAlert', {'primary': (1, 'The primary alert style.'), 'destructive': (2, 'The destructive alert style.')})
+part 'alert.design.dart';
+
+/// A visual element displaying status information (info, warning, success, or error).
+///
+/// Use alerts to communicate statuses, provide feedback, or convey important contextual information.
+///
+/// See:
+/// * https://forui.dev/docs/feedback/alert for working examples.
+/// * [FAlertStyle] for customizing an alert's appearance.
+class FAlert extends StatelessWidget {
+  /// The variants used to resolve the style from [FAlertStyles].
+  ///
+  /// Defaults to [FAlertVariant.primary]. The current platform variant is automatically included during style
+  /// resolution. To change the platform variant, update the enclosing [FTheme.platform]/[FAdaptiveScope.platform].
+  ///
+  /// For example, to create a destructive alert:
+  /// ```dart
+  /// FAlert(
+  ///  variant: .destructive,
+  ///  title: Text('This is a destructive alert'),
+  /// )
+  ///  ```
+  final FAlertVariant variant;
+
+  /// The style delta applied to the style resolved by [variant].
+  ///
+  /// The final style is computed by first resolving the base style from [FAlertStyles] using [variant], then applying
+  /// this delta. This allows modifying variant-specific styles:
+  /// ```dart
+  /// FAlert(
+  ///   variant: .destructive,
+  ///   style: .delta(iconStyle: .delta(size: 24)), // modifies the destructive style
+  ///   title: Text('Large icon destructive alert'),
+  /// )
+  /// ```
+  ///
+  /// ## CLI
+  /// To generate and customize this style:
+  ///
+  /// ```shell
+  /// dart run forui style create alerts
+  /// ```
+  final FAlertStyleDelta style;
+
+  /// The title of the alert.
+  final Widget title;
+
+  /// The subtitle of the alert.
+  final Widget? subtitle;
+
+  /// The icon displayed on the left side of the alert.
+  final Widget icon;
+
+  /// Creates a [FAlert] with a title, subtitle, and icon.
+  ///
+  /// The alert's layout is as follows:
+  /// ```diagram
+  /// |---------------------------|
+  /// |  [icon]  [title]          |
+  /// |          [subtitle]       |
+  /// |---------------------------|
+  /// ```
+  const FAlert({
+    required this.title,
+    this.icon = const Icon(FIcons.circleAlert),
+    this.subtitle,
+    this.variant = .primary,
+    this.style = const .context(),
+    super.key,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final style = this.style(context.theme.alertStyles.resolve({variant, context.platformVariant}));
+    return DecoratedBox(
+      decoration: style.decoration,
+      child: Padding(
+        padding: style.padding,
+        child: Column(
+          mainAxisSize: .min,
+          children: [
+            Row(
+              children: [
+                IconTheme(data: style.iconStyle, child: icon),
+                Flexible(
+                  child: Padding(
+                    padding: const .only(left: 10),
+                    child: DefaultTextStyle.merge(style: style.titleTextStyle, child: title),
+                  ),
+                ),
+              ],
+            ),
+            if (subtitle case final subtitle?)
+              Row(
+                children: [
+                  SizedBox(width: style.iconStyle.size),
+                  Flexible(
+                    child: Padding(
+                      padding: const .only(top: 2, left: 10),
+                      child: DefaultTextStyle.merge(style: style.subtitleTextStyle, child: subtitle),
+                    ),
+                  ),
+                ],
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties
+      ..add(DiagnosticsProperty('variant', variant))
+      ..add(DiagnosticsProperty('style', style));
+  }
+}
+
+/// The alert styles.
+extension type FAlertStyles(FVariants<FAlertVariantConstraint, FAlertVariant, FAlertStyle, FAlertStyleDelta> _)
+    implements FVariants<FAlertVariantConstraint, FAlertVariant, FAlertStyle, FAlertStyleDelta> {
+  /// Creates a [FAlertStyles] that inherits its properties.
+  factory FAlertStyles.inherit({
+    required FColors colors,
+    required FTypography typography,
+    required FStyle style,
+    required bool touch,
+  }) {
+    final primary = FAlertStyle(
+      iconStyle: IconThemeData(color: colors.foreground, size: typography.md.fontSize),
+      titleTextStyle: typography.sm.copyWith(fontWeight: .w500, color: colors.foreground),
+      subtitleTextStyle: (touch ? typography.xs : typography.sm).copyWith(color: colors.mutedForeground),
+      decoration: ShapeDecoration(
+        shape: RoundedSuperellipseBorder(
+          side: BorderSide(color: colors.border, width: style.borderWidth),
+          borderRadius: style.borderRadius.md,
+        ),
+        color: colors.card,
+      ),
+    );
+
+    return FAlertStyles(
+      FVariants.from(
+        primary,
+        variants: {
+          [.primary]: const .delta(),
+          [.destructive]: .delta(
+            iconStyle: .delta(color: colors.destructive),
+            titleTextStyle: .delta(color: colors.destructive),
+            subtitleTextStyle: .delta(color: colors.destructive),
+          ),
+        },
+      ),
+    );
+  }
+
+  /// The primary alert style.
+  FAlertStyle get primary => resolve({FAlertVariant.primary});
+
+  /// The destructive alert style.
+  FAlertStyle get destructive => resolve({FAlertVariant.destructive});
+}
+
+/// A [FAlert] style.
+final class FAlertStyle with Diagnosticable, _$FAlertStyleFunctions {
+  /// The decoration.
+  @override
+  final Decoration decoration;
+
+  /// The padding. Defaults to `EdgeInsets.symmetric(horizontal: 16, vertical: 12)`.
+  @override
+  final EdgeInsetsGeometry padding;
+
+  /// The icon's style.
+  @override
+  final IconThemeData iconStyle;
+
+  /// The title's [TextStyle].
+  @override
+  final TextStyle titleTextStyle;
+
+  /// The subtitle's [TextStyle].
+  @override
+  final TextStyle subtitleTextStyle;
+
+  /// Creates a [FAlertStyle].
+  FAlertStyle({
+    required this.decoration,
+    required this.iconStyle,
+    required this.titleTextStyle,
+    required this.subtitleTextStyle,
+    this.padding = const .symmetric(horizontal: 16, vertical: 12),
+  });
+}

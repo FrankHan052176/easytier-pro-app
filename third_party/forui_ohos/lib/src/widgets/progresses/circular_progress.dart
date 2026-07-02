@@ -1,0 +1,271 @@
+import 'dart:math' as math;
+
+import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
+
+import 'package:meta/meta.dart';
+
+import 'package:forui/forui.dart';
+import 'package:forui/src/foundation/annotations.dart';
+import 'package:forui/src/theme/variant.dart';
+
+@Variants('FCircularProgressSize', {
+  'xs': (
+    1,
+    'The extra small circular progress size. Defaults to `typography.xs.fontSize`:\n* Desktop — 12.\n* Touch — 14.',
+  ),
+  'sm': (1, 'The small circular progress size. Defaults to `typography.sm.fontSize`:\n* Desktop — 14.\n* Touch — 16.'),
+  'md': (
+    1,
+    'The medium (default) circular progress size. Defaults to `typography.md.fontSize`:\n* Desktop — 16.\n* Touch — 18.',
+  ),
+  'lg': (1, 'The large circular progress size. Defaults to `typography.lg.fontSize`:\n* Desktop — 18.\n* Touch — 20.'),
+  'xl': (
+    1,
+    'The extra large circular progress size. Defaults to `typography.xl.fontSize`:\n* Desktop — 20.\n* Touch — 22.',
+  ),
+})
+part 'circular_progress.design.dart';
+
+/// An indeterminate circular progress indicator.
+///
+/// See:
+/// * https://forui.dev/docs/feedback/circular-progress for working examples.
+/// * [FCircularProgressStyle] for customizing a circular progress's appearance.
+/// * [FProgress] for for an indeterminate linear progress indicator.
+class FCircularProgress extends StatefulWidget {
+  /// The size. Defaults to [FCircularProgressSizeVariant.md].
+  final FCircularProgressSizeVariant size;
+
+  /// The style.
+  ///
+  /// To modify the current style:
+  /// ```dart
+  /// style: .delta(...)
+  /// ```
+  ///
+  /// To replace the style:
+  /// ```dart
+  /// style: FCircularProgressStyle(...)
+  /// ```
+  ///
+  /// ## CLI
+  /// To generate and customize this style:
+  ///
+  /// ```shell
+  /// dart run forui style create circular-progress
+  /// ```
+  final FCircularProgressStyleDelta style;
+
+  /// The semantics label. Defaults to [FLocalizations.progressSemanticsLabel].
+  final String? semanticsLabel;
+
+  /// The icon.
+  final IconData icon;
+
+  /// Creates a [FCircularProgress] that uses [FIcons.loaderCircle].
+  const FCircularProgress({
+    this.size = .md,
+    this.style = const .context(),
+    this.semanticsLabel,
+    this.icon = FIcons.loaderCircle,
+    super.key,
+  });
+
+  /// Creates a [FCircularProgress] that uses [FIcons.loader].
+  const FCircularProgress.loader({this.size = .md, this.style = const .context(), this.semanticsLabel, super.key})
+    : icon = FIcons.loader;
+
+  /// Creates a [FCircularProgress] that uses [FIcons.loaderPinwheel].
+  const FCircularProgress.pinwheel({this.size = .md, this.style = const .context(), this.semanticsLabel, super.key})
+    : icon = FIcons.loaderPinwheel;
+
+  @override
+  State<FCircularProgress> createState() => _CircularState();
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties
+      ..add(DiagnosticsProperty('style', style))
+      ..add(DiagnosticsProperty('size', size))
+      ..add(StringProperty('semanticsLabel', semanticsLabel))
+      ..add(IconDataProperty('icon', icon));
+  }
+}
+
+class _CircularState extends State<FCircularProgress> with SingleTickerProviderStateMixin {
+  FCircularProgressStyle? _style;
+  late AnimationController _controller;
+  late CurvedAnimation _curveRotation;
+  late Animation<double> _rotation;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(vsync: this);
+    _curveRotation = CurvedAnimation(parent: _controller, curve: Curves.linear);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _setup();
+  }
+
+  @override
+  void didUpdateWidget(covariant FCircularProgress old) {
+    super.didUpdateWidget(old);
+    _setup();
+  }
+
+  void _setup() {
+    final style = widget.style(
+      FInheritedCircularProgressStyle.of(context) ??
+          context.theme.circularProgressStyles.resolve({widget.size, context.platformVariant}),
+    );
+    if (_style != style) {
+      _style = style;
+      _controller
+        ..duration = style.motion.duration
+        ..repeat();
+      _curveRotation.curve = style.motion.curve;
+      _rotation = style.motion.tween.animate(_curveRotation);
+    }
+  }
+
+  @override
+  void dispose() {
+    _curveRotation.dispose();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final semanticsLabel =
+        widget.semanticsLabel ?? (FLocalizations.of(context) ?? FDefaultLocalizations()).progressSemanticsLabel;
+    return AnimatedBuilder(
+      animation: _rotation,
+      builder: (_, child) => Transform.rotate(angle: _rotation.value * 2 * math.pi, child: child),
+      child: IconTheme(
+        data: _style!.iconStyle,
+        child: Icon(widget.icon, semanticLabel: semanticsLabel),
+      ),
+    );
+  }
+}
+
+/// An inherited widget that provides [FCircularProgressStyle] to its descendants.
+class FInheritedCircularProgressStyle extends InheritedWidget {
+  /// The circular progress's style.
+  final FCircularProgressStyle style;
+
+  /// Returns the current [FCircularProgressStyle], or `null` if there is no ancestor [FInheritedCircularProgressStyle].
+  static FCircularProgressStyle? of(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<FInheritedCircularProgressStyle>()?.style;
+
+  /// Creates a [FInheritedCircularProgressStyle].
+  const FInheritedCircularProgressStyle({required this.style, required super.child, super.key});
+
+  @override
+  bool updateShouldNotify(FInheritedCircularProgressStyle old) => style != old.style;
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(DiagnosticsProperty('style', style));
+  }
+}
+
+/// The style for [FCircularProgress].
+class FCircularProgressStyle with Diagnosticable, _$FCircularProgressStyleFunctions {
+  /// The circular progress's style.
+  @override
+  final IconThemeData iconStyle;
+
+  /// The motion-related properties.
+  @override
+  final FCircularProgressMotion motion;
+
+  /// Creates a [FCircularProgressStyle].
+  FCircularProgressStyle({required this.iconStyle, this.motion = const FCircularProgressMotion()});
+
+  /// Creates a [FCircularProgressStyle].
+  FCircularProgressStyle.inherit({required FColors colors, double iconSize = 20})
+    : this(
+        iconStyle: IconThemeData(color: colors.mutedForeground, size: iconSize),
+      );
+}
+
+/// [FCircularProgressStyle]'s size styles.
+extension type FCircularProgressSizeStyles(
+  FVariants<
+    FCircularProgressSizeVariantConstraint,
+    FCircularProgressSizeVariant,
+    FCircularProgressStyle,
+    FCircularProgressStyleDelta
+  >
+  _
+)
+    implements
+        FVariants<
+          FCircularProgressSizeVariantConstraint,
+          FCircularProgressSizeVariant,
+          FCircularProgressStyle,
+          FCircularProgressStyleDelta
+        > {
+  /// Creates [FCircularProgressSizeStyles] that inherit their properties.
+  factory FCircularProgressSizeStyles.inherit({required FColors colors, required FTypography typography}) {
+    final md = FCircularProgressStyle.inherit(colors: colors, iconSize: typography.md.fontSize!);
+    return FCircularProgressSizeStyles(
+      FVariants(
+        md,
+        variants: {
+          [.xs]: FCircularProgressStyle.inherit(colors: colors, iconSize: typography.xs.fontSize!),
+          [.sm]: FCircularProgressStyle.inherit(colors: colors, iconSize: typography.sm.fontSize!),
+          [.md]: md,
+          [.lg]: FCircularProgressStyle.inherit(colors: colors, iconSize: typography.lg.fontSize!),
+          [.xl]: FCircularProgressStyle.inherit(colors: colors, iconSize: typography.xl.fontSize!),
+        },
+      ),
+    );
+  }
+
+  /// The extra small circular progress style.
+  FCircularProgressStyle get xs => resolve({FCircularProgressSizeVariant.xs});
+
+  /// The small circular progress style.
+  FCircularProgressStyle get sm => resolve({FCircularProgressSizeVariant.sm});
+
+  /// The medium (default) circular progress style.
+  FCircularProgressStyle get md => resolve({FCircularProgressSizeVariant.md});
+
+  /// The large circular progress style.
+  FCircularProgressStyle get lg => resolve({FCircularProgressSizeVariant.lg});
+
+  /// The extra large circular progress style.
+  FCircularProgressStyle get xl => resolve({FCircularProgressSizeVariant.xl});
+}
+
+/// Motion-related properties for [FCircularProgress].
+class FCircularProgressMotion with Diagnosticable, _$FCircularProgressMotionFunctions {
+  /// The duration of one full rotation. Defaults to 1s.
+  @override
+  final Duration duration;
+
+  /// The animation curve. Defaults to [Curves.linear].
+  @override
+  final Curve curve;
+
+  /// The rotation's tween. Defaults to `FImmutableTween(begin: 0.0, end: 1.0)`. Reverse to rotate counter-clockwise.
+  @override
+  final Animatable<double> tween;
+
+  /// Creates a [FCircularProgressMotion].
+  const FCircularProgressMotion({
+    this.duration = const Duration(seconds: 1),
+    this.curve = Curves.linear,
+    this.tween = const FImmutableTween(begin: 0.0, end: 1.0),
+  });
+}

@@ -1,0 +1,92 @@
+import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
+
+import 'package:meta/meta.dart';
+
+import 'package:forui/forui.dart';
+
+part 'pagination_style.design.dart';
+
+/// The [FPagination] styles.
+class FPaginationStyle with Diagnosticable, _$FPaginationStyleFunctions {
+  /// The padding around each item. Defaults to EdgeInsets.symmetric(horizontal: 2)`.
+  @override
+  final EdgeInsets itemPadding;
+
+  /// The item's constraints.
+  @override
+  final BoxConstraints itemConstraints;
+
+  /// The icon's style.
+  @override
+  final FVariants<FTappableVariantConstraint, FTappableVariant, IconThemeData, IconThemeDataDelta> itemIconStyle;
+
+  /// The decoration applied to the pagination item.
+  @override
+  final FVariants<FTappableVariantConstraint, FTappableVariant, Decoration, DecorationDelta> itemDecoration;
+
+  /// The default text style applied to the pagination item.
+  @override
+  final FVariants<FTappableVariantConstraint, FTappableVariant, TextStyle, TextStyleDelta> itemTextStyle;
+
+  /// The ellipsis's text style.
+  @override
+  final TextStyle ellipsisTextStyle;
+
+  /// The action's tappable style.
+  @override
+  final FTappableStyle actionTappableStyle;
+
+  /// The pagination item's tappable style.
+  @override
+  final FTappableStyle pageTappableStyle;
+
+  /// The pagination item's focused outline style.
+  @override
+  final FFocusedOutlineStyle focusedOutlineStyle;
+
+  /// Creates a [FPaginationStyle].
+  FPaginationStyle({
+    required this.itemIconStyle,
+    required this.itemDecoration,
+    required this.itemTextStyle,
+    required this.ellipsisTextStyle,
+    required this.actionTappableStyle,
+    required this.pageTappableStyle,
+    required this.focusedOutlineStyle,
+    required this.itemConstraints,
+    this.itemPadding = const .symmetric(horizontal: 2),
+  });
+
+  /// Creates a [FPaginationStyle] that inherits its properties.
+  FPaginationStyle.inherit({
+    required FColors colors,
+    required FTypography typography,
+    required FStyle style,
+    required bool touch,
+  }) : this(
+         itemIconStyle: .all(IconThemeData(color: colors.foreground, size: typography.md.fontSize)),
+         itemDecoration: FVariants.from(
+           ShapeDecoration(shape: RoundedSuperellipseBorder(borderRadius: style.borderRadius.md)),
+           variants: {
+             [.hovered, .pressed]: .shapeDelta(color: colors.secondary),
+             //
+             [.selected]: .shapeDelta(color: colors.primary),
+             [.selected.and(.hovered), .selected.and(.pressed)]: .shapeDelta(color: colors.hover(colors.primary)),
+           },
+         ),
+         itemTextStyle: FVariants.from(
+           typography.sm.copyWith(color: colors.foreground),
+           variants: {
+             [.selected]: .delta(color: colors.primaryForeground),
+           },
+         ),
+         ellipsisTextStyle: typography.sm.copyWith(color: colors.foreground),
+         actionTappableStyle: style.tappableStyle,
+         pageTappableStyle: style.tappableStyle,
+         focusedOutlineStyle: style.focusedOutlineStyle,
+         itemConstraints: touch
+             ? const .tightFor(width: 44.0, height: 44.0)
+             : const .tightFor(width: 32.0, height: 32.0),
+       );
+}

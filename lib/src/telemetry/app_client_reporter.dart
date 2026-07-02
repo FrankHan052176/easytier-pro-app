@@ -42,14 +42,20 @@ class AppClientReporter {
   }
 
   AppClientReporter._({
-    required this._preferences,
-    required this._httpClient,
-    required this._consoleBaseUrl,
-    required this._environmentLoader,
-    required this._now,
-    required this._reportInterval,
-    required this._requestTimeout,
-  });
+    required SharedPreferences preferences,
+    required http.Client httpClient,
+    required String consoleBaseUrl,
+    required AppClientEnvironmentLoader environmentLoader,
+    required AppClientClock now,
+    required Duration reportInterval,
+    required Duration requestTimeout,
+  }) : _preferences = preferences,
+       _httpClient = httpClient,
+       _consoleBaseUrl = consoleBaseUrl,
+       _environmentLoader = environmentLoader,
+       _now = now,
+       _reportInterval = reportInterval,
+       _requestTimeout = requestTimeout;
 
   final SharedPreferences _preferences;
   final http.Client _httpClient;

@@ -7,6 +7,9 @@ abstract class CorePlatformRuntime {
     if (!kIsWeb && Platform.isAndroid) {
       return AndroidCoreRuntime();
     }
+    if (!kIsWeb && Platform.operatingSystem == 'ohos') {
+      return OhosCoreRuntime();
+    }
     return DesktopCoreRuntime(owner);
   }
 

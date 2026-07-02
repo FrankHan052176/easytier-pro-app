@@ -1,0 +1,154 @@
+import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
+
+import 'package:forui/forui.dart' show FTextField;
+import 'package:forui/src/widgets/text_field/text_field.dart' show FTextField;
+import 'package:forui/widgets/text_field.dart' show FTextField;
+
+part 'text_field_control.control.dart';
+
+@internal
+class TextFieldControl extends StatefulWidget {
+  final FTextFieldControl control;
+  final ValueWidgetBuilder<TextEditingController> builder;
+
+  const TextFieldControl({required this.control, required this.builder, super.key});
+
+  @override
+  State<TextFieldControl> createState() => _TextFieldControlState();
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties
+      ..add(DiagnosticsProperty('control', control))
+      ..add(ObjectFlagProperty.has('builder', builder));
+  }
+}
+
+class _TextFieldControlState extends State<TextFieldControl> {
+  // TODO: Add support for restorable text editing controller.
+  late TextEditingController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = widget.control.create(_handleOnChange);
+  }
+
+  @override
+  void didUpdateWidget(covariant TextFieldControl old) {
+    super.didUpdateWidget(old);
+    _controller = widget.control.update(old.control, _controller, _handleOnChange).$1;
+  }
+
+  @override
+  void dispose() {
+    widget.control.dispose(_controller, _handleOnChange);
+    super.dispose();
+  }
+
+  void _handleOnChange() {
+    if (widget.control case FTextFieldManagedControl(:final onChange?)) {
+      onChange(_controller.value);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.builder(context, _controller, null);
+}
+
+class _ProxyController extends TextEditingController {
+  TextEditingValue? _unsynced;
+  ValueChanged<TextEditingValue> _onChange;
+
+  _ProxyController(super.value, this._onChange) : _unsynced = value, super.fromValue();
+
+  void update(TextEditingValue newValue, ValueChanged<TextEditingValue> onChange) {
+    _onChange = onChange;
+    if (super.value != newValue) {
+      _unsynced = newValue;
+      super.value = newValue;
+    } else if (_unsynced != newValue) {
+      _unsynced = newValue;
+      notifyListeners();
+    }
+  }
+
+  @override
+  set value(TextEditingValue newValue) {
+    if (super.value != newValue) {
+      _unsynced = newValue;
+      _onChange(newValue);
+    }
+  }
+}
+
+/// A [FTextFieldControl] defines how a [FTextField] is controlled.
+///
+/// {@macro forui.foundation.doc_templates.control}
+sealed class FTextFieldControl with Diagnosticable, _$FTextFieldControlMixin {
+  /// Creates a [FTextFieldControl].
+  const factory FTextFieldControl.managed({
+    TextEditingController? controller,
+    TextEditingValue? initial,
+    ValueChanged<TextEditingValue>? onChange,
+  }) = FTextFieldManagedControl;
+
+  /// Creates a [FTextFieldControl] for controlling a text field using lifted state.
+  const factory FTextFieldControl.lifted({
+    required TextEditingValue value,
+    required ValueChanged<TextEditingValue> onChange,
+  }) = _Lifted;
+
+  const FTextFieldControl._();
+
+  (TextEditingController, bool) _update(FTextFieldControl old, TextEditingController controller, VoidCallback callback);
+}
+
+/// A [FTextFieldManagedControl] enables widgets to manage their own controller internally while exposing parameters for
+/// common configurations.
+///
+/// {@macro forui.foundation.doc_templates.managed}
+class FTextFieldManagedControl extends FTextFieldControl with _$FTextFieldManagedControlMixin {
+  /// The controller.
+  @override
+  final TextEditingController? controller;
+
+  /// The initial value. Defaults to [TextEditingValue.empty].
+  ///
+  /// ## Contract
+  /// Throws [AssertionError] if [initial] and [controller] are both provided.
+  @override
+  final TextEditingValue? initial;
+
+  /// Called when the value changes.
+  @override
+  final ValueChanged<TextEditingValue>? onChange;
+
+  /// Creates a [FTextFieldControl].
+  const FTextFieldManagedControl({this.controller, this.initial, this.onChange})
+    : assert(
+        controller == null || initial == null,
+        'Cannot provide both controller and initial value. Pass initial value to the controller instead.',
+      ),
+      super._();
+
+  @override
+  TextEditingController createController() => controller ?? .fromValue(initial);
+}
+
+class _Lifted extends FTextFieldControl with _$_LiftedMixin {
+  @override
+  final TextEditingValue value;
+  @override
+  final ValueChanged<TextEditingValue> onChange;
+
+  const _Lifted({required this.value, required this.onChange}) : super._();
+
+  @override
+  TextEditingController createController() => _ProxyController(value, onChange);
+
+  @override
+  void _updateController(TextEditingController controller) => (controller as _ProxyController).update(value, onChange);
+}

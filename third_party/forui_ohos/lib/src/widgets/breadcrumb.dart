@@ -1,0 +1,536 @@
+import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/widgets.dart';
+
+import 'package:meta/meta.dart';
+
+import 'package:forui/forui.dart';
+import 'package:forui/src/foundation/debug.dart';
+import 'package:forui/src/widgets/popover/popover_controller.dart';
+
+part 'breadcrumb.design.dart';
+
+/// A breadcrumb.
+///
+/// A breadcrumb is a list of links that helps visualize a page's location within a site's hierarchical structure,
+/// allowing navigation up to any of its ancestors.
+///
+/// See:
+/// * https://forui.dev/docs/navigation/breadcrumb for working examples.
+/// * [FBreadcrumbStyle] for customizing a breadcrumb's appearance.
+/// * [FBreadcrumbItem] for adding items to a breadcrumb.
+class FBreadcrumb extends StatelessWidget {
+  /// The breadcrumb's style. Defaults to the appropriate style in [FThemeData.breadcrumbStyle].
+  ///
+  /// To modify the current style:
+  /// ```dart
+  /// style: .delta(...)
+  /// ```
+  ///
+  /// To replace the style:
+  /// ```dart
+  /// style: FBreadcrumbStyle(...)
+  /// ```
+  ///
+  /// ## CLI
+  /// To generate and customize this style:
+  ///
+  /// ```shell
+  /// dart run forui style create breadcrumb
+  /// ```
+  final FBreadcrumbStyleDelta style;
+
+  /// A list of breadcrumb items representing the navigation path.
+  ///
+  /// Each item is typically an [FBreadcrumbItem], separated by a [divider]. The last item generally represents the
+  /// current page and has its `current` property set to `true`. Navigation can be handled via the `onPress` callback.
+  final List<Widget> children;
+
+  /// The divider placed between the children.
+  ///
+  /// Defaults to [FIcons.chevronRight].
+  final Widget? divider;
+
+  /// Creates an [FBreadcrumb].
+  const FBreadcrumb({required this.children, this.style = const .context(), this.divider, super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final style = this.style(context.theme.breadcrumbStyle);
+    final divider = IconTheme(data: style.iconStyle, child: this.divider ?? const Icon(FIcons.chevronRight));
+
+    return Row(
+      children: [
+        for (final (index, item) in children.indexed) ...[
+          FBreadcrumbItemData(style: style, child: item),
+          if (index < children.length - 1) divider,
+        ],
+      ],
+    );
+  }
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(DiagnosticsProperty('style', style));
+  }
+}
+
+/// The [FBreadcrumbItem] data.
+class FBreadcrumbItemData extends InheritedWidget {
+  /// Returns the [FBreadcrumbItemData] of the [FBreadcrumb] in the given [context].
+  @useResult
+  static FBreadcrumbItemData of(BuildContext context) {
+    assert(debugCheckHasAncestor<FBreadcrumbItemData>('$FBreadcrumb', context));
+    return context.dependOnInheritedWidgetOfExactType<FBreadcrumbItemData>()!;
+  }
+
+  /// The breadcrumb's style.
+  final FBreadcrumbStyle style;
+
+  /// Creates a [FBreadcrumbItemData].
+  const FBreadcrumbItemData({required this.style, required super.child, super.key});
+
+  @override
+  bool updateShouldNotify(FBreadcrumbItemData old) => style != old.style;
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(DiagnosticsProperty('style', style));
+  }
+}
+
+/// A breadcrumb item.
+abstract interface class FBreadcrumbItem extends Widget {
+  /// Creates a crumb that typically represents a single item in the navigation path.
+  const factory FBreadcrumbItem({
+    required Widget child,
+    bool current,
+    bool autofocus,
+    FocusNode? focusNode,
+    ValueChanged<bool>? onFocusChange,
+    ValueChanged<bool>? onHoverChange,
+    FTappableVariantChangeCallback? onVariantChange,
+    VoidCallback? onPress,
+    Key? key,
+  }) = _Crumb;
+
+  /// Creates a collapsed crumb using [FItem]s.
+  ///
+  /// Recommended for desktops & web.
+  ///
+  /// It is typically used to keep the breadcrumb compact and reduce the number of items displayed. When tapped, it
+  /// displays a popover menu with the collapsed items.
+  const factory FBreadcrumbItem.collapsed({
+    required List<FItemGroup> menu,
+    FPopoverMenuStyleDelta popoverMenuStyle,
+    FPopoverControl popoverControl,
+    ScrollController? scrollController,
+    double? cacheExtent,
+    double maxHeight,
+    bool intrinsicWidth,
+    DragStartBehavior dragStartBehavior,
+    FItemDivider divider,
+    AlignmentGeometry menuAnchor,
+    AlignmentGeometry childAnchor,
+    FPortalSpacing spacing,
+    FPortalOverflow overflow,
+    Offset offset,
+    FPopoverHideRegion hideRegion,
+    bool cutout,
+    void Function(Path path, Rect bounds) cutoutBuilder,
+    VoidCallback? onTapHide,
+    bool autofocus,
+    FocusScopeNode? focusNode,
+    ValueChanged<bool>? onFocusChange,
+    ValueChanged<bool>? onHoverChange,
+    FTappableVariantChangeCallback? onVariantChange,
+    TraversalEdgeBehavior traversalEdgeBehavior,
+    String? semanticsLabel,
+    Key? key,
+  }) = _CollapsedCrumb;
+
+  /// Creates a collapsed crumb using [FTile]s.
+  ///
+  /// Recommended for touch devices.
+  ///
+  /// It is typically used to keep the breadcrumb compact and reduce the number of items displayed. When tapped, it
+  /// displays a popover menu with the collapsed items.
+  const factory FBreadcrumbItem.collapsedTiles({
+    required List<FTileGroup> menu,
+    FPopoverMenuStyleDelta popoverMenuStyle,
+    FPopoverControl popoverControl,
+    ScrollController? scrollController,
+    double? cacheExtent,
+    double maxHeight,
+    bool intrinsicWidth,
+    DragStartBehavior dragStartBehavior,
+    FItemDivider divider,
+    AlignmentGeometry menuAnchor,
+    AlignmentGeometry childAnchor,
+    FPortalSpacing spacing,
+    FPortalOverflow overflow,
+    Offset offset,
+    FPopoverHideRegion hideRegion,
+    bool cutout,
+    void Function(Path path, Rect bounds) cutoutBuilder,
+    bool autofocus,
+    FocusScopeNode? focusNode,
+    ValueChanged<bool>? onFocusChange,
+    ValueChanged<bool>? onHoverChange,
+    FTappableVariantChangeCallback? onVariantChange,
+    TraversalEdgeBehavior traversalEdgeBehavior,
+    String? semanticsLabel,
+    Key? key,
+  }) = _CollapsedCrumb.tiles;
+}
+
+// ignore: avoid_implementing_value_types
+class _Crumb extends StatelessWidget implements FBreadcrumbItem {
+  final bool current;
+  final bool autofocus;
+  final FocusNode? focusNode;
+  final ValueChanged<bool>? onFocusChange;
+  final ValueChanged<bool>? onHoverChange;
+  final FTappableVariantChangeCallback? onVariantChange;
+  final VoidCallback? onPress;
+  final Widget child;
+
+  const _Crumb({
+    required this.child,
+    this.onPress,
+    this.current = false,
+    this.autofocus = false,
+    this.focusNode,
+    this.onFocusChange,
+    this.onHoverChange,
+    this.onVariantChange,
+    super.key,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final style = FBreadcrumbItemData.of(context).style;
+    final focusedOutlineStyle = context.theme.style.focusedOutlineStyle;
+
+    return FTappable(
+      style: style.tappableStyle,
+      focusedOutlineStyle: focusedOutlineStyle,
+      selected: current,
+      onPress: onPress,
+      builder: (_, variants, child) => DefaultTextStyle(style: style.textStyle.resolve(variants), child: child!),
+      child: Padding(padding: style.padding, child: child),
+    );
+  }
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties
+      ..add(FlagProperty('current', value: current, ifTrue: 'current'))
+      ..add(FlagProperty('autofocus', value: autofocus, ifTrue: 'autofocus'))
+      ..add(DiagnosticsProperty('focusNode', focusNode))
+      ..add(ObjectFlagProperty.has('onFocusChange', onFocusChange))
+      ..add(ObjectFlagProperty.has('onHoverChange', onHoverChange))
+      ..add(ObjectFlagProperty.has('onVariantChange', onVariantChange))
+      ..add(ObjectFlagProperty.has('onPress', onPress));
+  }
+}
+
+// ignore: avoid_implementing_value_types
+class _CollapsedCrumb extends StatefulWidget implements FBreadcrumbItem {
+  final List<FTileGroup>? tileMenu;
+  final List<FItemGroup>? itemMenu;
+  final FPopoverMenuStyleDelta popoverMenuStyle;
+  final FPopoverControl popoverControl;
+  final ScrollController? scrollController;
+  final double? cacheExtent;
+  final double maxHeight;
+  final bool intrinsicWidth;
+  final DragStartBehavior dragStartBehavior;
+  final FItemDivider divider;
+  final AlignmentGeometry menuAnchor;
+  final AlignmentGeometry childAnchor;
+  final FPortalSpacing spacing;
+  final FPortalOverflow overflow;
+  final Offset offset;
+  final FPopoverHideRegion hideRegion;
+  final VoidCallback? onTapHide;
+  final bool cutout;
+  final void Function(Path path, Rect bounds) cutoutBuilder;
+  final bool autofocus;
+  final FocusScopeNode? focusNode;
+  final ValueChanged<bool>? onFocusChange;
+  final ValueChanged<bool>? onHoverChange;
+  final FTappableVariantChangeCallback? onVariantChange;
+  final TraversalEdgeBehavior? traversalEdgeBehavior;
+  final String? semanticsLabel;
+
+  const _CollapsedCrumb({
+    required List<FItemGroup> menu,
+    this.popoverMenuStyle = const .context(),
+    this.popoverControl = const .managed(),
+    this.scrollController,
+    this.cacheExtent,
+    this.maxHeight = .infinity,
+    this.intrinsicWidth = true,
+    this.dragStartBehavior = .start,
+    this.divider = .full,
+    this.menuAnchor = .topLeft,
+    this.childAnchor = .bottomLeft,
+    this.spacing = const .spacing(4),
+    this.overflow = .flip,
+    this.offset = .zero,
+    this.hideRegion = .excludeChild,
+    this.onTapHide,
+    this.cutout = true,
+    this.cutoutBuilder = FModalBarrier.defaultCutoutBuilder,
+    this.semanticsLabel,
+    this.autofocus = false,
+    this.focusNode,
+    this.onFocusChange,
+    this.onHoverChange,
+    this.onVariantChange,
+    this.traversalEdgeBehavior,
+    super.key,
+  }) : itemMenu = menu,
+       tileMenu = null;
+
+  const _CollapsedCrumb.tiles({
+    required List<FTileGroup> menu,
+    this.popoverMenuStyle = const .context(),
+    this.popoverControl = const .managed(),
+    this.scrollController,
+    this.cacheExtent,
+    this.maxHeight = .infinity,
+    this.intrinsicWidth = true,
+    this.dragStartBehavior = .start,
+    this.divider = .full,
+    this.menuAnchor = .topLeft,
+    this.childAnchor = .bottomLeft,
+    this.spacing = const .spacing(4),
+    this.overflow = .flip,
+    this.offset = .zero,
+    this.hideRegion = .excludeChild,
+    this.onTapHide,
+    this.cutout = true,
+    this.cutoutBuilder = FModalBarrier.defaultCutoutBuilder,
+    this.semanticsLabel,
+    this.autofocus = false,
+    this.focusNode,
+    this.onFocusChange,
+    this.onHoverChange,
+    this.onVariantChange,
+    this.traversalEdgeBehavior = .closedLoop,
+    super.key,
+  }) : itemMenu = null,
+       tileMenu = menu;
+
+  @override
+  State<_CollapsedCrumb> createState() => _CollapsedCrumbState();
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties
+      ..add(DiagnosticsProperty('popoverMenuStyle', popoverMenuStyle))
+      ..add(DiagnosticsProperty('popoverControl', popoverControl))
+      ..add(DiagnosticsProperty('scrollController', scrollController))
+      ..add(DoubleProperty('cacheExtent', cacheExtent))
+      ..add(DoubleProperty('maxHeight', maxHeight))
+      ..add(FlagProperty('intrinsicWidth', value: intrinsicWidth, ifTrue: 'intrinsicWidth'))
+      ..add(EnumProperty('dragStartBehavior', dragStartBehavior))
+      ..add(EnumProperty('divider', divider))
+      ..add(DiagnosticsProperty('menuAnchor', menuAnchor))
+      ..add(DiagnosticsProperty('childAnchor', childAnchor))
+      ..add(DiagnosticsProperty('spacing', spacing))
+      ..add(ObjectFlagProperty.has('overflow', overflow))
+      ..add(DiagnosticsProperty('offset', offset))
+      ..add(EnumProperty('hideRegion', hideRegion))
+      ..add(ObjectFlagProperty.has('onTapHide', onTapHide))
+      ..add(FlagProperty('cutout', value: cutout, ifTrue: 'cutout'))
+      ..add(ObjectFlagProperty.has('cutoutBuilder', cutoutBuilder))
+      ..add(FlagProperty('autofocus', value: autofocus, ifTrue: 'autofocus'))
+      ..add(DiagnosticsProperty('focusNode', focusNode))
+      ..add(ObjectFlagProperty.has('onFocusChange', onFocusChange))
+      ..add(ObjectFlagProperty.has('onHoverChange', onHoverChange))
+      ..add(ObjectFlagProperty.has('onVariantChange', onVariantChange))
+      ..add(EnumProperty('traversalEdgeBehavior', traversalEdgeBehavior))
+      ..add(StringProperty('semanticsLabel', semanticsLabel));
+  }
+}
+
+class _CollapsedCrumbState extends State<_CollapsedCrumb> with SingleTickerProviderStateMixin {
+  late FPopoverController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = widget.popoverControl.create(_handleOnChange, this);
+  }
+
+  @override
+  void didUpdateWidget(covariant _CollapsedCrumb old) {
+    super.didUpdateWidget(old);
+    _controller = widget.popoverControl.update(old.popoverControl, _controller, _handleOnChange, this).$1;
+  }
+
+  @override
+  void dispose() {
+    widget.popoverControl.dispose(_controller, _handleOnChange);
+    super.dispose();
+  }
+
+  void _handleOnChange() {
+    if (widget.popoverControl case FPopoverManagedControl(:final onChange?)) {
+      onChange(_controller.status.isForwardOrCompleted);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final style = FBreadcrumbItemData.of(context).style;
+    if (widget.itemMenu case final menu?) {
+      return FPopoverMenu(
+        control: .managed(controller: _controller),
+        style: widget.popoverMenuStyle,
+        menuAnchor: widget.menuAnchor,
+        childAnchor: widget.childAnchor,
+        spacing: widget.spacing,
+        overflow: widget.overflow,
+        offset: widget.offset,
+        hideRegion: widget.hideRegion,
+        onTapHide: widget.onTapHide,
+        cutout: widget.cutout,
+        cutoutBuilder: widget.cutoutBuilder,
+        autofocus: widget.autofocus,
+        focusNode: widget.focusNode,
+        onFocusChange: widget.onFocusChange,
+        traversalEdgeBehavior: widget.traversalEdgeBehavior,
+        scrollController: widget.scrollController,
+        cacheExtent: widget.cacheExtent,
+        maxHeight: widget.maxHeight,
+        intrinsicWidth: widget.intrinsicWidth,
+        dragStartBehavior: widget.dragStartBehavior,
+        semanticsLabel: widget.semanticsLabel,
+        divider: widget.divider,
+        menu: menu,
+        child: FTappable(
+          focusedOutlineStyle: style.focusedOutlineStyle,
+          onPress: _controller.toggle,
+          child: Padding(
+            padding: style.collapsedPadding,
+            child: IconTheme(data: style.iconStyle, child: const Icon(FIcons.ellipsis)),
+          ),
+        ),
+      );
+    } else {
+      return FPopoverMenu.tiles(
+        control: .managed(controller: _controller),
+        style: widget.popoverMenuStyle,
+        menuAnchor: widget.menuAnchor,
+        childAnchor: widget.childAnchor,
+        spacing: widget.spacing,
+        overflow: widget.overflow,
+        offset: widget.offset,
+        hideRegion: widget.hideRegion,
+        cutout: widget.cutout,
+        cutoutBuilder: widget.cutoutBuilder,
+        autofocus: widget.autofocus,
+        focusNode: widget.focusNode,
+        onFocusChange: widget.onFocusChange,
+        traversalEdgeBehavior: widget.traversalEdgeBehavior,
+        scrollController: widget.scrollController,
+        cacheExtent: widget.cacheExtent,
+        maxHeight: widget.maxHeight,
+        intrinsicWidth: widget.intrinsicWidth,
+        dragStartBehavior: widget.dragStartBehavior,
+        semanticsLabel: widget.semanticsLabel,
+        divider: widget.divider,
+        menu: widget.tileMenu!,
+        child: FTappable(
+          focusedOutlineStyle: style.focusedOutlineStyle,
+          onPress: _controller.toggle,
+          child: Padding(
+            padding: style.collapsedPadding,
+            child: IconTheme(data: style.iconStyle, child: const Icon(FIcons.ellipsis)),
+          ),
+        ),
+      );
+    }
+  }
+}
+
+/// The [FBreadcrumb] styles.
+class FBreadcrumbStyle with Diagnosticable, _$FBreadcrumbStyleFunctions {
+  /// The text style.
+  @override
+  final FVariants<FTappableVariantConstraint, FTappableVariant, TextStyle, TextStyleDelta> textStyle;
+
+  /// The divider icon style.
+  @override
+  final IconThemeData iconStyle;
+
+  /// The padding for breadcrumb items.
+  @override
+  final EdgeInsetsGeometry padding;
+
+  /// The padding for collapsed breadcrumb items.
+  @override
+  final EdgeInsetsGeometry collapsedPadding;
+
+  /// The tappable's style.
+  @override
+  final FTappableStyle tappableStyle;
+
+  /// The focused outline style.
+  @override
+  final FFocusedOutlineStyle focusedOutlineStyle;
+
+  /// Creates a [FBreadcrumbStyle].
+  FBreadcrumbStyle({
+    required this.textStyle,
+    required this.iconStyle,
+    required this.tappableStyle,
+    required this.focusedOutlineStyle,
+    required this.padding,
+    required this.collapsedPadding,
+  });
+
+  /// Creates a [FBreadcrumbStyle] that inherits its properties.
+  factory FBreadcrumbStyle.inherit({
+    required FColors colors,
+    required FTypography typography,
+    required FStyle style,
+    required bool touch,
+  }) {
+    EdgeInsetsGeometry padding;
+    EdgeInsetsGeometry collapsedPadding;
+    if (touch) {
+      padding = const .symmetric(horizontal: 6, vertical: 10);
+      collapsedPadding = const .symmetric(horizontal: 6, vertical: 13);
+    } else {
+      padding = const .symmetric(horizontal: 6);
+      collapsedPadding = const .symmetric(horizontal: 6);
+    }
+
+    return FBreadcrumbStyle(
+      textStyle: FVariants.from(
+        typography.sm.copyWith(color: colors.mutedForeground),
+        variants: {
+          [.hovered, .pressed]: .delta(color: colors.foreground),
+          //
+          [.selected]: .delta(color: colors.foreground),
+          [.selected.and(.hovered), .selected.and(.pressed)]: .delta(color: colors.hover(colors.foreground)),
+        },
+      ),
+      iconStyle: IconThemeData(color: colors.mutedForeground, size: typography.md.fontSize),
+      tappableStyle: style.tappableStyle.copyWith(motion: FTappableMotion.none),
+      focusedOutlineStyle: style.focusedOutlineStyle,
+      padding: padding,
+      collapsedPadding: collapsedPadding,
+    );
+  }
+}

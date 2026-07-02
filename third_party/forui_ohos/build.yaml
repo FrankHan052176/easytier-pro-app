@@ -1,0 +1,15 @@
+# Configuration for build runners. See https://github.com/dart-lang/build/blob/master/build_config/README.md
+
+targets:
+  $default:
+    builders:
+      forui_internal_gen:controlBuilder:
+        generate_for:
+          - lib/src/foundation/**.dart
+          - lib/src/widgets/**.dart
+
+      forui_internal_gen:designBuilder:
+        generate_for:
+          - lib/src/foundation/**.dart
+          - lib/src/theme/**.dart
+          - lib/src/widgets/**.dart

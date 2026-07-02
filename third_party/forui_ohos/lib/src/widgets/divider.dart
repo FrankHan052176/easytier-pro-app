@@ -1,0 +1,132 @@
+import 'dart:ui';
+
+import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
+
+import 'package:meta/meta.dart';
+
+import 'package:forui/forui.dart';
+import 'package:forui/src/foundation/annotations.dart';
+import 'package:forui/src/theme/variant.dart';
+
+@Variants('FDividerAxis', {'vertical': (1, 'The vertical divider variant.')})
+part 'divider.design.dart';
+
+/// A visual separator used to create division between content.
+///
+/// Dividers are horizontal lines that group content in lists and separate content in layouts.
+/// They can be used to establish visual hierarchy and organize content into distinct sections.
+///
+/// See:
+/// * https://forui.dev/docs/layout/divider for working examples.
+/// * [FDividerStyle] for customizing a divider's appearance.
+class FDivider extends StatelessWidget {
+  /// The style.
+  ///
+  /// To modify the current style:
+  /// ```dart
+  /// style: .delta(...)
+  /// ```
+  ///
+  /// To replace the style:
+  /// ```dart
+  /// style: FDividerStyle(...)
+  /// ```
+  ///
+  /// ## CLI
+  /// To generate and customize this style:
+  ///
+  /// ```shell
+  /// dart run forui style create dividers
+  /// ```
+  final FDividerStyleDelta style;
+
+  /// The axis along which the divider is drawn. Defaults to horizontal.
+  final Axis axis;
+
+  /// Creates a [FDivider].
+  const FDivider({this.style = const .context(), this.axis = .horizontal, super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final style = this.style(
+      context.theme.dividerStyles.resolve({if (axis == .vertical) FDividerAxisVariant.vertical}),
+    );
+
+    return Container(
+      margin: style.padding,
+      color: style.color,
+      height: axis == .horizontal ? style.width : null,
+      width: axis == .horizontal ? null : style.width,
+    );
+  }
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties
+      ..add(DiagnosticsProperty('style', style))
+      ..add(EnumProperty('axis', axis));
+  }
+}
+
+/// The [FDivider] styles.
+extension type FDividerStyles(
+  FVariants<FDividerAxisVariantConstraint, FDividerAxisVariant, FDividerStyle, FDividerStyleDelta> _
+)
+    implements FVariants<FDividerAxisVariantConstraint, FDividerAxisVariant, FDividerStyle, FDividerStyleDelta> {
+  /// Creates a [FDividerStyles] that inherits its properties.
+  FDividerStyles.inherit({required FColors colors, required FStyle style})
+    : this(
+        .from(
+          FDividerStyle(
+            color: colors.secondary,
+            padding: FDividerStyle.defaultPadding.horizontalStyle,
+            width: style.borderWidth,
+          ),
+          variants: {
+            [.vertical]: .delta(padding: .value(FDividerStyle.defaultPadding.verticalStyle)),
+          },
+        ),
+      );
+
+  /// The horizontal divider style.
+  FDividerStyle get horizontal => base;
+
+  /// The vertical divider style.
+  FDividerStyle get vertical => resolve({FDividerAxisVariant.vertical});
+}
+
+/// The divider style.
+///
+/// The [padding] property can be used to indent the start and end of the separating line.
+class FDividerStyle with Diagnosticable, _$FDividerStyleFunctions {
+  /// The default padding for horizontal and vertical dividers.
+  static const defaultPadding = (
+    horizontalStyle: EdgeInsets.symmetric(vertical: 16),
+    verticalStyle: EdgeInsets.symmetric(horizontal: 16),
+  );
+
+  /// The color of the separating line.
+  @override
+  final Color color;
+
+  /// The padding surrounding the separating line. Defaults to the appropriate padding in [defaultPadding].
+  ///
+  /// This property can be used to indent the start and end of the separating line.
+  @override
+  final EdgeInsetsGeometry padding;
+
+  /// The width (thickness) of the separating line. Defaults to 1.
+  ///
+  /// ## Contract
+  /// Throws [AssertionError] if:
+  /// * `width` <= 0.0
+  /// * `width` is Nan
+  @override
+  final double width;
+
+  /// Creates a [FDividerStyle].
+  FDividerStyle({required this.color, required this.padding, this.width = 1})
+    : assert(0 < width, 'width ($width) must be > 0');
+}

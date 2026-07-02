@@ -1,0 +1,245 @@
+import 'dart:ui';
+
+import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
+
+import 'package:meta/meta.dart';
+
+import 'package:forui/forui.dart';
+import 'package:forui/src/foundation/annotations.dart';
+import 'package:forui/src/theme/variant.dart';
+import 'package:forui/src/widgets/select/multi/select.dart';
+
+@Variants('FMultiSelectTag', {
+  'disabled': (2, 'The semantic variant when this widget is disabled and cannot be interacted with.'),
+  'focused': (1, 'The interaction variant when the given widget or any of its descendants have focus.'),
+  'hovered': (1, 'The interaction variant when the user drags their mouse cursor over the given widget.'),
+  'pressed': (1, 'The interaction variant when the user is actively pressing down on the given widget.'),
+})
+part 'tag.design.dart';
+
+/// A tag in a [FMultiSelect].
+class FMultiSelectTag extends StatelessWidget {
+  /// The style.
+  ///
+  /// To modify the current style:
+  /// ```dart
+  /// style: .delta(...)
+  /// ```
+  ///
+  /// To replace the style:
+  /// ```dart
+  /// style: FMultiSelectTagStyle(...)
+  /// ```
+  ///
+  /// ## CLI
+  /// To generate and customize this style:
+  ///
+  /// ```shell
+  /// dart run forui style create multi-select-tag
+  /// ```
+  final FMultiSelectTagStyleDelta style;
+
+  /// {@macro forui.foundation.doc_templates.autofocus}
+  final bool autofocus;
+
+  /// {@macro forui.foundation.doc_templates.focusNode}
+  final FocusNode? focusNode;
+
+  /// {@macro forui.foundation.doc_templates.onFocusChange}
+  final ValueChanged<bool>? onFocusChange;
+
+  /// {@macro forui.foundation.FTappable.onHoverChange}
+  final ValueChanged<bool>? onHoverChange;
+
+  /// {@macro forui.foundation.FTappable.onVariantChange}
+  final FTappableVariantChangeCallback? onVariantChange;
+
+  /// The label.
+  final Widget label;
+
+  /// {@macro forui.foundation.FTappable.onPress}
+  final VoidCallback? onPress;
+
+  /// {@macro forui.foundation.FTappable.onLongPress}
+  final VoidCallback? onLongPress;
+
+  /// {@macro forui.foundation.FTappable.onDoubleTap}
+  final VoidCallback? onDoubleTap;
+
+  /// {@macro forui.foundation.FTappable.onSecondaryPress}
+  final VoidCallback? onSecondaryPress;
+
+  /// {@macro forui.foundation.FTappable.onSecondaryLongPress}
+  final VoidCallback? onSecondaryLongPress;
+
+  /// {@macro forui.foundation.FTappable.shortcuts}
+  final Map<ShortcutActivator, Intent>? shortcuts;
+
+  /// {@macro forui.foundation.FTappable.actions}
+  final Map<Type, Action<Intent>>? actions;
+
+  /// Creates a [FMultiSelectTag].
+  const FMultiSelectTag({
+    required this.label,
+    this.style = const .context(),
+    this.autofocus = false,
+    this.focusNode,
+    this.onFocusChange,
+    this.onHoverChange,
+    this.onVariantChange,
+    this.onPress,
+    this.onLongPress,
+    this.onDoubleTap,
+    this.onSecondaryPress,
+    this.onSecondaryLongPress,
+    this.shortcuts,
+    this.actions,
+    super.key,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final style = this.style(
+      MultiSelectFieldScope.maybeOf(context)?.style.tagStyle ?? context.theme.multiSelectStyle.fieldStyles.md.tagStyle,
+    );
+    return FTappable(
+      style: style.tappableStyle,
+      autofocus: autofocus,
+      focusNode: focusNode,
+      onFocusChange: onFocusChange,
+      onHoverChange: onHoverChange,
+      onVariantChange: onVariantChange,
+      onPress: onPress,
+      onLongPress: onLongPress,
+      onDoubleTap: onDoubleTap,
+      onSecondaryPress: onSecondaryPress,
+      onSecondaryLongPress: onSecondaryLongPress,
+      shortcuts: shortcuts,
+      actions: actions,
+      builder: (context, variants, child) => DecoratedBox(
+        decoration: style.decoration.resolve(variants),
+        child: Padding(
+          padding: style.padding,
+          child: Row(
+            mainAxisSize: .min,
+            spacing: style.spacing,
+            children: [
+              DefaultTextStyle(style: style.labelTextStyle.resolve(variants), child: label),
+              FFocusedOutline(
+                focused: variants.contains(FTappableVariant.focused),
+                child: IconTheme(data: style.iconStyle.resolve(variants), child: const Icon(FIcons.x)),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties
+      ..add(ObjectFlagProperty.has('style', style))
+      ..add(FlagProperty('autofocus', value: autofocus, ifTrue: 'autofocus'))
+      ..add(DiagnosticsProperty('focusNode', focusNode))
+      ..add(ObjectFlagProperty.has('onFocusChange', onFocusChange))
+      ..add(ObjectFlagProperty.has('onHoverChange', onHoverChange))
+      ..add(ObjectFlagProperty.has('onVariantChange', onVariantChange))
+      ..add(ObjectFlagProperty.has('onPress', onPress))
+      ..add(ObjectFlagProperty.has('onLongPress', onLongPress))
+      ..add(ObjectFlagProperty.has('onDoubleTap', onDoubleTap))
+      ..add(ObjectFlagProperty.has('onSecondaryPress', onSecondaryPress))
+      ..add(ObjectFlagProperty.has('onSecondaryLongPress', onSecondaryLongPress))
+      ..add(DiagnosticsProperty('shortcuts', shortcuts))
+      ..add(DiagnosticsProperty('actions', actions));
+  }
+}
+
+/// A [FMultiSelectTag]'s style.
+class FMultiSelectTagStyle with Diagnosticable, _$FMultiSelectTagStyleFunctions {
+  /// The decoration.
+  @override
+  final FVariants<FMultiSelectTagVariantConstraint, FMultiSelectTagVariant, Decoration, DecorationDelta> decoration;
+
+  /// The padding. Defaults to `EdgeInsets.symmetric(vertical: 4, horizontal: 8)`.
+  ///
+  /// The vertical padding should typically be the same as the [FMultiSelectFieldStyle.hintPadding].
+  @override
+  final EdgeInsetsGeometry padding;
+
+  /// The spacing between the label and the icon. Defaults to 4.
+  @override
+  final double spacing;
+
+  /// The label's text style.
+  @override
+  final FVariants<FMultiSelectTagVariantConstraint, FMultiSelectTagVariant, TextStyle, TextStyleDelta> labelTextStyle;
+
+  /// The icon's style.
+  @override
+  final FVariants<FMultiSelectTagVariantConstraint, FMultiSelectTagVariant, IconThemeData, IconThemeDataDelta>
+  iconStyle;
+
+  /// The tappable style.
+  @override
+  final FTappableStyle tappableStyle;
+
+  /// The focused outline style.
+  @override
+  final FFocusedOutlineStyle focusedOutlineStyle;
+
+  /// Creates a [FMultiSelectTagStyle].
+  FMultiSelectTagStyle({
+    required this.decoration,
+    required this.labelTextStyle,
+    required this.iconStyle,
+    required this.tappableStyle,
+    required this.focusedOutlineStyle,
+    required this.padding,
+    this.spacing = 4,
+  });
+
+  /// Creates a [FMultiSelectTagStyle] that inherits its properties.
+  factory FMultiSelectTagStyle.inherit({
+    required FColors colors,
+    required FStyle style,
+    required TextStyle textStyle,
+    required EdgeInsetsGeometry padding,
+    required BorderRadiusGeometry borderRadius,
+  }) => FMultiSelectTagStyle(
+    decoration: FVariants(
+      ShapeDecoration(
+        shape: RoundedSuperellipseBorder(borderRadius: borderRadius),
+        color: colors.secondary,
+      ),
+      variants: {
+        [.hovered, .pressed]: ShapeDecoration(
+          shape: RoundedSuperellipseBorder(borderRadius: borderRadius),
+          color: colors.hover(colors.secondary),
+        ),
+        //
+        [.disabled]: ShapeDecoration(
+          shape: RoundedSuperellipseBorder(borderRadius: borderRadius),
+          color: colors.disable(colors.secondary),
+        ),
+      },
+    ),
+    labelTextStyle: FVariants.from(
+      textStyle.copyWith(color: colors.secondaryForeground, height: 1),
+      variants: {
+        [.disabled]: .delta(color: colors.disable(colors.secondaryForeground)),
+      },
+    ),
+    iconStyle: FVariants.from(
+      IconThemeData(color: colors.mutedForeground, size: textStyle.fontSize),
+      variants: {
+        [.disabled]: .delta(color: colors.disable(colors.mutedForeground)),
+      },
+    ),
+    tappableStyle: style.tappableStyle.copyWith(motion: FTappableMotion.none),
+    focusedOutlineStyle: style.focusedOutlineStyle,
+    padding: padding,
+  );
+}

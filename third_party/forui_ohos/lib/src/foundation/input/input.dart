@@ -1,0 +1,229 @@
+import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter/widgets.dart';
+
+import 'package:forui/forui.dart';
+import 'package:forui/src/foundation/debug.dart';
+import 'package:forui/src/foundation/form/form_field.dart';
+import 'package:forui/src/foundation/input/input_controller.dart';
+import 'package:forui/src/localizations/localization.dart';
+import 'package:forui/src/localizations/localizations_en.dart';
+
+@internal
+abstract class Input<T> extends StatefulWidget {
+  final ValueNotifier<T?> controller;
+  final FTextFieldSizeVariant size;
+  final FPlatformVariant platformVariant;
+  final Widget Function(BuildContext context, FTextFieldStyle style, Set<FTextFieldVariant> variants, Widget child)
+  builder;
+  final Widget? label;
+  final Widget? description;
+  final Widget Function(BuildContext context, String message) errorBuilder;
+  final bool enabled;
+  final FormFieldSetter<T>? onSaved;
+  final VoidCallback? onReset;
+  final FormFieldValidator<T> validator;
+  final AutovalidateMode autovalidateMode;
+  final String? forceErrorText;
+  final FocusNode? focusNode;
+  final TextInputAction? textInputAction;
+  final TextAlign textAlign;
+  final TextAlignVertical? textAlignVertical;
+  final TextDirection? textDirection;
+  final bool expands;
+  final bool autofocus;
+  final VoidCallback? onEditingComplete;
+  final MouseCursor? mouseCursor;
+  final VoidCallback? onTap;
+  final bool canRequestFocus;
+  final Widget Function(BuildContext context, FTextFieldStyle style, Set<FTextFieldVariant> variants)? prefixBuilder;
+  final Widget Function(BuildContext context, FTextFieldStyle style, Set<FTextFieldVariant> variants)? suffixBuilder;
+  final bool clearable;
+  final FLocalizations localizations;
+  final Key? formFieldKey;
+
+  const Input({
+    required this.controller,
+    required this.size,
+    required this.platformVariant,
+    required this.builder,
+    required this.label,
+    required this.description,
+    required this.errorBuilder,
+    required this.enabled,
+    required this.onSaved,
+    required this.onReset,
+    required this.validator,
+    required this.autovalidateMode,
+    required this.forceErrorText,
+    required this.focusNode,
+    required this.textInputAction,
+    required this.textAlign,
+    required this.textAlignVertical,
+    required this.textDirection,
+    required this.autofocus,
+    required this.expands,
+    required this.onEditingComplete,
+    required this.mouseCursor,
+    required this.onTap,
+    required this.canRequestFocus,
+    required this.prefixBuilder,
+    required this.suffixBuilder,
+    required this.clearable,
+    required this.localizations,
+    required this.formFieldKey,
+    super.key,
+  });
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties
+      ..add(DiagnosticsProperty('controller', controller))
+      ..add(DiagnosticsProperty('size', size))
+      ..add(DiagnosticsProperty('platformVariant', platformVariant))
+      ..add(ObjectFlagProperty.has('builder', builder))
+      ..add(ObjectFlagProperty.has('errorBuilder', errorBuilder))
+      ..add(FlagProperty('enabled', value: enabled, ifFalse: 'disabled'))
+      ..add(ObjectFlagProperty.has('onSaved', onSaved))
+      ..add(ObjectFlagProperty.has('onReset', onReset))
+      ..add(ObjectFlagProperty.has('validator', validator))
+      ..add(EnumProperty('autovalidateMode', autovalidateMode))
+      ..add(StringProperty('forceErrorText', forceErrorText))
+      ..add(DiagnosticsProperty('focusNode', focusNode))
+      ..add(EnumProperty('textInputAction', textInputAction))
+      ..add(EnumProperty('textAlign', textAlign))
+      ..add(DiagnosticsProperty('textAlignVertical', textAlignVertical))
+      ..add(EnumProperty('textDirection', textDirection))
+      ..add(FlagProperty('autofocus', value: autofocus, ifTrue: 'autofocus'))
+      ..add(FlagProperty('expands', value: expands, ifTrue: 'expands'))
+      ..add(ObjectFlagProperty.has('onEditingComplete', onEditingComplete))
+      ..add(DiagnosticsProperty('mouseCursor', mouseCursor))
+      ..add(ObjectFlagProperty.has('onTap', onTap))
+      ..add(FlagProperty('canRequestFocus', value: canRequestFocus, ifTrue: 'canRequestFocus'))
+      ..add(DiagnosticsProperty('prefixBuilder', prefixBuilder))
+      ..add(DiagnosticsProperty('suffixBuilder', suffixBuilder))
+      ..add(FlagProperty('clearable', value: clearable, ifTrue: 'clearable'))
+      ..add(DiagnosticsProperty('localizations', localizations))
+      ..add(DiagnosticsProperty('formFieldKey', formFieldKey));
+  }
+}
+
+@internal
+abstract class InputState<T extends Input<U>, U> extends State<T> {
+  late FLocalizations localizations;
+  late InputController inputController;
+
+  @override
+  void initState() {
+    super.initState();
+    localizations = scriptNumerals.contains(widget.localizations.localeName)
+        ? FLocalizationsEn()
+        : widget.localizations;
+    inputController = createController();
+  }
+
+  @override
+  void dispose() {
+    inputController.dispose();
+    super.dispose();
+  }
+
+  @protected
+  InputController createController();
+
+  @override
+  Widget build(BuildContext _) {
+    assert(debugCheckFLocalizationsInitialized(localizations));
+    return Shortcuts(
+      shortcuts: const {SingleActivator(.arrowUp): AdjustIntent(1), SingleActivator(.arrowDown): AdjustIntent(-1)},
+      child: Actions(
+        actions: {
+          AdjustIntent: CallbackAction<AdjustIntent>(onInvoke: (intent) => inputController.adjust(intent.amount)),
+          ExtendSelectionByCharacterIntent: CallbackAction<ExtendSelectionByCharacterIntent>(
+            onInvoke: (intent) => inputController.traverse(forward: intent.forward),
+          ),
+        },
+        child: Field<U>(
+          key: widget.formFieldKey,
+          controller: widget.controller,
+          enabled: widget.enabled,
+          onSaved: widget.onSaved,
+          onReset: widget.onReset,
+          validator: (value) => switch (this.value) {
+            null when inputController.text == inputController.placeholder => widget.validator(null),
+            null => errorMessage,
+            final value => widget.validator(value),
+          },
+          autovalidateMode: widget.autovalidateMode,
+          forceErrorText: widget.forceErrorText,
+          builder: (state) => FTextField(
+            control: .managed(controller: inputController),
+            size: widget.size,
+            style: textFieldStyle,
+            statesController: inputController.statesController,
+            builder: widget.builder,
+            autocorrect: false,
+            // We cannot use TextInputType.number as it does not contain a done button on iOS.
+            keyboardType: const .numberWithOptions(signed: true),
+            minLines: 1,
+            label: widget.label,
+            description: widget.description,
+            error: state.hasError ? widget.errorBuilder(context, state.errorText ?? '') : null,
+            enabled: widget.enabled,
+            focusNode: widget.focusNode,
+            textInputAction: widget.textInputAction,
+            textAlign: widget.textAlign,
+            textAlignVertical: widget.textAlignVertical,
+            textDirection: widget.textDirection,
+            expands: widget.expands,
+            autofocus: widget.autofocus,
+            onEditingComplete: widget.onEditingComplete,
+            mouseCursor: widget.mouseCursor,
+            onTap: widget.onTap,
+            canRequestFocus: widget.canRequestFocus,
+            prefixBuilder: widget.prefixBuilder,
+            suffixBuilder: widget.suffixBuilder,
+            clearable: widget.clearable ? clearable : (_) => false,
+          ),
+        ),
+      ),
+    );
+  }
+
+  @protected
+  bool clearable(TextEditingValue value) => false;
+
+  @protected
+  FTextFieldStyle get textFieldStyle;
+
+  @protected
+  U get value;
+
+  @protected
+  String get errorMessage;
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties
+      ..add(DiagnosticsProperty('localizations', localizations))
+      ..add(DiagnosticsProperty('inputController', inputController))
+      ..add(DiagnosticsProperty('textFieldStyle', textFieldStyle))
+      ..add(DiagnosticsProperty('value', value))
+      ..add(StringProperty('errorMessage', errorMessage));
+  }
+}
+
+@internal
+class AdjustIntent extends Intent {
+  final int amount;
+
+  const AdjustIntent(this.amount);
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(IntProperty('amount', amount));
+  }
+}

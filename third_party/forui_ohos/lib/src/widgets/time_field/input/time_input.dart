@@ -1,0 +1,139 @@
+import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
+
+import 'package:intl/intl.dart';
+
+import 'package:forui/forui.dart';
+import 'package:forui/src/foundation/input/input.dart';
+import 'package:forui/src/foundation/input/input_controller.dart';
+import 'package:forui/src/localizations/localization.dart';
+import 'package:forui/src/localizations/localizations_zh.dart';
+import 'package:forui/src/widgets/time_field/input/time_input_controller.dart';
+
+@internal
+class TimeInput extends Input<FTime?> {
+  final FTimeFieldController timeController;
+  final FTimeFieldStyle style;
+  final bool hour24;
+
+  const TimeInput({
+    required this.timeController,
+    required this.hour24,
+    required this.style,
+    required super.size,
+    required super.platformVariant,
+    required super.controller,
+    required super.builder,
+    required super.label,
+    required super.description,
+    required super.errorBuilder,
+    required super.enabled,
+    required super.onSaved,
+    required super.onReset,
+    required super.validator,
+    required super.autovalidateMode,
+    required super.forceErrorText,
+    required super.focusNode,
+    required super.textInputAction,
+    required super.textAlign,
+    required super.textAlignVertical,
+    required super.textDirection,
+    required super.autofocus,
+    required super.expands,
+    required super.onEditingComplete,
+    required super.mouseCursor,
+    required super.onTap,
+    required super.canRequestFocus,
+    required super.prefixBuilder,
+    required super.suffixBuilder,
+    required super.clearable,
+    required super.localizations,
+    required super.formFieldKey,
+    super.key,
+  });
+
+  @override
+  State<TimeInput> createState() => _TimeFieldState();
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties
+      ..add(DiagnosticsProperty('timeController', timeController))
+      ..add(FlagProperty('hour24', value: hour24, ifTrue: 'hour24'))
+      ..add(DiagnosticsProperty('style', style))
+      ..add(ObjectFlagProperty.has('builder', builder))
+      ..add(FlagProperty('enabled', value: enabled, ifFalse: 'disabled'))
+      ..add(DiagnosticsProperty('focusNode', focusNode))
+      ..add(EnumProperty('textInputAction', textInputAction))
+      ..add(EnumProperty('textAlign', textAlign))
+      ..add(DiagnosticsProperty('textAlignVertical', textAlignVertical))
+      ..add(EnumProperty('textDirection', textDirection))
+      ..add(FlagProperty('autofocus', value: autofocus, ifTrue: 'autofocus'))
+      ..add(FlagProperty('expands', value: expands, ifTrue: 'expands'))
+      ..add(ObjectFlagProperty.has('onEditingComplete', onEditingComplete))
+      ..add(DiagnosticsProperty('mouseCursor', mouseCursor))
+      ..add(FlagProperty('canRequestFocus', value: canRequestFocus, ifTrue: 'canRequestFocus'))
+      ..add(DiagnosticsProperty('prefixBuilder', prefixBuilder))
+      ..add(DiagnosticsProperty('suffixBuilder', suffixBuilder))
+      ..add(DiagnosticsProperty('localizations', localizations));
+  }
+}
+
+class _TimeFieldState extends InputState<TimeInput, FTime?> {
+  /// The 12-hour time format used with [FDefaultLocalizations].
+  ///
+  /// The `intl` package's default date formats use narrow no-break spaces (NNBSP). Flutter replaces these with regular
+  /// spaces by loading custom locale data, but only when [WidgetsApp.localizationsDelegates] is provided. This format
+  /// ensures consistent spacing regardless of whether delegates are configured.
+  static final _default12Hour = DateFormat('h:mm a', 'en_US');
+
+  @override
+  void didUpdateWidget(covariant TimeInput old) {
+    super.didUpdateWidget(old);
+    if (widget.localizations != old.localizations) {
+      // We don't support scripts which period requires composing. This is due to how primitive underlying text field
+      // composing support is. I'll gladly accept any PR that fixes this.
+      localizations = switch (widget.localizations.localeName) {
+        'zh_HK' || 'zh_TW' => FLocalizationsZh(),
+        final name when scriptNumerals.contains(name) || scriptPeriods.contains(name) => FDefaultLocalizations(),
+        _ => widget.localizations,
+      };
+
+      inputController.dispose();
+      inputController = createController();
+    } else if (widget.timeController != old.timeController) {
+      inputController.dispose();
+      inputController = createController();
+    }
+  }
+
+  @override
+  @protected
+  InputController createController() {
+    final format = widget.hour24
+        ? DateFormat.Hm(localizations.localeName)
+        : (localizations is FDefaultLocalizations ? _default12Hour : DateFormat.jm(localizations.localeName));
+    return TimeInputController(
+      localizations,
+      widget.timeController,
+      format,
+      widget.style.fieldStyles.resolve({widget.size, widget.platformVariant}),
+    );
+  }
+
+  @override
+  bool clearable(TextEditingValue value) => value.text != inputController.placeholder;
+
+  @override
+  @protected
+  FTextFieldStyle get textFieldStyle => widget.style.fieldStyles.resolve({widget.size, widget.platformVariant});
+
+  @override
+  @protected
+  FTime? get value => widget.timeController.value;
+
+  @override
+  @protected
+  String get errorMessage => localizations.timeFieldInvalidDateError;
+}

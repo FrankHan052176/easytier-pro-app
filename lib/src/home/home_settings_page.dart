@@ -524,6 +524,10 @@ class HomeAppSettingsSection extends StatelessWidget {
       TargetPlatform.macOS => 'macOS',
       TargetPlatform.windows => 'Windows',
       TargetPlatform.fuchsia => 'Fuchsia',
+      _ =>
+        defaultTargetPlatform.name == 'ohos'
+            ? 'HarmonyOS'
+            : defaultTargetPlatform.name,
     };
     return '平台：$platform';
   }

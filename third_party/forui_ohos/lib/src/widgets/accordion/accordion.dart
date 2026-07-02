@@ -1,0 +1,276 @@
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/widgets.dart';
+
+import 'package:meta/meta.dart';
+
+import 'package:forui/forui.dart';
+import 'package:forui/src/foundation/debug.dart';
+import 'package:forui/src/widgets/accordion/accordion_controller.dart';
+
+part 'accordion.design.dart';
+
+/// A vertically stacked set of interactive headings, each revealing a section of content.
+///
+/// See:
+/// * https://forui.dev/docs/data/accordion for working examples.
+/// * [FAccordionController] for customizing the accordion's behavior.
+/// * [FAccordionItem] for adding items to an accordion.
+/// * [FAccordionStyle] for customizing an accordion's appearance.
+class FAccordion extends StatefulWidget {
+  /// Defines how the accordion's expanded state is controlled.
+  ///
+  /// Defaults to [FAccordionControl.managed] which creates an internal [FAccordionController].
+  final FAccordionControl control;
+
+  /// The style. Defaults to [FThemeData.accordionStyle].
+  ///
+  /// To modify the current style:
+  /// ```dart
+  /// style: .delta(...)
+  /// ```
+  ///
+  /// To replace the style:
+  /// ```dart
+  /// style: FAccordionStyle(...)
+  /// ```
+  ///
+  /// ## CLI
+  /// To generate and customize this style:
+  ///
+  /// ```shell
+  /// dart run forui style create accordion
+  /// ```
+  final FAccordionStyleDelta style;
+
+  /// The individual accordion items and separators.
+  ///
+  /// ## Contract
+  /// An accordion item must mix-in [FAccordionItemMixin]. Not doing so will result in the item being treated as a
+  /// separator and cause undefined behavior.
+  final List<Widget> children;
+
+  /// Creates a [FAccordion].
+  const FAccordion({required this.children, this.control = const .managed(), this.style = const .context(), super.key});
+
+  @override
+  State<FAccordion> createState() => _FAccordionState();
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties
+      ..add(DiagnosticsProperty('control', control))
+      ..add(DiagnosticsProperty('style', style));
+  }
+}
+
+class _FAccordionState extends State<FAccordion> {
+  late FAccordionController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = widget.control.create(_handleOnChange, widget.children.length);
+  }
+
+  @override
+  void didUpdateWidget(covariant FAccordion old) {
+    super.didUpdateWidget(old);
+    _controller = widget.control.update(old.control, _controller, _handleOnChange, widget.children.length).$1;
+  }
+
+  @override
+  void dispose() {
+    widget.control.dispose(_controller, _handleOnChange);
+    super.dispose();
+  }
+
+  void _handleOnChange() {
+    if (widget.control case FAccordionManagedControl(:final onChange?)) {
+      onChange(_controller.expanded);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => Column(
+    children: [
+      for (final (index, child) in widget.children.indexed)
+        if (child is FAccordionItemMixin)
+          InheritedAccordionData(
+            index: index,
+            controller: _controller,
+            style: widget.style(context.theme.accordionStyle),
+            child: child,
+          )
+        else
+          child,
+    ],
+  );
+}
+
+@internal
+class InheritedAccordionData extends InheritedWidget {
+  @useResult
+  static InheritedAccordionData of(BuildContext context) {
+    assert(debugCheckHasAncestor<InheritedAccordionData>('$FAccordion', context));
+    return context.dependOnInheritedWidgetOfExactType<InheritedAccordionData>()!;
+  }
+
+  final FAccordionController controller;
+  final FAccordionStyle style;
+  final int index;
+  final Set<int> expanded;
+
+  InheritedAccordionData({
+    required this.controller,
+    required this.style,
+    required this.index,
+    required super.child,
+    super.key,
+  }) : expanded = controller.expanded;
+
+  @override
+  bool updateShouldNotify(covariant InheritedAccordionData old) =>
+      controller != old.controller || style != old.style || index != old.index || !setEquals(expanded, old.expanded);
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties
+      ..add(DiagnosticsProperty('controller', controller))
+      ..add(DiagnosticsProperty('style', style))
+      ..add(IntProperty('index', index))
+      ..add(IterableProperty('expanded', expanded));
+  }
+}
+
+/// The [FAccordion]'s style.
+class FAccordionStyle with Diagnosticable, _$FAccordionStyleFunctions {
+  /// The title's text style.
+  @override
+  final FVariants<FTappableVariantConstraint, FTappableVariant, TextStyle, TextStyleDelta> titleTextStyle;
+
+  /// The child's default text style.
+  @override
+  final TextStyle childTextStyle;
+
+  /// The padding around the title. Defaults to `EdgeInsets.symmetric(vertical: 16)`.
+  @override
+  final EdgeInsetsGeometry titlePadding;
+
+  /// The padding around the content. Defaults to `EdgeInsets.only(bottom: 16)`.
+  @override
+  final EdgeInsetsGeometry childPadding;
+
+  /// The icon's style.
+  @override
+  final FVariants<FTappableVariantConstraint, FTappableVariant, IconThemeData, IconThemeDataDelta> iconStyle;
+
+  /// The focused outline style.
+  @override
+  final FFocusedOutlineStyle focusedOutlineStyle;
+
+  /// The divider's color.
+  @override
+  final FDividerStyle dividerStyle;
+
+  /// The tappable's style.
+  @override
+  final FTappableStyle tappableStyle;
+
+  /// The motion-related properties.
+  @override
+  final FAccordionMotion motion;
+
+  /// Creates a [FAccordionStyle].
+  const FAccordionStyle({
+    required this.titleTextStyle,
+    required this.childTextStyle,
+    required this.iconStyle,
+    required this.focusedOutlineStyle,
+    required this.dividerStyle,
+    required this.tappableStyle,
+    this.titlePadding = const .symmetric(vertical: 16),
+    this.childPadding = const .only(bottom: 16),
+    this.motion = const FAccordionMotion(),
+  });
+
+  /// Creates a [FDividerStyles] that inherits its properties.
+  FAccordionStyle.inherit({
+    required FColors colors,
+    required FTypography typography,
+    required FStyle style,
+    required bool touch,
+  }) : this(
+         titleTextStyle: .from(
+           typography.sm.copyWith(fontWeight: .w500, color: colors.foreground),
+           variants: {
+             [.hovered, .pressed]: .delta(decoration: () => .underline),
+           },
+         ),
+         childTextStyle: typography.sm.copyWith(color: colors.foreground),
+         iconStyle: .all(
+           IconThemeData(color: colors.mutedForeground, size: touch ? typography.lg.fontSize : typography.md.fontSize),
+         ),
+         focusedOutlineStyle: style.focusedOutlineStyle,
+         dividerStyle: FDividerStyle(color: colors.border, padding: .zero),
+         tappableStyle: style.tappableStyle.copyWith(motion: FTappableMotion.none),
+       );
+}
+
+/// Motion-related properties for [FAccordion].
+class FAccordionMotion with Diagnosticable, _$FAccordionMotionFunctions {
+  /// A [FAccordionMotion] with no motion effects.
+  static const FAccordionMotion none = FAccordionMotion(
+    revealTween: FImmutableTween(begin: 1, end: 1),
+    iconTween: FImmutableTween(begin: 1, end: 1),
+  );
+
+  /// The expand animation's duration. Defaults to 200ms.
+  @override
+  final Duration expandDuration;
+
+  /// The collapse animation's duration. Defaults to 200ms.
+  @override
+  final Duration collapseDuration;
+
+  /// The expand animation's curve. Defaults to [Curves.easeOutCubic].
+  ///
+  /// It is recommended to change this and [collapseCurve] to [Curves.linear] if there is a max number of items shown
+  /// at once to avoid the height jumping effect.
+  @override
+  final Curve expandCurve;
+
+  /// The collapse animation's curve. Defaults to [Curves.easeInCubic].
+  @override
+  final Curve collapseCurve;
+
+  /// The icon's animation curve when expanding. Defaults to [Curves.easeOut].
+  @override
+  final Curve iconExpandCurve;
+
+  /// The icon's animation curve when collapsing. Defaults to [Curves.easeOut].
+  @override
+  final Curve iconCollapseCurve;
+
+  /// The reveal animation's tween. Defaults to `FImmutableTween(begin: 0.0, end: 1.0)`.
+  @override
+  final Animatable<double> revealTween;
+
+  /// The icon animation's tween. Defaults to `FImmutableTween(begin: 0.0, end: 0.5)`.
+  @override
+  final Animatable<double> iconTween;
+
+  /// Creates a [FAccordionMotion].
+  const FAccordionMotion({
+    this.expandDuration = const Duration(milliseconds: 200),
+    this.expandCurve = Curves.easeOutCubic,
+    this.collapseDuration = const Duration(milliseconds: 200),
+    this.collapseCurve = Curves.easeInCubic,
+    this.iconExpandCurve = Curves.easeOut,
+    this.iconCollapseCurve = Curves.easeOut,
+    this.revealTween = const FImmutableTween(begin: 0.0, end: 1.0),
+    this.iconTween = const FImmutableTween(begin: 0.0, end: 0.50),
+  });
+}

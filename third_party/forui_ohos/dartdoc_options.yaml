@@ -1,0 +1,14 @@
+dartdoc:
+  categories:
+    Core:
+      name: "Core"
+    Widgets:
+      name: "Widgets"
+  categoryOrder:
+    - Core
+    - Widgets
+  ignore:
+    - ambiguous-reexport
+  linkToSource:
+    root: '.'
+    uriTemplate: "https://github.com/duobaseio/forui/tree/main/forui/%f%#L%l%"
