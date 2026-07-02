@@ -76,7 +76,14 @@ mixin HomeTrayActionsMixin<T extends StatefulWidget> on State<T> {
   void syncHomeTrayCoreUpdateAction() {
     final versionStatus = coreLifecycleService.engineVersionStatus.value;
     final coreStatus = coreLifecycleService.status.value;
-    if (!versionStatus.updateAvailable) {
+    final action = homeCoreEngineActionSpec(
+      status: coreStatus,
+      engineVersionStatus: versionStatus,
+      onRepair: coreLifecycleService.repair,
+      onRepairWithElevation: coreLifecycleService.repairWithElevation,
+      includeRoutineAction: versionStatus.updateAvailable,
+    );
+    if (action == null) {
       if (_trayEngineLabel != null || _trayEngineEnabled != null) {
         _trayEngineLabel = null;
         _trayEngineEnabled = null;
@@ -85,11 +92,8 @@ mixin HomeTrayActionsMixin<T extends StatefulWidget> on State<T> {
       return;
     }
 
-    final busy =
-        coreStatus.phase == CoreRunPhase.checking ||
-        coreStatus.phase == CoreRunPhase.repairing;
-    final label = homeCoreEngineActionLabel(versionStatus);
-    final enabled = !busy;
+    final label = action.label;
+    final enabled = action.enabled;
     if (_trayEngineLabel == label && _trayEngineEnabled == enabled) {
       return;
     }
@@ -100,7 +104,9 @@ mixin HomeTrayActionsMixin<T extends StatefulWidget> on State<T> {
       TrayEngineAction(
         label: label,
         enabled: enabled,
-        onSelected: enabled ? _updateCoreFromTray : null,
+        onSelected: action.canRun
+            ? () => _runCoreEngineActionFromTray(action)
+            : null,
       ),
     );
   }
@@ -169,11 +175,13 @@ mixin HomeTrayActionsMixin<T extends StatefulWidget> on State<T> {
     }
   }
 
-  Future<void> _updateCoreFromTray() async {
+  Future<void> _runCoreEngineActionFromTray(
+    HomeCoreEngineActionSpec action,
+  ) async {
     await traySupport.showWindow();
     if (!mounted) {
       return;
     }
-    await coreLifecycleService.repair();
+    await action.onRun?.call();
   }
 }

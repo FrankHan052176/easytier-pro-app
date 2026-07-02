@@ -34,11 +34,17 @@ enum _JoinPhase { idle, joining, joined, leaving, error }
 const double _mobileShellBreakpoint = homeShellMobileBreakpoint;
 
 class _JoinNetworkState {
-  const _JoinNetworkState({required this.phase, this.message, this.localIpv4});
+  const _JoinNetworkState({
+    required this.phase,
+    this.message,
+    this.localIpv4,
+    this.requiresCoreAction = false,
+  });
 
   final _JoinPhase phase;
   final String? message;
   final String? localIpv4;
+  final bool requiresCoreAction;
 
   static const idle = _JoinNetworkState(phase: _JoinPhase.idle);
   static const joining = _JoinNetworkState(phase: _JoinPhase.joining);
@@ -56,7 +62,17 @@ class _JoinNetworkState {
   static _JoinNetworkState error(String message) {
     return _JoinNetworkState(phase: _JoinPhase.error, message: message);
   }
+
+  static _JoinNetworkState blockedByCore(String message) {
+    return _JoinNetworkState(
+      phase: _JoinPhase.error,
+      message: message,
+      requiresCoreAction: true,
+    );
+  }
 }
+
+typedef _CoreEngineActionSpec = HomeCoreEngineActionSpec;
 
 typedef _TrafficHistoryPoint = HomeTrafficHistoryPoint;
 

@@ -3503,6 +3503,37 @@ void main() {
 
     expect(traySupport.engineAction?.enabled, isTrue);
     expect(traySupport.engineAction?.onSelected, isNotNull);
+
+    coreLifecycleService.status.value = const CoreRunStatus(
+      phase: CoreRunPhase.error,
+      message: '连接引擎启动失败',
+      lastError: 'installer failed',
+    );
+    await tester.pump();
+
+    expect(traySupport.engineAction?.label, '重新启动连接引擎');
+    expect(traySupport.engineAction?.enabled, isTrue);
+    expect(traySupport.engineAction?.onSelected, isNotNull);
+
+    coreLifecycleService.status.value = const CoreRunStatus(
+      phase: CoreRunPhase.stopped,
+      message: '连接引擎已停止',
+    );
+    await tester.pump();
+
+    expect(traySupport.engineAction?.label, '重新启动连接引擎');
+    expect(traySupport.engineAction?.enabled, isTrue);
+    expect(traySupport.engineAction?.onSelected, isNotNull);
+
+    coreLifecycleService.status.value = const CoreRunStatus(
+      phase: CoreRunPhase.needsElevation,
+      message: '需要管理员权限以安装连接引擎',
+    );
+    await tester.pump();
+
+    expect(traySupport.engineAction?.label, '授权修复连接引擎');
+    expect(traySupport.engineAction?.enabled, isTrue);
+    expect(traySupport.engineAction?.onSelected, isNotNull);
   });
 
   testWidgets('tray settings and app update actions open settings', (

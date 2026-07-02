@@ -172,7 +172,8 @@ class _StatusBadge extends StatelessWidget {
     required this.downloadRate,
     required this.uploadRate,
     required this.hasTrafficStats,
-    this.onElevate,
+    required this.onRepair,
+    required this.onRepairWithElevation,
   });
 
   final ValueListenable<CoreRunStatus> statusListenable;
@@ -181,7 +182,8 @@ class _StatusBadge extends StatelessWidget {
   final double downloadRate;
   final double uploadRate;
   final bool hasTrafficStats;
-  final Future<void> Function()? onElevate;
+  final Future<void> Function() onRepair;
+  final Future<void> Function() onRepairWithElevation;
 
   @override
   Widget build(BuildContext context) {
@@ -366,24 +368,40 @@ class _StatusBadge extends StatelessWidget {
               child: LayoutBuilder(
                 builder: (context, constraints) {
                   final narrow = constraints.maxWidth < 420;
-                  final elevationButton = needsElevation && onElevate != null
+                  final coreAction = _coreEngineActionSpec(
+                    status: status,
+                    engineVersionStatus: engineVersionStatus,
+                    onRepair: onRepair,
+                    onRepairWithElevation: onRepairWithElevation,
+                    includeRoutineAction: false,
+                  );
+                  final actionButton = coreAction != null
                       ? _ControlSelectionBoundary(
                           child: FButton(
                             variant: .primary,
                             size: .sm,
-                            onPress: () => unawaited(onElevate!()),
-                            child: const Text('以管理员身份运行'),
+                            onPress: coreAction.canRun
+                                ? () => unawaited(coreAction.onRun!())
+                                : null,
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(coreAction.icon, size: 15),
+                                const SizedBox(width: 6),
+                                Text(coreAction.label),
+                              ],
+                            ),
                           ),
                         )
                       : null;
 
-                  if (narrow && elevationButton != null) {
+                  if (narrow && actionButton != null) {
                     return Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         statusBody,
                         const SizedBox(height: 12),
-                        elevationButton,
+                        actionButton,
                       ],
                     );
                   }
@@ -405,9 +423,9 @@ class _StatusBadge extends StatelessWidget {
                   return Row(
                     children: [
                       Expanded(child: statusBody),
-                      if (elevationButton != null) ...[
+                      if (actionButton != null) ...[
                         const SizedBox(width: 14),
-                        elevationButton,
+                        actionButton,
                       ] else if (trafficStrip != null) ...[
                         const SizedBox(width: 10),
                         trafficStrip,

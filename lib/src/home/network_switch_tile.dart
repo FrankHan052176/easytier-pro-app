@@ -19,6 +19,7 @@ class HomeNetworkSwitchTile extends StatelessWidget {
     required this.switchValue,
     required this.switchLoading,
     this.failedMessage,
+    this.failedAction,
     this.trailingVisualization,
     this.onSwitchChanged,
     this.onOpen,
@@ -31,6 +32,7 @@ class HomeNetworkSwitchTile extends StatelessWidget {
   final bool failed;
   final List<Widget> metaChildren;
   final String? failedMessage;
+  final Widget? failedAction;
   final Widget? trailingVisualization;
   final bool switchValue;
   final bool switchLoading;
@@ -149,9 +151,13 @@ class HomeNetworkSwitchTile extends StatelessWidget {
                                         ?.copyWith(
                                           color: const Color(0xFFDC2626),
                                           fontWeight: FontWeight.w500,
-                                        ),
+                                    ),
                                   ),
                                 ),
+                                if (failedAction != null) ...[
+                                  const SizedBox(height: 8),
+                                  failedAction!,
+                                ],
                               ],
                             ],
                           ),

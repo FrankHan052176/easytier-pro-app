@@ -8,6 +8,7 @@ class _NetworkSwitchList extends StatelessWidget {
     required this.networkInstanceReady,
     required this.trafficHistoryFor,
     required this.joinStateFor,
+    required this.coreEngineAction,
     required this.onJoin,
     required this.onLeave,
     required this.onOpen,
@@ -22,6 +23,7 @@ class _NetworkSwitchList extends StatelessWidget {
   final Map<String, bool> networkInstanceReady;
   final Map<String, List<_TrafficHistoryPoint>> trafficHistoryFor;
   final _JoinNetworkState Function(ConsoleNetwork) joinStateFor;
+  final _CoreEngineActionSpec? coreEngineAction;
   final Future<void> Function(ConsoleNetwork) onJoin;
   final Future<void> Function(ConsoleNetwork) onLeave;
   final void Function(ConsoleNetwork) onOpen;
@@ -47,6 +49,7 @@ class _NetworkSwitchList extends StatelessWidget {
             traffic: trafficByNetworkId[network.id],
             instanceReady: networkInstanceReady[network.id] == true,
             trafficHistory: trafficHistoryFor[network.id],
+            coreEngineAction: coreEngineAction,
             onJoin: () => unawaited(onJoin(network)),
             onLeave: () => unawaited(onLeave(network)),
             onOpen: () => onOpen(network),
@@ -142,6 +145,7 @@ class _NetworkSwitchTile extends StatelessWidget {
     required this.traffic,
     required this.instanceReady,
     required this.trafficHistory,
+    required this.coreEngineAction,
     required this.onJoin,
     required this.onLeave,
     required this.onOpen,
@@ -153,6 +157,7 @@ class _NetworkSwitchTile extends StatelessWidget {
   final _NetworkTrafficSnapshot? traffic;
   final bool instanceReady;
   final List<_TrafficHistoryPoint>? trafficHistory;
+  final _CoreEngineActionSpec? coreEngineAction;
   final VoidCallback onJoin;
   final VoidCallback onLeave;
   final VoidCallback onOpen;
@@ -166,6 +171,7 @@ class _NetworkSwitchTile extends StatelessWidget {
     final joining = state.phase == _JoinPhase.joining;
     final leaving = state.phase == _JoinPhase.leaving;
     final failed = state.phase == _JoinPhase.error;
+    final repairAction = state.requiresCoreAction ? coreEngineAction : null;
     final localIpv4 = state.localIpv4?.trim();
     final cidrText = network.ipv4Cidr.trim();
     final history = trafficHistory;
@@ -233,6 +239,33 @@ class _NetworkSwitchTile extends StatelessWidget {
       failed: failed,
       metaChildren: metaChildren,
       failedMessage: state.message,
+      failedAction: repairAction == null
+          ? null
+          : _ControlSelectionBoundary(
+              child: FButton(
+                variant: .primary,
+                size: .sm,
+                onPress: repairAction.canRun
+                    ? () => unawaited(repairAction.onRun!())
+                    : null,
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 220),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(repairAction.icon, size: 15),
+                      const SizedBox(width: 6),
+                      Flexible(
+                        child: Text(
+                          repairAction.label,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
       trailingVisualization:
           locallyConnected && history != null && history.isNotEmpty
           ? HomeNetworkTrafficSparkline(history: history)

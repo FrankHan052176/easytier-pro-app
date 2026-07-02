@@ -21,3 +21,21 @@ String _formatBytes(num bytes) {
   final decimals = value >= 10 ? 1 : 2;
   return '${value.toStringAsFixed(decimals)} ${units[unitIndex]}';
 }
+
+_CoreEngineActionSpec? _coreEngineActionSpec({
+  required CoreRunStatus status,
+  required CoreEngineVersionStatus engineVersionStatus,
+  required Future<void> Function() onRepair,
+  required Future<void> Function() onRepairWithElevation,
+  bool includeRoutineAction = true,
+  bool settingsLabel = false,
+}) {
+  return homeCoreEngineActionSpec(
+    status: status,
+    engineVersionStatus: engineVersionStatus,
+    onRepair: onRepair,
+    onRepairWithElevation: onRepairWithElevation,
+    includeRoutineAction: includeRoutineAction,
+    settingsLabel: settingsLabel,
+  );
+}

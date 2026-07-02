@@ -10,19 +10,17 @@ extension _WorkspaceHomeJoinActions on _WorkspaceHomeViewState {
       _setJoinError(network.id, '当前账号未关联工作区。');
       return;
     }
-    if (coreStatus.phase == CoreRunPhase.needsElevation) {
-      const message = '需要管理员权限安装连接引擎后才能加入网络';
-      _setJoinError(network.id, message);
+    final coreBlockedState = _joinBlockedByCoreStatus(coreStatus, machineId);
+    if (coreBlockedState != null) {
+      final message = coreBlockedState.message ?? '连接引擎未就绪';
+      _setJoinState(network.id, coreBlockedState);
       _showNetworkActionToast(
         '加入「${network.name}」失败：$message',
         destructive: true,
       );
       return;
     }
-    if (!coreStatus.isRunning || machineId == null || machineId.isEmpty) {
-      _setJoinError(network.id, '请等待本机设备准备完成后再加入网络。');
-      return;
-    }
+    final readyMachineId = machineId!;
     final joinedAndroidNetwork = _joinedAndroidNetworkExcluding(network.id);
     if (joinedAndroidNetwork != null) {
       final message =
@@ -30,7 +28,10 @@ extension _WorkspaceHomeJoinActions on _WorkspaceHomeViewState {
       _showNetworkActionToast(message, destructive: true);
       return;
     }
-    final existingLocalDevice = _localDeviceInNetwork(network.id, machineId);
+    final existingLocalDevice = _localDeviceInNetwork(
+      network.id,
+      readyMachineId,
+    );
     if (existingLocalDevice != null) {
       _setJoinState(
         network.id,
@@ -42,7 +43,7 @@ extension _WorkspaceHomeJoinActions on _WorkspaceHomeViewState {
 
     _setJoinState(network.id, _JoinNetworkState.joining);
     try {
-      final device = await _waitForLocalManagedDevice(machineId);
+      final device = await _waitForLocalManagedDevice(readyMachineId);
       if (device == null) {
         throw const AuthException('核心已启动，正在等待设备注册到控制台。');
       }
@@ -54,7 +55,10 @@ extension _WorkspaceHomeJoinActions on _WorkspaceHomeViewState {
       }
 
       await _loadSingleNetworkDevices(network.id);
-      final refreshedLocalDevice = _localDeviceInNetwork(network.id, machineId);
+      final refreshedLocalDevice = _localDeviceInNetwork(
+        network.id,
+        readyMachineId,
+      );
       if (refreshedLocalDevice != null) {
         _setJoinState(
           network.id,
@@ -72,7 +76,7 @@ extension _WorkspaceHomeJoinActions on _WorkspaceHomeViewState {
       );
       final joinedLocalDevice = await _loadLocalNetworkDevice(
         network.id,
-        machineId,
+        readyMachineId,
         waitForIpv4: true,
       );
       _setJoinState(
@@ -89,6 +93,36 @@ extension _WorkspaceHomeJoinActions on _WorkspaceHomeViewState {
         destructive: true,
       );
     }
+  }
+
+  _JoinNetworkState? _joinBlockedByCoreStatus(
+    CoreRunStatus status,
+    String? machineId,
+  ) {
+    return switch (status.phase) {
+      CoreRunPhase.needsElevation => _JoinNetworkState.blockedByCore(
+        '需要授权修复连接引擎后才能加入网络。',
+      ),
+      CoreRunPhase.needsVpnPermission => _JoinNetworkState.blockedByCore(
+        '需要授权 VPN 连接后才能加入网络。',
+      ),
+      CoreRunPhase.error => _JoinNetworkState.blockedByCore(
+        status.message.isEmpty
+            ? '连接引擎启动失败，请先重新启动连接引擎。'
+            : '${status.message}，请先修复连接引擎。',
+      ),
+      CoreRunPhase.stopped => _JoinNetworkState.blockedByCore(
+        '连接引擎未运行，请先重新启动连接引擎。',
+      ),
+      CoreRunPhase.checking => _JoinNetworkState.error('连接引擎正在检查，请稍后再试。'),
+      CoreRunPhase.repairing => _JoinNetworkState.error('连接引擎正在修复，请稍后再试。'),
+      CoreRunPhase.signedOut => _JoinNetworkState.error(
+        '登录状态已断开，请重新登录后再加入网络。',
+      ),
+      CoreRunPhase.running when machineId == null || machineId.isEmpty =>
+        _JoinNetworkState.error('本机设备正在注册，请稍后再试。'),
+      CoreRunPhase.running => null,
+    };
   }
 
   Future<void> _leaveNetwork(ConsoleNetwork network) async {

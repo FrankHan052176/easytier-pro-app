@@ -56,7 +56,8 @@ extension _WorkspaceHomePages on _WorkspaceHomeViewState {
           downloadRate: totalDownloadRate,
           uploadRate: totalUploadRate,
           hasTrafficStats: hasTrafficStats,
-          onElevate: widget.coreLifecycleService.repairWithElevation,
+          onRepair: widget.coreLifecycleService.repair,
+          onRepairWithElevation: widget.coreLifecycleService.repairWithElevation,
         ),
         const SizedBox(height: 24),
         if (_networkError != null && _networks.isEmpty)
@@ -85,19 +86,39 @@ extension _WorkspaceHomePages on _WorkspaceHomeViewState {
             onRetryRegions: _loadRegions,
           )
         else
-          _NetworkSwitchList(
-            networks: sortedNetworks,
-            networkDevices: _networkDevices,
-            trafficByNetworkId: _networkTraffic,
-            networkInstanceReady: _networkInstanceReady,
-            trafficHistoryFor: _networkTrafficHistories,
-            joinStateFor: _joinStateFor,
-            onJoin: _joinNetwork,
-            onLeave: _leaveNetwork,
-            onOpen: _openNetworkDetail,
-            onCreate: _showCreateNetworkDialog,
-            refreshing: _isLoadingNetworks,
-            onRefresh: () => unawaited(_loadNetworks()),
+          ValueListenableBuilder<CoreRunStatus>(
+            valueListenable: widget.coreLifecycleService.status,
+            builder: (context, coreStatus, _) {
+              return ValueListenableBuilder<CoreEngineVersionStatus>(
+                valueListenable:
+                    widget.coreLifecycleService.engineVersionStatus,
+                builder: (context, engineVersionStatus, _) {
+                  final coreEngineAction = _coreEngineActionSpec(
+                    status: coreStatus,
+                    engineVersionStatus: engineVersionStatus,
+                    onRepair: widget.coreLifecycleService.repair,
+                    onRepairWithElevation:
+                        widget.coreLifecycleService.repairWithElevation,
+                    includeRoutineAction: false,
+                  );
+                  return _NetworkSwitchList(
+                    networks: sortedNetworks,
+                    networkDevices: _networkDevices,
+                    trafficByNetworkId: _networkTraffic,
+                    networkInstanceReady: _networkInstanceReady,
+                    trafficHistoryFor: _networkTrafficHistories,
+                    joinStateFor: _joinStateFor,
+                    coreEngineAction: coreEngineAction,
+                    onJoin: _joinNetwork,
+                    onLeave: _leaveNetwork,
+                    onOpen: _openNetworkDetail,
+                    onCreate: _showCreateNetworkDialog,
+                    refreshing: _isLoadingNetworks,
+                    onRefresh: () => unawaited(_loadNetworks()),
+                  );
+                },
+              );
+            },
           ),
       ],
     );

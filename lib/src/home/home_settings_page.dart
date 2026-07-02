@@ -315,6 +315,80 @@ String homeCoreEngineActionLabel(CoreEngineVersionStatus status) {
   return '重装连接引擎';
 }
 
+class HomeCoreEngineActionSpec {
+  const HomeCoreEngineActionSpec({
+    required this.label,
+    required this.icon,
+    required this.enabled,
+    this.onRun,
+    this.primary = false,
+  });
+
+  final String label;
+  final IconData icon;
+  final bool enabled;
+  final Future<void> Function()? onRun;
+  final bool primary;
+
+  bool get canRun => enabled && onRun != null;
+}
+
+bool homeCoreEngineBusy(CoreRunStatus status) {
+  return status.phase == CoreRunPhase.checking ||
+      status.phase == CoreRunPhase.repairing;
+}
+
+HomeCoreEngineActionSpec? homeCoreEngineActionSpec({
+  required CoreRunStatus status,
+  required CoreEngineVersionStatus engineVersionStatus,
+  required Future<void> Function() onRepair,
+  required Future<void> Function() onRepairWithElevation,
+  bool includeRoutineAction = true,
+  bool settingsLabel = false,
+}) {
+  return switch (status.phase) {
+    CoreRunPhase.needsElevation => HomeCoreEngineActionSpec(
+      label: '授权修复连接引擎',
+      icon: Icons.admin_panel_settings_outlined,
+      enabled: true,
+      onRun: onRepairWithElevation,
+      primary: true,
+    ),
+    CoreRunPhase.needsVpnPermission => HomeCoreEngineActionSpec(
+      label: '授权 VPN 连接',
+      icon: Icons.vpn_key_outlined,
+      enabled: true,
+      onRun: onRepair,
+      primary: true,
+    ),
+    CoreRunPhase.error => HomeCoreEngineActionSpec(
+      label: '重新启动连接引擎',
+      icon: Icons.refresh,
+      enabled: true,
+      onRun: onRepair,
+      primary: true,
+    ),
+    CoreRunPhase.stopped => HomeCoreEngineActionSpec(
+      label: '重新启动连接引擎',
+      icon: Icons.power_settings_new,
+      enabled: true,
+      onRun: onRepair,
+      primary: true,
+    ),
+    _ when includeRoutineAction => HomeCoreEngineActionSpec(
+      label: settingsLabel
+          ? _homeCoreEngineSettingsActionLabel(engineVersionStatus)
+          : homeCoreEngineActionLabel(engineVersionStatus),
+      icon: engineVersionStatus.updateAvailable
+          ? Icons.system_update_alt
+          : Icons.refresh,
+      enabled: !homeCoreEngineBusy(status),
+      onRun: onRepair,
+    ),
+    _ => null,
+  };
+}
+
 Future<HomeAppUpdateFeedback> runHomeAppUpdateCheck(
   AppUpdateService appUpdateService, {
   void Function(Object error, StackTrace stack)? onError,
@@ -954,7 +1028,16 @@ class HomeCoreSettingsSection extends StatelessWidget {
             final versionHint = showVersionInfo
                 ? _homeCoreEngineVersionHint(engineVersionStatus)
                 : null;
-            final actionLabel = repairActionLabelBuilder(engineVersionStatus);
+            final action = homeCoreEngineActionSpec(
+              status: status,
+              engineVersionStatus: engineVersionStatus,
+              onRepair: coreLifecycleService.repair,
+              onRepairWithElevation: coreLifecycleService.repairWithElevation,
+              settingsLabel: true,
+            )!;
+            final actionLabel = action.primary
+                ? action.label
+                : repairActionLabelBuilder(engineVersionStatus);
             final machineId = status.machineId?.trim();
             final extraInfo =
                 extraInfoBuilder?.call(status, engineVersionStatus) ??
@@ -1061,30 +1144,16 @@ class HomeCoreSettingsSection extends StatelessWidget {
                   spacing: 12,
                   runSpacing: 8,
                   children: [
-                    if (needsElevation)
-                      _HomeSettingsControlBoundary(
-                        child: FButton(
-                          onPress: () => unawaited(
-                            coreLifecycleService.repairWithElevation(),
-                          ),
-                          child: const Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(Icons.admin_panel_settings, size: 16),
-                              SizedBox(width: 8),
-                              Text('以管理员身份运行'),
-                            ],
-                          ),
-                        ),
-                      ),
                     _HomeSettingsControlBoundary(
                       child: FButton(
-                        variant: .outline,
-                        onPress: () => unawaited(coreLifecycleService.repair()),
+                        variant: action.primary ? .primary : .outline,
+                        onPress: action.canRun
+                            ? () => unawaited(action.onRun!())
+                            : null,
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            const Icon(Icons.refresh, size: 16),
+                            Icon(action.icon, size: 16),
                             const SizedBox(width: 8),
                             Text(actionLabel),
                           ],
