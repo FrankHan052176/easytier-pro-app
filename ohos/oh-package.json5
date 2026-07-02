@@ -6,7 +6,9 @@
   "main": "",
   "author": "",
   "license": "",
-  "dependencies": {},
+  "dependencies": {
+    "easytier-ohrs": "file:./easytier-ohrs-0.0.1.har"
+  },
   "devDependencies": {
     "@ohos/hypium": "1.0.6"
   }
