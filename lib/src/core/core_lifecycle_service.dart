@@ -17,22 +17,26 @@ part 'desktop_core_runtime.dart';
 part 'android_core_runtime.dart';
 
 @visibleForTesting
-typedef CoreElevatedRepairRunner =
-    Future<Map<String, dynamic>> Function(CoreBootstrapConfig bootstrap);
+typedef CoreElevatedDesktopCommandRunner =
+    Future<Map<String, dynamic>> Function(
+  String command,
+  Map<String, Object?> request,
+);
 
 class CoreLifecycleService {
   CoreLifecycleService({
     required this.authService,
     CorePlatformRuntime? runtime,
     this.appClientReporter,
-    @visibleForTesting CoreElevatedRepairRunner? elevatedRepairRunner,
+    @visibleForTesting
+    CoreElevatedDesktopCommandRunner? elevatedDesktopCommandRunner,
     this.engineVersionCheckInterval = const Duration(hours: 1),
     this.engineVersionCheckTimeout = const Duration(seconds: 20),
   }) : status = ValueNotifier<CoreRunStatus>(CoreRunStatus.signedOut),
        engineVersionStatus = ValueNotifier<CoreEngineVersionStatus>(
          CoreEngineVersionStatus.unknown,
        ) {
-    _elevatedRepairRunner = elevatedRepairRunner;
+    _elevatedDesktopCommandRunner = elevatedDesktopCommandRunner;
     _runtime = runtime ?? CorePlatformRuntime.current(this);
     _runtimeEvents = _runtime.events.listen(_handleRuntimeEvent);
   }
@@ -55,7 +59,7 @@ class CoreLifecycleService {
   Future<void>? _engineVersionCheckInFlight;
   int _engineVersionCheckGeneration = 0;
   int _engineVersionCheckPauseDepth = 0;
-  late final CoreElevatedRepairRunner? _elevatedRepairRunner;
+  late final CoreElevatedDesktopCommandRunner? _elevatedDesktopCommandRunner;
 
   bool get _engineVersionChecksPaused => _engineVersionCheckPauseDepth > 0;
 
@@ -126,6 +130,25 @@ class CoreLifecycleService {
         );
         status.value = CoreRunStatus.signedOut;
       } catch (error) {
+        if (error is _ElevationRequiredException) {
+          try {
+            await _stopRuntimeWithElevation();
+            status.value = CoreRunStatus.signedOut;
+            return;
+          } catch (elevationError) {
+            _logger.error(
+              'core',
+              'Elevated logout cleanup failed',
+              context: {'error': elevationError.toString()},
+            );
+            status.value = CoreRunStatus(
+              phase: CoreRunPhase.error,
+              message: '退出登录后卸载失败',
+              lastError: _normalizeError(elevationError),
+            );
+            return;
+          }
+        }
         _logger.error(
           'core',
           'Logout cleanup failed',
@@ -183,6 +206,22 @@ class CoreLifecycleService {
         rethrow;
       }
     });
+  }
+
+  Future<void> _stopRuntimeWithElevation() async {
+    status.value = const CoreRunStatus(
+      phase: CoreRunPhase.repairing,
+      message: '正在以管理员身份停止连接引擎...',
+    );
+    _logger.info('core', 'Elevated logout cleanup requested');
+
+    await _runElevatedDesktopCommand('uninstall', const {'purge': false});
+    _cliPath = null;
+    _logger.info(
+      'core',
+      'Elevated logout cleanup completed',
+      context: {'runtime': _runtime.runtimeType.toString()},
+    );
   }
 
   Future<void> repair() {
@@ -287,136 +326,22 @@ class CoreLifecycleService {
         );
         _logger.info('core', 'Elevation repair requested');
 
-        File? inputFile;
-        File? outputFile;
-        File? errorFile;
-        File? commandFile;
-        Directory? elevationTempDir;
         try {
           final bootstrap = await authService.prepareCoreBootstrap(
             accessToken: session.tokenSet.accessToken,
             workspaceId: workspace.id,
           );
-
-          final elevatedRepairRunner = _elevatedRepairRunner;
-          if (elevatedRepairRunner != null) {
-            final event = await elevatedRepairRunner(bootstrap);
-            _completeElevatedInstall(
-              session: session,
-              bootstrap: bootstrap,
-              event: event,
-            );
-            return;
-          }
-
-          elevationTempDir = await Directory.systemTemp.createTemp(
-            'easytier_pro_elevated_',
-          );
-          await _restrictOwnerOnlyPermissions(
-            elevationTempDir,
-            ownerExecutable: true,
-          );
-          inputFile = File(_joinPath(elevationTempDir.path, 'bootstrap.json'));
-          outputFile = File(_joinPath(elevationTempDir.path, 'output.json'));
-          errorFile = File(_joinPath(elevationTempDir.path, 'error.json'));
-
           final request = {
             'bootstrap_token': bootstrap.bootstrapToken,
             'version': bootstrap.version,
             'config_server': bootstrap.configServer,
           };
-          await inputFile.writeAsString(jsonEncode(request), encoding: utf8);
-          await _restrictOwnerOnlyPermissions(inputFile);
-
-          final installerPath = _resolveInstallerExecutable();
-          commandFile = await _writeElevatedInstallCommandFile(
-            tempDir: elevationTempDir,
-            installerPath: installerPath,
-            inputFile: inputFile,
-            outputFile: outputFile,
-            errorFile: errorFile,
+          final event = await _runElevatedDesktopCommand('install', request);
+          _completeElevatedInstall(
+            session: session,
+            bootstrap: bootstrap,
+            event: event,
           );
-
-          _logger.info(
-            'core.desktop',
-            'Launching elevated installer',
-            context: {
-              'command_file': commandFile.path,
-              'installer': installerPath,
-              'platform': Platform.operatingSystem,
-            },
-          );
-
-          final elevationResult = await _runElevatedInstaller(commandFile.path);
-          _logger.info(
-            'core.desktop',
-            'Elevated installer process completed',
-            context: {
-              'exit_code': elevationResult,
-              'output_exists': outputFile.existsSync(),
-              'error_exists': errorFile.existsSync(),
-            },
-          );
-
-          if (outputFile.existsSync()) {
-            final outputText = await outputFile.readAsString();
-            final lines = const LineSplitter().convert(outputText);
-            final events = lines
-                .where((line) => line.trim().isNotEmpty)
-                .map((line) {
-                  try {
-                    final decoded = jsonDecode(line);
-                    if (decoded is Map<String, dynamic>) {
-                      return decoded;
-                    }
-                  } catch (_) {
-                    // ignore
-                  }
-                  return null;
-                })
-                .whereType<Map<String, dynamic>>()
-                .toList(growable: false);
-
-            if (events.isNotEmpty) {
-              final errorEvent = events.firstWhere(
-                (event) => event['event'] == 'error',
-                orElse: () => const <String, dynamic>{},
-              );
-              if (errorEvent.isNotEmpty) {
-                final data =
-                    errorEvent['data'] as Map<String, dynamic>? ?? const {};
-                final message = data['message']?.toString() ?? '提权安装返回错误';
-                if (_isElevationRequired(
-                  0,
-                  message,
-                  includeUnixPermissionErrors: true,
-                )) {
-                  throw _ElevationRequiredException(message);
-                }
-                throw StateError(message);
-              }
-
-              for (var index = events.length - 1; index >= 0; index--) {
-                final event = events[index];
-                if (event['event'] == 'finished') {
-                  _completeElevatedInstall(
-                    session: session,
-                    bootstrap: bootstrap,
-                    event: event,
-                  );
-                  return;
-                }
-              }
-            }
-          }
-
-          final errorText = errorFile.existsSync()
-              ? await errorFile.readAsString()
-              : '';
-          if (errorText.isNotEmpty) {
-            throw StateError(errorText);
-          }
-          throw StateError('提权安装没有返回有效结果');
         } catch (error) {
           _logger.error(
             'core',
@@ -436,14 +361,6 @@ class CoreLifecycleService {
             message: '连接引擎启动失败',
             lastError: _normalizeError(error),
           );
-        } finally {
-          await _cleanupElevationTempFiles([
-            ?inputFile,
-            ?outputFile,
-            ?errorFile,
-            ?commandFile,
-          ]);
-          await _cleanupElevationTempDirectory(elevationTempDir);
         }
       } finally {
         _resumeEngineVersionChecks();
@@ -476,7 +393,154 @@ class CoreLifecycleService {
     _reportMachineReady(session, machineId);
   }
 
-  Future<File> _writeElevatedInstallCommandFile({
+  Future<Map<String, dynamic>> _runElevatedDesktopCommand(
+    String command,
+    Map<String, Object?> request,
+  ) async {
+    if (command != 'install' && command != 'uninstall') {
+      throw ArgumentError.value(command, 'command', '不支持的提权 desktop 命令');
+    }
+
+    final elevatedRunner = _elevatedDesktopCommandRunner;
+    if (elevatedRunner != null) {
+      return elevatedRunner(command, request);
+    }
+
+    File? inputFile;
+    File? outputFile;
+    File? errorFile;
+    File? commandFile;
+    Directory? elevationTempDir;
+    try {
+      elevationTempDir = await Directory.systemTemp.createTemp(
+        'easytier_pro_elevated_',
+      );
+      await _restrictOwnerOnlyPermissions(
+        elevationTempDir,
+        ownerExecutable: true,
+      );
+      inputFile = File(_joinPath(elevationTempDir.path, 'request.json'));
+      outputFile = File(_joinPath(elevationTempDir.path, 'output.json'));
+      errorFile = File(_joinPath(elevationTempDir.path, 'error.json'));
+
+      await inputFile.writeAsString(jsonEncode(request), encoding: utf8);
+      await _restrictOwnerOnlyPermissions(inputFile);
+
+      final installerPath = _resolveInstallerExecutable();
+      commandFile = await _writeElevatedDesktopCommandFile(
+        command: command,
+        tempDir: elevationTempDir,
+        installerPath: installerPath,
+        inputFile: inputFile,
+        outputFile: outputFile,
+        errorFile: errorFile,
+      );
+
+      _logger.info(
+        'core.desktop',
+        'Launching elevated desktop command',
+        context: {
+          'command': command,
+          'command_file': commandFile.path,
+          'installer': installerPath,
+          'platform': Platform.operatingSystem,
+        },
+      );
+
+      final elevationResult = await _runElevatedInstaller(commandFile.path);
+      _logger.info(
+        'core.desktop',
+        'Elevated desktop command process completed',
+        context: {
+          'command': command,
+          'exit_code': elevationResult,
+          'output_exists': outputFile.existsSync(),
+          'error_exists': errorFile.existsSync(),
+        },
+      );
+
+      return await _readElevatedDesktopCommandResult(
+        command,
+        outputFile,
+        errorFile,
+      );
+    } finally {
+      await _cleanupElevationTempFiles([
+        ?inputFile,
+        ?outputFile,
+        ?errorFile,
+        ?commandFile,
+      ]);
+      await _cleanupElevationTempDirectory(elevationTempDir);
+    }
+  }
+
+  Future<Map<String, dynamic>> _readElevatedDesktopCommandResult(
+    String command,
+    File outputFile,
+    File errorFile,
+  ) async {
+    if (outputFile.existsSync()) {
+      final outputText = await outputFile.readAsString();
+      final events = _parseDesktopCommandEvents(outputText);
+
+      if (events.isNotEmpty) {
+        final errorEvent = events.firstWhere(
+          (event) => event['event'] == 'error',
+          orElse: () => const <String, dynamic>{},
+        );
+        if (errorEvent.isNotEmpty) {
+          final data = errorEvent['data'] as Map<String, dynamic>? ?? const {};
+          final message = data['message']?.toString() ?? '提权操作返回错误';
+          if (_isElevationRequired(
+            0,
+            message,
+            includeUnixPermissionErrors: true,
+          )) {
+            throw _ElevationRequiredException(message);
+          }
+          throw StateError(message);
+        }
+
+        for (var index = events.length - 1; index >= 0; index--) {
+          final event = events[index];
+          if (event['event'] == 'finished') {
+            return event;
+          }
+        }
+      }
+    }
+
+    final errorText = errorFile.existsSync()
+        ? await errorFile.readAsString()
+        : '';
+    if (errorText.isNotEmpty) {
+      throw StateError(errorText);
+    }
+    throw StateError('提权 $command 没有返回有效结果');
+  }
+
+  List<Map<String, dynamic>> _parseDesktopCommandEvents(String outputText) {
+    final lines = const LineSplitter().convert(outputText);
+    return lines
+        .where((line) => line.trim().isNotEmpty)
+        .map((line) {
+          try {
+            final decoded = jsonDecode(line);
+            if (decoded is Map<String, dynamic>) {
+              return decoded;
+            }
+          } catch (_) {
+            // Ignore malformed lines and rely on process exit and stderr.
+          }
+          return null;
+        })
+        .whereType<Map<String, dynamic>>()
+        .toList(growable: false);
+  }
+
+  Future<File> _writeElevatedDesktopCommandFile({
+    required String command,
     required Directory tempDir,
     required String installerPath,
     required File inputFile,
@@ -490,7 +554,7 @@ class CoreLifecycleService {
           '''@echo off
 chcp 65001 >nul
 cd /d "$installerDir"
-"$installerPath" desktop install --json < "${inputFile.path}" > "${outputFile.path}" 2> "${errorFile.path}"
+"$installerPath" desktop $command --json < "${inputFile.path}" > "${outputFile.path}" 2> "${errorFile.path}"
 ''';
       await batFile.writeAsString(batContent, encoding: utf8);
       return batFile;
@@ -508,14 +572,14 @@ cd /d "$installerDir"
           '''#!/bin/sh
 set -eu
 cd ${_quotePosixShellArgument(installerDir)}
-${_quotePosixShellArgument(installerPath)} desktop install --json < ${_quotePosixShellArgument(inputFile.path)} > ${_quotePosixShellArgument(outputFile.path)} 2> ${_quotePosixShellArgument(errorFile.path)}
+${_quotePosixShellArgument(installerPath)} desktop ${_quotePosixShellArgument(command)} --json < ${_quotePosixShellArgument(inputFile.path)} > ${_quotePosixShellArgument(outputFile.path)} 2> ${_quotePosixShellArgument(errorFile.path)}
 ''';
       await scriptFile.writeAsString(scriptContent, encoding: utf8);
       await _restrictOwnerOnlyPermissions(scriptFile);
       return scriptFile;
     }
 
-    throw StateError('当前平台不支持提权安装');
+    throw StateError('当前平台不支持提权操作');
   }
 
   Future<int> _runElevatedInstaller(String commandPath) {
@@ -525,7 +589,7 @@ ${_quotePosixShellArgument(installerPath)} desktop install --json < ${_quotePosi
     if (Platform.isMacOS) {
       return _runElevatedWithAppleScript(commandPath);
     }
-    throw StateError('当前平台不支持提权安装');
+    throw StateError('当前平台不支持提权操作');
   }
 
   Future<int> _runElevatedWithPowerShell(String batPath) async {
@@ -1422,6 +1486,11 @@ ${_quotePosixShellArgument(installerPath)} desktop install --json < ${_quotePosi
   }
 
   @visibleForTesting
+  static Object elevationRequiredForTesting(String message) {
+    return _ElevationRequiredException(message);
+  }
+
+  @visibleForTesting
   static Map<String, CoreNetworkTrafficTotals>
   parseNetworkTrafficTotalsFromJson(String output, {DateTime? sampledAt}) {
     final decoded = jsonDecode(output);
@@ -1680,6 +1749,8 @@ ${_quotePosixShellArgument(installerPath)} desktop install --json < ${_quotePosi
     return text.contains('must be run as root') ||
         text.contains('requires root') ||
         text.contains('administrator privileges') ||
+        text.contains('卸载服务失败') ||
+        text.contains('failed to uninstall service') ||
         _isProtectedInstallPathPermissionError(text);
   }
 

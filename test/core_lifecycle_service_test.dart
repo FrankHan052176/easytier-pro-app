@@ -819,6 +819,29 @@ void main() {
       expect(
         CoreLifecycleService.isElevationRequiredForDesktopCommand(
           1,
+          'desktop uninstall must be run as root',
+          includeUnixPermissionErrors: true,
+        ),
+        isTrue,
+      );
+      expect(
+        CoreLifecycleService.isElevationRequiredForDesktopCommand(
+          1,
+          '卸载服务失败',
+        ),
+        isFalse,
+      );
+      expect(
+        CoreLifecycleService.isElevationRequiredForDesktopCommand(
+          1,
+          '卸载服务失败',
+          includeUnixPermissionErrors: true,
+        ),
+        isTrue,
+      );
+      expect(
+        CoreLifecycleService.isElevationRequiredForDesktopCommand(
+          1,
           '无法写入 /usr/local/easytier',
         ),
         isFalse,
@@ -901,7 +924,8 @@ void main() {
           authService: authService,
           runtime: runtime,
           engineVersionCheckInterval: Duration.zero,
-          elevatedRepairRunner: (bootstrap) async {
+          elevatedDesktopCommandRunner: (command, request) async {
+            expect(command, 'install');
             return const <String, dynamic>{
               'event': 'finished',
               'data': <String, dynamic>{
@@ -974,6 +998,39 @@ void main() {
       expect(authService.prepareBootstrapCount, 2);
       expect(service.status.value.phase, CoreRunPhase.error);
       expect(service.status.value.message, '登录态已失效，连接已停止');
+    });
+
+    test('uses elevated uninstall when logout cleanup needs elevation', () async {
+      final elevatedCommands = <String>[];
+      final elevatedRequests = <Map<String, Object?>>[];
+      final authService = _LifecycleAuthService();
+      final runtime = _LifecycleRuntime()
+        ..stopError = CoreLifecycleService.elevationRequiredForTesting(
+          'desktop uninstall must be run as root',
+        );
+      final service = CoreLifecycleService(
+        authService: authService,
+        runtime: runtime,
+        elevatedDesktopCommandRunner: (command, request) async {
+          elevatedCommands.add(command);
+          elevatedRequests.add(request);
+          return const <String, dynamic>{
+            'event': 'finished',
+            'data': <String, dynamic>{},
+          };
+        },
+      );
+      addTearDown(service.dispose);
+
+      await service.bindSession(_session('tenant-1'));
+      await service.onLogout();
+
+      expect(runtime.stopCount, 1);
+      expect(elevatedCommands, ['uninstall']);
+      expect(elevatedRequests, [
+        {'purge': false},
+      ]);
+      expect(service.status.value.phase, CoreRunPhase.signedOut);
     });
   });
 
