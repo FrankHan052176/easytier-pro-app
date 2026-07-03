@@ -28,6 +28,13 @@ enum AuthStage {
   error,
 }
 
+List<String> get _codeFontFamilyFallback {
+  if (!kIsWeb && Platform.operatingSystem == 'ohos') {
+    return const <String>['HarmonyOS Sans SC', 'HarmonyOS Sans', 'sans-serif'];
+  }
+  return const <String>['Noto Sans SC', 'PingFang SC', 'Microsoft YaHei'];
+}
+
 class AuthGate extends StatefulWidget {
   const AuthGate({
     super.key,
@@ -1430,11 +1437,7 @@ class _AuthCodeBlock extends StatelessWidget {
                   value,
                   style: theme.textTheme.bodyMedium?.copyWith(
                     fontFamily: 'monospace',
-                    fontFamilyFallback: const <String>[
-                      'Noto Sans SC',
-                      'PingFang SC',
-                      'Microsoft YaHei',
-                    ],
+                    fontFamilyFallback: _codeFontFamilyFallback,
                     fontWeight: FontWeight.w600,
                   ),
                 ),

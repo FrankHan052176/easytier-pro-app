@@ -56,10 +56,9 @@ class _NodeMetaLine extends StatelessWidget {
       child: SelectableTextHitBoundary(
         child: Text(
           parts.join('  ·  '),
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-            color: const Color(0xFF94A3B8),
-            fontFamily: 'Inter',
-          ),
+          style: Theme.of(
+            context,
+          ).textTheme.bodySmall?.copyWith(color: const Color(0xFF94A3B8)),
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
         ),

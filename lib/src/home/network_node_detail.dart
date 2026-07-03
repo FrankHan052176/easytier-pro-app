@@ -139,7 +139,6 @@ class _DetailChip extends StatelessWidget {
                         fontSize: 12,
                         color: Color(0xFF0F172A),
                         fontWeight: FontWeight.w600,
-                        fontFamily: 'Inter',
                         height: 1.2,
                       ),
                     ),

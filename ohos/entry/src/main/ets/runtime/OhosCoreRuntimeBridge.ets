@@ -2,7 +2,7 @@ import { common, Context, Want } from '@kit.AbilityKit';
 import { preferences } from '@kit.ArkData';
 import { deviceInfo } from '@kit.BasicServicesKit';
 import { util } from '@kit.ArkTS';
-import { connection, vpnExtension } from '@kit.NetworkKit';
+import { vpnExtension } from '@kit.NetworkKit';
 import {
   AbilityAware,
   AbilityPluginBinding,
@@ -16,7 +16,13 @@ import {
   MethodResult,
   StreamHandler,
 } from '@ohos/flutter_ohos';
-import easytier from 'easytier-ohrs';
+import {
+  RuntimeIpcClient,
+  RuntimeParams,
+  RuntimeValue,
+  RuntimeVpnConfig,
+  runtimeSocketPath,
+} from './OhosCoreRuntimeIpc';
 
 const METHOD_CHANNEL_NAME = 'net.easytier.pro/core_runtime';
 const EVENT_CHANNEL_NAME = 'net.easytier.pro/core_runtime_events';
@@ -24,23 +30,14 @@ const BUNDLE_NAME = 'net.easytier.pro';
 const VPN_ABILITY_NAME = 'EasyTierVpnAbility';
 const PREFERENCES_NAME = 'EasyTierProCoreRuntime';
 const MACHINE_ID_KEY = 'machine_id';
-const IPV4_FAMILY = 1;
-const DEFAULT_MTU = 1380;
-const DEFAULT_DNS = '223.5.5.5';
-const EVENT_POLL_INTERVAL_MS = 500;
 const MACHINE_ID_UUID_PATTERN =
   /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
 
-interface CidrParts {
-  address: string;
-  prefix: number;
-}
-
 class RuntimeEvent {
   type: string;
-  payload: Object;
+  payload: RuntimeValue;
 
-  constructor(type: string, payload: Object) {
+  constructor(type: string, payload: RuntimeValue) {
     this.type = type;
     this.payload = payload;
   }
@@ -69,36 +66,6 @@ class ConfigServerStartedPayload {
   }
 }
 
-class VpnStartedPayload {
-  instanceName: string;
-  instance_name: string;
-  instanceId: string;
-  instance_id: string;
-  fd: number;
-
-  constructor(instanceName: string, instanceId: string, fd: number) {
-    this.instanceName = instanceName;
-    this.instance_name = instanceName;
-    this.instanceId = instanceId;
-    this.instance_id = instanceId;
-    this.fd = fd;
-  }
-}
-
-class VpnStoppedPayload {
-  instanceName: string;
-  instance_name: string;
-  instanceId: string;
-  instance_id: string;
-
-  constructor(instanceName: string, instanceId: string) {
-    this.instanceName = instanceName;
-    this.instance_name = instanceName;
-    this.instanceId = instanceId;
-    this.instance_id = instanceId;
-  }
-}
-
 class DetachedStreamHandler implements StreamHandler {
   onListen(args: Object, events: EventSink): void {
     events.endOfStream();
@@ -114,13 +81,10 @@ export default class OhosCoreRuntimeBridge implements FlutterPlugin, MethodCallH
   private eventSink: EventSink | null = null;
   private context: Context | null = null;
   private abilityContext: common.UIAbilityContext | null = null;
-  private vpnConnection: vpnExtension.VpnConnection | null = null;
-  private eventTimer: number | null = null;
   private lastError: string = '';
-  private coreInitialized: boolean = false;
-  private processNetProtected: boolean = false;
-  private activeVpnInstanceId: string = '';
-  private activeVpnInstanceName: string = '';
+  private runtimeClient: RuntimeIpcClient = new RuntimeIpcClient((type: string, payload: RuntimeValue) => {
+    this.emitEvent(type, payload);
+  });
 
   getUniqueClassName(): string {
     return 'OhosCoreRuntimeBridge';
@@ -135,7 +99,7 @@ export default class OhosCoreRuntimeBridge implements FlutterPlugin, MethodCallH
   }
 
   onDetachedFromEngine(binding: FlutterPluginBinding): void {
-    this.stopEventPolling();
+    this.runtimeClient.close();
     this.channel?.setMethodCallHandler(null);
     this.eventChannel?.setStreamHandler(new DetachedStreamHandler());
     this.channel = null;
@@ -154,12 +118,10 @@ export default class OhosCoreRuntimeBridge implements FlutterPlugin, MethodCallH
 
   onListen(args: Object, events: EventSink): void {
     this.eventSink = events;
-    this.startEventPolling();
   }
 
   onCancel(args: Object): void {
     this.eventSink = null;
-    this.stopEventPolling();
   }
 
   onMethodCall(call: MethodCall, result: MethodResult): void {
@@ -175,35 +137,28 @@ export default class OhosCoreRuntimeBridge implements FlutterPlugin, MethodCallH
           this.startConfigServerClient(call, result);
           return;
         case 'stopConfigServerClient':
-          easytier.stopConfigServerClient();
-          this.emitEvent('config_server_stopped', new EmptyPayload());
-          result.success(null);
+          this.forwardRuntimeCall('stopConfigServerClient', new RuntimeParams(), result);
           return;
         case 'stopRuntime':
           this.stopRuntime(result);
           return;
         case 'isConfigServerClientConnected':
-          result.success(easytier.isConfigServerClientConnected());
+          this.forwardRuntimeCall('isConfigServerClientConnected', new RuntimeParams(), result, false);
           return;
         case 'listInstances':
-          result.success(easytier.listInstancesJson());
+          this.forwardRuntimeCall('listInstances', new RuntimeParams(), result, '{}');
           return;
         case 'callJsonRpc':
-          result.success(easytier.callJsonRpc(
-            this.readStringArgument(call, 'serviceName'),
-            this.readStringArgument(call, 'methodName'),
-            this.readStringArgument(call, 'payloadJson'),
-          ));
+          this.forwardRuntimeCall('callJsonRpc', this.readJsonRpcParams(call), result, '{}');
           return;
         case 'retainNetworkInstance':
           result.success(null);
           return;
         case 'stopNetworkInstances':
-          this.stopNetworkInstances(call);
-          result.success(null);
+          this.forwardRuntimeCall('stopNetworkInstances', this.readStopNetworkInstancesParams(call), result);
           return;
         case 'stopVpn':
-          this.stopVpn(result);
+          this.forwardRuntimeCall('stopVpn', new RuntimeParams(), result);
           return;
         case 'prepareNotifications':
           result.success(true);
@@ -212,7 +167,7 @@ export default class OhosCoreRuntimeBridge implements FlutterPlugin, MethodCallH
           this.prepareVpn(result);
           return;
         case 'startVpn':
-          this.startVpn(call, result);
+          this.forwardRuntimeCall('startVpn', this.readStartVpnParams(call), result);
           return;
         case 'shareFile':
           result.success(false);
@@ -230,60 +185,60 @@ export default class OhosCoreRuntimeBridge implements FlutterPlugin, MethodCallH
     }
   }
 
-  private ensureCoreInitialized(): void {
-    if (this.coreInitialized) {
-      return;
-    }
-    const filesDir = this.context?.filesDir ?? this.abilityContext?.filesDir;
-    if (filesDir && filesDir.length > 0) {
-      easytier.initLogManager(filesDir, 'entry');
-      easytier.configureLogManager(true, true);
-      easytier.initConfigStore(filesDir);
-    }
-    easytier.initPanicHook();
-    this.coreInitialized = true;
-  }
-
   private startConfigServerClient(call: MethodCall, result: MethodResult): void {
-    this.ensureCoreInitialized();
     const url = this.readStringArgument(call, 'url');
     const hostname = this.readStringArgument(call, 'hostname');
     const machineId = this.readStringArgument(call, 'machineId');
     const secureMode = this.readBoolArgument(call, 'secureMode');
-    const ok = easytier.startConfigServerClient(url, hostname, machineId, secureMode);
-    if (!ok) {
-      this.lastError = 'HarmonyOS EasyTier config server client start failed';
-      result.error('OHOS_CORE_START_FAILED', this.lastError, null);
+    const filesDir = this.filesDir();
+    if (filesDir.length === 0) {
+      this.lastError = 'HarmonyOS filesDir is unavailable';
+      result.error('OHOS_RUNTIME_CONTEXT_MISSING', this.lastError, null);
       return;
     }
-    this.emitEvent('config_server_started', new ConfigServerStartedPayload(url, hostname, machineId));
-    this.startEventPolling();
-    result.success(null);
+    const want: Want = {
+      bundleName: BUNDLE_NAME,
+      abilityName: VPN_ABILITY_NAME,
+      parameters: {
+        url,
+        hostname,
+        machineId,
+        secureMode,
+        socketFilesDir: filesDir,
+      },
+    };
+    vpnExtension.startVpnExtensionAbility(want)
+      .then(() => this.runtimeClient.connect(runtimeSocketPath(filesDir)))
+      .then(() => {
+        this.emitEvent('config_server_started', new ConfigServerStartedPayload(url, hostname, machineId));
+        result.success(null);
+      })
+      .catch((error: Error) => {
+        this.lastError = `HarmonyOS EasyTier VPN extension start failed: ${this.errorMessage(error)}`;
+        result.error('OHOS_CORE_START_FAILED', this.lastError, null);
+      });
   }
 
   private stopRuntime(result: MethodResult): void {
-    easytier.stopRuntime();
-    this.destroyVpnConnection()
+    const want: Want = {
+      bundleName: BUNDLE_NAME,
+      abilityName: VPN_ABILITY_NAME,
+    };
+    const stopCore = this.runtimeClient.isConnected()
+      ? this.runtimeClient.request('stopRuntime', new RuntimeParams()).catch((_error: Error) => null)
+      : Promise.resolve(null);
+    stopCore
+      .then(() => vpnExtension.stopVpnExtensionAbility(want))
       .then(() => {
-        this.activeVpnInstanceId = '';
-        this.activeVpnInstanceName = '';
+        this.runtimeClient.close();
         this.emitEvent('config_server_stopped', new EmptyPayload());
         result.success(null);
       })
       .catch((error: Error) => {
+        this.runtimeClient.close();
         this.lastError = this.errorMessage(error);
-        result.error('OHOS_VPN_STOP_FAILED', this.lastError, null);
+        result.error('OHOS_RUNTIME_STOP_FAILED', this.lastError, null);
       });
-  }
-
-  private stopNetworkInstances(call: MethodCall): void {
-    const instanceNames = this.readStringArrayArgument(call, 'instanceNames');
-    const instanceIds = instanceNames
-      .map((name: string) => easytier.resolveInstanceId(name) ?? name)
-      .filter((id: string) => id.length > 0);
-    if (instanceIds.length > 0) {
-      easytier.stopNetworkInstance(instanceIds);
-    }
   }
 
   private prepareVpn(result: MethodResult): void {
@@ -293,7 +248,6 @@ export default class OhosCoreRuntimeBridge implements FlutterPlugin, MethodCallH
     };
     vpnExtension.startVpnExtensionAbility(want)
       .then(() => vpnExtension.stopVpnExtensionAbility(want))
-      .then(() => this.protectProcessNetwork())
       .then(() => {
         this.emitEvent('vpn_permission_granted', new EmptyPayload());
         result.success(true);
@@ -305,203 +259,38 @@ export default class OhosCoreRuntimeBridge implements FlutterPlugin, MethodCallH
       });
   }
 
-  private startVpn(call: MethodCall, result: MethodResult): void {
-    this.ensureCoreInitialized();
-    const instanceName = this.readStringArgument(call, 'instanceName');
-    const vpnConfig = this.readMethodCallArgument(call, 'vpnConfig');
-    const instanceId = easytier.resolveInstanceId(instanceName) ?? instanceName;
-    if (instanceId.length === 0) {
-      this.lastError = 'HarmonyOS VPN instance id is empty';
-      result.error('OHOS_VPN_INSTANCE_MISSING', this.lastError, null);
-      return;
-    }
-
-    const config = this.buildVpnConfig(vpnConfig);
-    this.createVpnConnection()
-      .then((connection) => this.protectProcessNetwork().then(() => connection))
-      .then((connection) => connection.destroy().then(() => connection.create(config)))
-      .then((fd: number) => {
-        if (!easytier.setTunFd(instanceId, fd)) {
-          this.lastError = `HarmonyOS setTunFd failed for ${instanceId}`;
-          result.error('OHOS_SET_TUN_FD_FAILED', this.lastError, null);
-          return;
-        }
-        this.activeVpnInstanceId = instanceId;
-        this.activeVpnInstanceName = instanceName;
-        this.emitEvent('vpn_started', new VpnStartedPayload(instanceName, instanceId, fd));
-        result.success(null);
-      })
-      .catch((error: Error) => {
-        this.lastError = `HarmonyOS VPN start failed: ${this.errorMessage(error)}`;
-        result.error('OHOS_VPN_START_FAILED', this.lastError, null);
-      });
-  }
-
-  private stopVpn(result: MethodResult): void {
-    const instanceName = this.activeVpnInstanceName;
-    const instanceId = this.activeVpnInstanceId;
-    this.destroyVpnConnection()
-      .then(() => {
-        this.activeVpnInstanceName = '';
-        this.activeVpnInstanceId = '';
-        this.emitEvent('vpn_stopped', new VpnStoppedPayload(instanceName, instanceId));
-        result.success(null);
-      })
-      .catch((error: Error) => {
-        this.lastError = `HarmonyOS VPN stop failed: ${this.errorMessage(error)}`;
-        result.error('OHOS_VPN_STOP_FAILED', this.lastError, null);
-      });
-  }
-
-  private createVpnConnection(): Promise<vpnExtension.VpnConnection> {
-    if (this.vpnConnection !== null) {
-      return Promise.resolve(this.vpnConnection);
-    }
-    const context = this.abilityContext;
-    if (context === null) {
-      return Promise.reject(new Error('HarmonyOS ability context is unavailable'));
-    }
-    this.vpnConnection = vpnExtension.createVpnConnection(context as Object as vpnExtension.VpnExtensionContext);
-    return Promise.resolve(this.vpnConnection);
-  }
-
-  private protectProcessNetwork(): Promise<void> {
-    if (this.processNetProtected) {
-      return Promise.resolve();
-    }
-    return this.createVpnConnection()
-      .then((connection) => connection.protectProcessNet())
-      .then(() => {
-        this.processNetProtected = true;
-      });
-  }
-
-  private destroyVpnConnection(): Promise<void> {
-    if (this.vpnConnection === null) {
-      return Promise.resolve();
-    }
-    const connection = this.vpnConnection;
-    this.vpnConnection = null;
-    this.processNetProtected = false;
-    return connection.destroy();
-  }
-
-  private buildVpnConfig(input: MethodCall): vpnExtension.VpnConfig {
-    const addresses = this.readStringArrayFromValue(
-      this.readConfigValue(input, 'addresses') ?? this.readConfigValue(input, 'address'),
-    );
-    if (addresses.length === 0) {
-      throw new Error('HarmonyOS VPN config missing address');
-    }
-    const primaryAddress = this.parseCidr(addresses[0], 24);
-    const routes = this.readStringArrayFromValue(
-      this.readConfigValue(input, 'routes') ?? this.readConfigValue(input, 'route'),
-    )
-      .map((route: string): connection.RouteInfo | null => this.buildRouteInfo(route, primaryAddress.address))
-      .filter((route: connection.RouteInfo | null): boolean => route !== null) as connection.RouteInfo[];
-    const dns = this.readStringArrayFromValue(
-      this.readConfigValue(input, 'dns') ??
-        this.readConfigValue(input, 'dns_servers') ??
-        this.readConfigValue(input, 'dnsServers'),
-    );
-    const disallowedApplications = this.readStringArrayFromValue(
-      this.readConfigValue(input, 'disallowedApplications') ??
-        this.readConfigValue(input, 'disallowed_applications') ??
-        this.readConfigValue(input, 'disallowedPackages') ??
-        this.readConfigValue(input, 'disallowed_packages'),
-    );
-    const mtu = this.readNumberFromValue(this.readConfigValue(input, 'mtu'), DEFAULT_MTU);
-
-    return {
-      addresses: [
-        {
-          address: {
-            address: primaryAddress.address,
-            family: IPV4_FAMILY,
-          },
-          prefixLength: primaryAddress.prefix,
-        },
-      ],
-      routes,
-      dnsAddresses: dns.length > 0 ? dns : [DEFAULT_DNS],
-      blockedApplications: disallowedApplications,
-      trustedApplications: [],
-      mtu,
-    };
-  }
-
-  private buildRouteInfo(route: string, gateway: string): connection.RouteInfo | null {
-    try {
-      const cidr = this.parseCidr(route, 32);
-      return {
-        interface: 'vpn-tun',
-        destination: {
-          address: {
-            address: cidr.address,
-            family: IPV4_FAMILY,
-          },
-          prefixLength: cidr.prefix,
-        },
-        gateway: {
-          address: gateway,
-          family: IPV4_FAMILY,
-        },
-        hasGateway: true,
-        isDefaultRoute: cidr.address === '0.0.0.0' && cidr.prefix === 0,
-      };
-    } catch (_) {
-      return null;
-    }
-  }
-
-  private parseCidr(value: string, defaultPrefix: number): CidrParts {
-    const trimmed = value.trim();
-    if (trimmed.length === 0) {
-      throw new Error('empty cidr');
-    }
-    const parts = trimmed.split('/');
-    const address = parts[0].trim();
-    const prefix = parts.length > 1 ? Number.parseInt(parts[1], 10) : defaultPrefix;
-    if (address.length === 0 || Number.isNaN(prefix) || prefix < 0 || prefix > 32) {
-      throw new Error(`invalid cidr: ${value}`);
-    }
-    return { address, prefix };
-  }
-
-  private startEventPolling(): void {
-    if (this.eventTimer !== null) {
-      return;
-    }
-    this.eventTimer = setInterval(() => {
-      this.drainConfigServerEvents();
-    }, EVENT_POLL_INTERVAL_MS);
-  }
-
-  private stopEventPolling(): void {
-    if (this.eventTimer === null) {
-      return;
-    }
-    clearInterval(this.eventTimer);
-    this.eventTimer = null;
-  }
-
-  private drainConfigServerEvents(): void {
-    if (this.eventSink === null) {
-      return;
-    }
-    try {
-      const raw = easytier.drainConfigServerEvents();
-      const events = JSON.parse(raw) as Array<Object>;
-      for (const event of events) {
-        this.emitEvent('config_server', event);
+  private forwardRuntimeCall(
+    method: string,
+    params: RuntimeParams,
+    result: MethodResult,
+    fallback?: RuntimeValue,
+  ): void {
+    if (!this.runtimeClient.isConnected()) {
+      const filesDir = this.filesDir();
+      if (filesDir.length > 0) {
+        this.runtimeClient.connect(runtimeSocketPath(filesDir))
+          .then(() => this.forwardRuntimeCall(method, params, result, fallback))
+          .catch((error: Error) => this.completeRuntimeFailure(method, error, result, fallback));
+        return;
       }
-    } catch (error) {
-      this.lastError = `HarmonyOS config server event drain failed: ${this.errorMessage(error)}`;
-      this.emitEvent('error', new ErrorPayload(this.lastError));
     }
+    this.runtimeClient.request(method, params)
+      .then((value: RuntimeValue) => {
+        result.success(value);
+      })
+      .catch((error: Error) => this.completeRuntimeFailure(method, error, result, fallback));
   }
 
-  private emitEvent(type: string, payload: Object): void {
+  private completeRuntimeFailure(method: string, error: Error, result: MethodResult, fallback?: RuntimeValue): void {
+    this.lastError = this.errorMessage(error);
+    if (fallback !== undefined) {
+      result.success(fallback);
+      return;
+    }
+    result.error('OHOS_RUNTIME_IPC_FAILED', `HarmonyOS core runtime ${method} failed: ${this.lastError}`, null);
+  }
+
+  private emitEvent(type: string, payload: RuntimeValue): void {
     this.eventSink?.success(new RuntimeEvent(type, payload));
   }
 
@@ -514,13 +303,6 @@ export default class OhosCoreRuntimeBridge implements FlutterPlugin, MethodCallH
     if (MACHINE_ID_UUID_PATTERN.test(existing)) {
       return existing.toLowerCase();
     }
-    // The Rust core resolves this id with uuid::Uuid::parse_str and registers it
-    // to the console verbatim only when it is a canonical UUID. Any other string
-    // (including a legacy "harmony-<uuid>" value persisted by older builds) is
-    // hashed into a different UUID, so the device registered to the console can
-    // never be matched back by machineId and joining a network stays stuck at
-    // "waiting for device to register". Persist a lowercase canonical UUID so it
-    // matches uuid::Uuid::to_string() as reported back by the console.
     const machineId = util.generateRandomUUID().toLowerCase();
     store.putSync(MACHINE_ID_KEY, machineId);
     store.flushSync();
@@ -530,6 +312,10 @@ export default class OhosCoreRuntimeBridge implements FlutterPlugin, MethodCallH
   private getHostname(): string {
     const deviceName = deviceInfo.marketName || deviceInfo.productModel || deviceInfo.deviceType;
     return deviceName.length > 0 ? deviceName : 'HarmonyOS';
+  }
+
+  private filesDir(): string {
+    return this.context?.filesDir ?? this.abilityContext?.filesDir ?? '';
   }
 
   private readStringArgument(call: MethodCall, key: string): string {
@@ -542,37 +328,58 @@ export default class OhosCoreRuntimeBridge implements FlutterPlugin, MethodCallH
     return value === true;
   }
 
-  private readMethodCallArgument(call: MethodCall, key: string): MethodCall {
-    return new MethodCall(key, call.argument(key));
-  }
-
-  private readConfigValue(call: MethodCall, key: string): Object | undefined {
-    const value = call.argument(key) as Object | null;
-    return value === null || value === undefined ? undefined : value;
-  }
-
   private readStringArrayArgument(call: MethodCall, key: string): Array<string> {
     const value = call.argument(key) as Array<string> | null;
     return value ?? [];
   }
 
-  private readStringArrayFromValue(value: Object | undefined): Array<string> {
-    if (value === undefined || value === null) {
-      return [];
-    }
-    if (Array.isArray(value)) {
-      return value.map((item: Object): string => `${item}`).filter((item: string): boolean => item.length > 0);
-    }
-    const text = `${value}`;
-    return text.length > 0 ? [text] : [];
+  private readJsonRpcParams(call: MethodCall): RuntimeParams {
+    const params = new RuntimeParams();
+    params.serviceName = this.readStringArgument(call, 'serviceName');
+    params.methodName = this.readStringArgument(call, 'methodName');
+    params.domainName = this.readStringArgument(call, 'domainName');
+    params.payloadJson = this.readStringArgument(call, 'payloadJson');
+    return params;
   }
 
-  private readNumberFromValue(value: Object | undefined, fallback: number): number {
+  private readStopNetworkInstancesParams(call: MethodCall): RuntimeParams {
+    const params = new RuntimeParams();
+    params.instanceNames = this.readStringArrayArgument(call, 'instanceNames');
+    return params;
+  }
+
+  private readStartVpnParams(call: MethodCall): RuntimeParams {
+    const params = new RuntimeParams();
+    params.instanceName = this.readStringArgument(call, 'instanceName');
+    params.vpnConfig = this.readVpnConfigArgument(call, 'vpnConfig');
+    return params;
+  }
+
+  private readVpnConfigArgument(call: MethodCall, key: string): RuntimeVpnConfig {
+    const configCall = new MethodCall(key, call.argument(key));
+    const config = new RuntimeVpnConfig();
+    config.addresses = this.readStringArrayArgument(configCall, 'addresses');
+    config.address = this.readStringArgument(configCall, 'address');
+    config.routes = this.readStringArrayArgument(configCall, 'routes');
+    config.route = this.readStringArgument(configCall, 'route');
+    config.dns = this.readStringArrayArgument(configCall, 'dns');
+    config.dns_servers = this.readStringArrayArgument(configCall, 'dns_servers');
+    config.dnsServers = this.readStringArrayArgument(configCall, 'dnsServers');
+    config.disallowedApplications = this.readStringArrayArgument(configCall, 'disallowedApplications');
+    config.disallowed_applications = this.readStringArrayArgument(configCall, 'disallowed_applications');
+    config.disallowedPackages = this.readStringArrayArgument(configCall, 'disallowedPackages');
+    config.disallowed_packages = this.readStringArrayArgument(configCall, 'disallowed_packages');
+    config.mtu = this.readNumberArgument(configCall, 'mtu');
+    return config;
+  }
+
+  private readNumberArgument(call: MethodCall, key: string): number {
+    const value = call.argument(key) as Object | null;
     if (typeof value === 'number') {
       return value;
     }
     const parsed = Number.parseInt(`${value ?? ''}`, 10);
-    return Number.isNaN(parsed) ? fallback : parsed;
+    return Number.isNaN(parsed) ? 0 : parsed;
   }
 
   private errorMessage(error: Object): string {

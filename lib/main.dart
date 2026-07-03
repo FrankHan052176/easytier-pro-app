@@ -22,15 +22,25 @@ const Color _cardBackground = Color(0xFFFFFFFF);
 const Color _foreground = Color(0xFF0A0A0A);
 const Color _border = Color(0xFFE5E7EB);
 const Color _brandCoral = Color(0xFFFF5530);
-const String _appFontFamily = 'Inter';
 const String _deviceAuthReturnPath = '/device-complete';
 const double _foruiTypographyScale = 0.96;
-const List<String> _appFontFamilyFallback = <String>[
-  'Noto Sans SC',
-  'PingFang SC',
-  'Microsoft YaHei',
-  'Arial Unicode MS',
-];
+
+bool get _isOhos => !kIsWeb && defaultTargetPlatform.name == 'ohos';
+
+String get _appFontFamily => _isOhos ? 'HarmonyOS Sans SC' : 'Inter';
+
+List<String> get _appFontFamilyFallback {
+  if (_isOhos) {
+    return const <String>['HarmonyOS Sans', 'sans-serif'];
+  }
+  return const <String>[
+    'PingFang SC',
+    'Microsoft YaHei',
+    'Noto Sans CJK SC',
+    'Noto Sans SC',
+    'Arial Unicode MS',
+  ];
+}
 
 final FThemeData _foruiThemeData = _createForuiThemeData();
 
