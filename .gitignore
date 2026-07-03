@@ -55,3 +55,4 @@ sparkle_private_key.*
 # FVM Version Cache
 .fvm/
 conversation-*
+scripts
