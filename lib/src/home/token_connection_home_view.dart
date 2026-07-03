@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:forui/forui.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../auth/console_links.dart';
 import '../auth/console_auth_service.dart';
@@ -13,7 +14,6 @@ import '../desktop/app_update_service.dart';
 import '../desktop/tray_support.dart';
 import '../desktop/window_behavior_preferences.dart';
 import '../shared/app_smooth_scroll_view.dart';
-import '../shared/external_url_launcher.dart';
 import 'dashboard_navigation.dart';
 import 'home_shell.dart';
 import 'home_settings_page.dart';
@@ -407,7 +407,7 @@ class _TokenConnectionHomeViewState extends State<TokenConnectionHomeView>
   }
 
   Future<void> _openConsoleNetworks() async {
-    await launchExternalUrl(consoleNetworksUri(), scope: 'token.home.console');
+    await launchUrl(consoleNetworksUri(), mode: LaunchMode.externalApplication);
   }
 
   void _showOverview() {

@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:forui/forui.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../core/core_lifecycle_service.dart';
 import '../desktop/app_update_service.dart';
@@ -13,7 +14,6 @@ import '../desktop/window_behavior_preferences.dart';
 import '../logging/app_logger.dart';
 import '../home/token_connection_home_view.dart';
 import '../home/workspace_home_view.dart';
-import '../shared/external_url_launcher.dart';
 import 'console_links.dart';
 import 'console_auth_service.dart';
 
@@ -194,7 +194,7 @@ class _AuthGateState extends State<AuthGate> with WidgetsBindingObserver {
       return false;
     }
 
-    final opened = await launchExternalUrl(uri, scope: 'auth.browser');
+    final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
     if (!opened && mounted) {
       setState(() {
         _statusMessage = '未能自动打开浏览器，请手动复制链接完成授权。';
@@ -639,7 +639,7 @@ class _BrandFooterLinks extends StatelessWidget {
     if (uri == null) {
       return;
     }
-    await launchExternalUrl(uri, scope: 'auth.links');
+    await launchUrl(uri, mode: LaunchMode.externalApplication);
   }
 
   Widget _link(
@@ -695,7 +695,7 @@ class _LoginRequiredView extends StatelessWidget {
   final Future<void> Function() onTokenConnect;
 
   Future<void> _openConsole() async {
-    await launchExternalUrl(consoleHomeUri(), scope: 'auth.console');
+    await launchUrl(consoleHomeUri(), mode: LaunchMode.externalApplication);
   }
 
   @override
@@ -826,11 +826,14 @@ class _TokenConnectionViewState extends State<_TokenConnectionView> {
   }
 
   Future<void> _openConsoleEnrollmentKeys() async {
-    await launchExternalUrl(consoleEnrollmentKeysUri(), scope: 'auth.token');
+    await launchUrl(
+      consoleEnrollmentKeysUri(),
+      mode: LaunchMode.externalApplication,
+    );
   }
 
   Future<void> _openConsole() async {
-    await launchExternalUrl(consoleHomeUri(), scope: 'auth.console');
+    await launchUrl(consoleHomeUri(), mode: LaunchMode.externalApplication);
   }
 
   @override

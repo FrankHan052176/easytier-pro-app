@@ -28,6 +28,8 @@ const IPV4_FAMILY = 1;
 const DEFAULT_MTU = 1380;
 const DEFAULT_DNS = '223.5.5.5';
 const EVENT_POLL_INTERVAL_MS = 500;
+const MACHINE_ID_UUID_PATTERN =
+  /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
 
 interface CidrParts {
   address: string;
@@ -116,6 +118,7 @@ export default class OhosCoreRuntimeBridge implements FlutterPlugin, MethodCallH
   private eventTimer: number | null = null;
   private lastError: string = '';
   private coreInitialized: boolean = false;
+  private processNetProtected: boolean = false;
   private activeVpnInstanceId: string = '';
   private activeVpnInstanceName: string = '';
 
@@ -290,6 +293,7 @@ export default class OhosCoreRuntimeBridge implements FlutterPlugin, MethodCallH
     };
     vpnExtension.startVpnExtensionAbility(want)
       .then(() => vpnExtension.stopVpnExtensionAbility(want))
+      .then(() => this.protectProcessNetwork())
       .then(() => {
         this.emitEvent('vpn_permission_granted', new EmptyPayload());
         result.success(true);
@@ -314,6 +318,7 @@ export default class OhosCoreRuntimeBridge implements FlutterPlugin, MethodCallH
 
     const config = this.buildVpnConfig(vpnConfig);
     this.createVpnConnection()
+      .then((connection) => this.protectProcessNetwork().then(() => connection))
       .then((connection) => connection.destroy().then(() => connection.create(config)))
       .then((fd: number) => {
         if (!easytier.setTunFd(instanceId, fd)) {
@@ -360,12 +365,24 @@ export default class OhosCoreRuntimeBridge implements FlutterPlugin, MethodCallH
     return Promise.resolve(this.vpnConnection);
   }
 
+  private protectProcessNetwork(): Promise<void> {
+    if (this.processNetProtected) {
+      return Promise.resolve();
+    }
+    return this.createVpnConnection()
+      .then((connection) => connection.protectProcessNet())
+      .then(() => {
+        this.processNetProtected = true;
+      });
+  }
+
   private destroyVpnConnection(): Promise<void> {
     if (this.vpnConnection === null) {
       return Promise.resolve();
     }
     const connection = this.vpnConnection;
     this.vpnConnection = null;
+    this.processNetProtected = false;
     return connection.destroy();
   }
 
@@ -490,14 +507,21 @@ export default class OhosCoreRuntimeBridge implements FlutterPlugin, MethodCallH
 
   private getMachineId(): string {
     if (this.context === null) {
-      return `harmony-${util.generateRandomUUID()}`;
+      return util.generateRandomUUID().toLowerCase();
     }
     const store = preferences.getPreferencesSync(this.context, { name: PREFERENCES_NAME });
     const existing = `${store.getSync(MACHINE_ID_KEY, '')}`;
-    if (existing.length > 0) {
-      return existing;
+    if (MACHINE_ID_UUID_PATTERN.test(existing)) {
+      return existing.toLowerCase();
     }
-    const machineId = `harmony-${util.generateRandomUUID()}`;
+    // The Rust core resolves this id with uuid::Uuid::parse_str and registers it
+    // to the console verbatim only when it is a canonical UUID. Any other string
+    // (including a legacy "harmony-<uuid>" value persisted by older builds) is
+    // hashed into a different UUID, so the device registered to the console can
+    // never be matched back by machineId and joining a network stays stuck at
+    // "waiting for device to register". Persist a lowercase canonical UUID so it
+    // matches uuid::Uuid::to_string() as reported back by the console.
+    const machineId = util.generateRandomUUID().toLowerCase();
     store.putSync(MACHINE_ID_KEY, machineId);
     store.flushSync();
     return machineId;
