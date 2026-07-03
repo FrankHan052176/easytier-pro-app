@@ -250,6 +250,43 @@ void main() {
       expect(service.status.value.phase, CoreRunPhase.running);
     });
 
+    test(
+      'user exit runtime stop uses elevated uninstall when needed',
+      () async {
+        final elevatedCommands = <String>[];
+        final elevatedRequests = <Map<String, Object?>>[];
+        final authService = _LifecycleAuthService();
+        final runtime = _LifecycleRuntime()
+          ..stopError = CoreLifecycleService.elevationRequiredForTesting(
+            'desktop uninstall must be run as root',
+          );
+        final service = CoreLifecycleService(
+          authService: authService,
+          runtime: runtime,
+          elevatedDesktopCommandRunner: (command, request) async {
+            elevatedCommands.add(command);
+            elevatedRequests.add(request);
+            return const <String, dynamic>{
+              'event': 'finished',
+              'data': <String, dynamic>{},
+            };
+          },
+        );
+        addTearDown(service.dispose);
+
+        await service.bindSession(_session('tenant-1'));
+        await service.stopRuntimeForUserExit();
+
+        expect(runtime.stopCount, 1);
+        expect(elevatedCommands, ['uninstall']);
+        expect(elevatedRequests, [
+          {'purge': false},
+        ]);
+        expect(service.status.value.phase, CoreRunPhase.stopped);
+        expect(service.status.value.message, '后台服务已停止');
+      },
+    );
+
     test('token version check uses bootstrap defaults', () async {
       final authService = _LifecycleAuthService();
       final runtime = _LifecycleRuntime()
@@ -825,10 +862,7 @@ void main() {
         isTrue,
       );
       expect(
-        CoreLifecycleService.isElevationRequiredForDesktopCommand(
-          1,
-          '卸载服务失败',
-        ),
+        CoreLifecycleService.isElevationRequiredForDesktopCommand(1, '卸载服务失败'),
         isFalse,
       );
       expect(
@@ -891,6 +925,101 @@ void main() {
           1,
           'failed to read bootstrap config',
         ),
+        isFalse,
+      );
+    });
+
+    test('treats macOS desktop status permission errors as elevation', () {
+      expect(
+        CoreLifecycleService.shouldTreatUnixPermissionAsElevationForTesting(
+          'status',
+          isMacOS: true,
+        ),
+        isTrue,
+      );
+      expect(
+        CoreLifecycleService.shouldTreatUnixPermissionAsElevationForTesting(
+          'status',
+          isMacOS: false,
+        ),
+        isFalse,
+      );
+      expect(
+        CoreLifecycleService.isElevationRequiredForDesktopCommand(
+          1,
+          'desktop status must be run as root',
+          includeUnixPermissionErrors: true,
+        ),
+        isTrue,
+      );
+    });
+
+    test('detects real desktop install artifacts from status event', () {
+      expect(
+        CoreLifecycleService.desktopStatusHasInstallArtifactsForTesting(
+          const <String, dynamic>{
+            'data': <String, dynamic>{
+              'ready': false,
+              'installed': false,
+              'running': false,
+              'cli_path': '/usr/local/bin/easytier-cli',
+            },
+          },
+        ),
+        isFalse,
+      );
+      expect(
+        CoreLifecycleService.desktopStatusHasInstallArtifactsForTesting(
+          const <String, dynamic>{
+            'data': <String, dynamic>{
+              'ready': false,
+              'installed': false,
+              'running': false,
+              'binaries_present': true,
+              'cli_path': '/usr/local/bin/easytier-cli',
+            },
+          },
+        ),
+        isTrue,
+      );
+      expect(
+        CoreLifecycleService.desktopStatusHasInstallArtifactsForTesting(
+          const <String, dynamic>{
+            'data': <String, dynamic>{
+              'ready': true,
+              'installed': false,
+              'running': false,
+            },
+          },
+        ),
+        isTrue,
+      );
+    });
+
+    test('requires remembered CLI path to exist on disk', () async {
+      final tempDir = await Directory.systemTemp.createTemp(
+        'easytier_cli_path_test_',
+      );
+      addTearDown(() async {
+        if (tempDir.existsSync()) {
+          await tempDir.delete(recursive: true);
+        }
+      });
+      final cliFile = File('${tempDir.path}${Platform.pathSeparator}cli');
+      await cliFile.writeAsString('', encoding: utf8);
+
+      expect(
+        CoreLifecycleService.isExistingFilePathForTesting(cliFile.path),
+        isTrue,
+      );
+      expect(
+        CoreLifecycleService.isExistingFilePathForTesting(
+          '${cliFile.path}.missing',
+        ),
+        isFalse,
+      );
+      expect(
+        CoreLifecycleService.isExistingFilePathForTesting('easytier-cli'),
         isFalse,
       );
     });
@@ -958,6 +1087,137 @@ void main() {
         expect(versionStatus.consoleVersion, 'v2.6.4');
       },
     );
+
+    test(
+      'elevated repair uninstalls existing service before install',
+      () async {
+        final elevatedCommands = <String>[];
+        final authService = _LifecycleAuthService();
+        final runtime = _LifecycleRuntime()
+          ..supportsElevationRepairValue = true
+          ..uninstallBeforeElevatedInstall = true;
+        final service = CoreLifecycleService(
+          authService: authService,
+          runtime: runtime,
+          elevatedDesktopCommandRunner: (command, request) async {
+            elevatedCommands.add(command);
+            if (command == 'uninstall') {
+              return const <String, dynamic>{
+                'event': 'finished',
+                'data': <String, dynamic>{},
+              };
+            }
+            return const <String, dynamic>{
+              'event': 'finished',
+              'data': <String, dynamic>{
+                'machine_id': 'machine-1',
+                'cli_path': '/usr/local/bin/easytier-cli',
+              },
+            };
+          },
+        );
+        addTearDown(service.dispose);
+
+        await service.bindSession(_session('tenant-1'));
+        await service.repairWithElevation();
+
+        expect(runtime.preElevatedInstallCheckCount, 1);
+        expect(elevatedCommands, ['uninstall', 'install']);
+        expect(service.status.value.phase, CoreRunPhase.running);
+      },
+    );
+
+    test('elevated repair skips uninstall for fresh install', () async {
+      final elevatedCommands = <String>[];
+      final authService = _LifecycleAuthService();
+      final runtime = _LifecycleRuntime()
+        ..supportsElevationRepairValue = true
+        ..uninstallBeforeElevatedInstall = false;
+      final service = CoreLifecycleService(
+        authService: authService,
+        runtime: runtime,
+        elevatedDesktopCommandRunner: (command, request) async {
+          elevatedCommands.add(command);
+          return const <String, dynamic>{
+            'event': 'finished',
+            'data': <String, dynamic>{
+              'machine_id': 'machine-1',
+              'cli_path': '/usr/local/bin/easytier-cli',
+            },
+          };
+        },
+      );
+      addTearDown(service.dispose);
+
+      await service.bindSession(_session('tenant-1'));
+      await service.repairWithElevation();
+
+      expect(runtime.preElevatedInstallCheckCount, 1);
+      expect(elevatedCommands, ['install']);
+      expect(service.status.value.phase, CoreRunPhase.running);
+    });
+
+    test('elevated repair stops when pre-install uninstall fails', () async {
+      final elevatedCommands = <String>[];
+      final authService = _LifecycleAuthService();
+      final runtime = _LifecycleRuntime()
+        ..supportsElevationRepairValue = true
+        ..uninstallBeforeElevatedInstall = true;
+      final service = CoreLifecycleService(
+        authService: authService,
+        runtime: runtime,
+        elevatedDesktopCommandRunner: (command, request) async {
+          elevatedCommands.add(command);
+          if (command == 'uninstall') {
+            throw StateError('uninstall failed');
+          }
+          fail('install should not run after uninstall failure');
+        },
+      );
+      addTearDown(service.dispose);
+
+      await service.bindSession(_session('tenant-1'));
+      await service.repairWithElevation();
+
+      expect(elevatedCommands, ['uninstall']);
+      expect(service.status.value.phase, CoreRunPhase.error);
+      expect(service.status.value.message, '旧连接引擎停止失败');
+      expect(service.status.value.lastError, contains('uninstall failed'));
+    });
+
+    test(
+      'elevated repair stops when pre-install uninstall returns error event',
+      () async {
+        final elevatedCommands = <String>[];
+        final authService = _LifecycleAuthService();
+        final runtime = _LifecycleRuntime()
+          ..supportsElevationRepairValue = true
+          ..uninstallBeforeElevatedInstall = true;
+        final service = CoreLifecycleService(
+          authService: authService,
+          runtime: runtime,
+          elevatedDesktopCommandRunner: (command, request) async {
+            elevatedCommands.add(command);
+            if (command == 'uninstall') {
+              return const <String, dynamic>{
+                'event': 'error',
+                'data': <String, dynamic>{'message': 'uninstall failed'},
+              };
+            }
+            fail('install should not run after uninstall error event');
+          },
+        );
+        addTearDown(service.dispose);
+
+        await service.bindSession(_session('tenant-1'));
+        await service.repairWithElevation();
+
+        expect(elevatedCommands, ['uninstall']);
+        expect(service.status.value.phase, CoreRunPhase.error);
+        expect(service.status.value.message, '旧连接引擎停止失败');
+        expect(service.status.value.lastError, contains('uninstall failed'));
+      },
+    );
   });
 
   group('CoreLifecycleService auth invalidation', () {
@@ -1000,38 +1260,41 @@ void main() {
       expect(service.status.value.message, '登录态已失效，连接已停止');
     });
 
-    test('uses elevated uninstall when logout cleanup needs elevation', () async {
-      final elevatedCommands = <String>[];
-      final elevatedRequests = <Map<String, Object?>>[];
-      final authService = _LifecycleAuthService();
-      final runtime = _LifecycleRuntime()
-        ..stopError = CoreLifecycleService.elevationRequiredForTesting(
-          'desktop uninstall must be run as root',
+    test(
+      'uses elevated uninstall when logout cleanup needs elevation',
+      () async {
+        final elevatedCommands = <String>[];
+        final elevatedRequests = <Map<String, Object?>>[];
+        final authService = _LifecycleAuthService();
+        final runtime = _LifecycleRuntime()
+          ..stopError = CoreLifecycleService.elevationRequiredForTesting(
+            'desktop uninstall must be run as root',
+          );
+        final service = CoreLifecycleService(
+          authService: authService,
+          runtime: runtime,
+          elevatedDesktopCommandRunner: (command, request) async {
+            elevatedCommands.add(command);
+            elevatedRequests.add(request);
+            return const <String, dynamic>{
+              'event': 'finished',
+              'data': <String, dynamic>{},
+            };
+          },
         );
-      final service = CoreLifecycleService(
-        authService: authService,
-        runtime: runtime,
-        elevatedDesktopCommandRunner: (command, request) async {
-          elevatedCommands.add(command);
-          elevatedRequests.add(request);
-          return const <String, dynamic>{
-            'event': 'finished',
-            'data': <String, dynamic>{},
-          };
-        },
-      );
-      addTearDown(service.dispose);
+        addTearDown(service.dispose);
 
-      await service.bindSession(_session('tenant-1'));
-      await service.onLogout();
+        await service.bindSession(_session('tenant-1'));
+        await service.onLogout();
 
-      expect(runtime.stopCount, 1);
-      expect(elevatedCommands, ['uninstall']);
-      expect(elevatedRequests, [
-        {'purge': false},
-      ]);
-      expect(service.status.value.phase, CoreRunPhase.signedOut);
-    });
+        expect(runtime.stopCount, 1);
+        expect(elevatedCommands, ['uninstall']);
+        expect(elevatedRequests, [
+          {'purge': false},
+        ]);
+        expect(service.status.value.phase, CoreRunPhase.signedOut);
+      },
+    );
   });
 
   group('CoreLifecycleService runtime events', () {
@@ -1518,6 +1781,8 @@ class _LifecycleRuntime extends CorePlatformRuntime {
   Object? stopError;
   Completer<void>? ensureRunningCompleter;
   var supportsElevationRepairValue = false;
+  var uninstallBeforeElevatedInstall = false;
+  var preElevatedInstallCheckCount = 0;
   final forceReinstallValues = <bool>[];
   final ensureRunningBootstraps = <CoreBootstrapConfig>[];
 
@@ -1578,6 +1843,14 @@ class _LifecycleRuntime extends CorePlatformRuntime {
   @override
   Future<String?> readInstalledVersion() async {
     return connected ? installedVersion : null;
+  }
+
+  @override
+  Future<bool> shouldUninstallBeforeElevatedInstall(
+    CoreBootstrapConfig bootstrap,
+  ) async {
+    preElevatedInstallCheckCount++;
+    return uninstallBeforeElevatedInstall;
   }
 
   @override

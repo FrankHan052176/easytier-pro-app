@@ -23,6 +23,7 @@ class _DesktopCoreStatus {
     required this.ready,
     required this.installed,
     required this.running,
+    required this.binariesPresent,
     this.machineId,
     this.version,
     this.serviceState,
@@ -32,10 +33,14 @@ class _DesktopCoreStatus {
   final bool ready;
   final bool installed;
   final bool running;
+  final bool binariesPresent;
   final String? machineId;
   final String? version;
   final String? serviceState;
   final String? cliPath;
+
+  bool get hasInstallArtifacts =>
+      ready || installed || running || binariesPresent;
 
   static _DesktopCoreStatus fromEvent(Map<String, dynamic> event) {
     final data = event['data'];
@@ -46,6 +51,9 @@ class _DesktopCoreStatus {
       ready: _readBool(values['ready']),
       installed: _readBool(values['installed']),
       running: _readBool(values['running']),
+      binariesPresent: _readBool(
+        values['binaries_present'] ?? values['binariesPresent'],
+      ),
       machineId: _readString(values['machine_id']),
       version: _readString(values['version']),
       serviceState: _readString(values['service_state']),

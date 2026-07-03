@@ -161,6 +161,23 @@ class DesktopCoreRuntime extends CorePlatformRuntime {
     }
   }
 
+  @override
+  Future<bool> shouldUninstallBeforeElevatedInstall(
+    CoreBootstrapConfig bootstrap,
+  ) async {
+    late final _DesktopCoreStatus? desktopStatus;
+    try {
+      desktopStatus = await _owner._tryReadDesktopStatus(bootstrap);
+    } on _ElevationRequiredException {
+      return true;
+    }
+    if (desktopStatus == null) {
+      return _owner._rememberedCliPathExists();
+    }
+
+    return desktopStatus.hasInstallArtifacts;
+  }
+
   Future<void> _terminateTimedOutVersionProbe(Process process) async {
     process.kill();
     if (await _waitForVersionProbeExit(process)) {

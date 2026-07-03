@@ -19,9 +19,47 @@ part 'android_core_runtime.dart';
 @visibleForTesting
 typedef CoreElevatedDesktopCommandRunner =
     Future<Map<String, dynamic>> Function(
-  String command,
-  Map<String, Object?> request,
-);
+      String command,
+      Map<String, Object?> request,
+    );
+
+class _ElevatedDesktopCommandRequest {
+  const _ElevatedDesktopCommandRequest(this.command, this.request);
+
+  final String command;
+  final Map<String, Object?> request;
+}
+
+class _ElevatedDesktopCommandFile {
+  const _ElevatedDesktopCommandFile({
+    required this.command,
+    required this.inputFile,
+    required this.outputFile,
+    required this.errorFile,
+    required this.exitFile,
+  });
+
+  final String command;
+  final File inputFile;
+  final File outputFile;
+  final File errorFile;
+  final File exitFile;
+}
+
+class _ElevatedDesktopCommandFailure implements Exception {
+  const _ElevatedDesktopCommandFailure(
+    this.command,
+    this.cause,
+    this.stackTrace,
+  );
+
+  final String command;
+  final Object cause;
+  final StackTrace stackTrace;
+
+  @override
+  String toString() => cause.toString();
+}
 
 class CoreLifecycleService {
   CoreLifecycleService({
@@ -122,7 +160,10 @@ class CoreLifecycleService {
         message: '正在停止连接引擎...',
       );
       try {
-        await _runtime.stop();
+        await _stopRuntimeAllowingElevation(
+          elevatedStatusMessage: '正在以管理员身份停止连接引擎...',
+          elevatedLogMessage: 'Elevated logout cleanup requested',
+        );
         _logger.info(
           'core',
           'Logout cleanup completed',
@@ -130,25 +171,6 @@ class CoreLifecycleService {
         );
         status.value = CoreRunStatus.signedOut;
       } catch (error) {
-        if (error is _ElevationRequiredException) {
-          try {
-            await _stopRuntimeWithElevation();
-            status.value = CoreRunStatus.signedOut;
-            return;
-          } catch (elevationError) {
-            _logger.error(
-              'core',
-              'Elevated logout cleanup failed',
-              context: {'error': elevationError.toString()},
-            );
-            status.value = CoreRunStatus(
-              phase: CoreRunPhase.error,
-              message: '退出登录后卸载失败',
-              lastError: _normalizeError(elevationError),
-            );
-            return;
-          }
-        }
         _logger.error(
           'core',
           'Logout cleanup failed',
@@ -176,7 +198,10 @@ class CoreLifecycleService {
         details: current.details,
       );
       try {
-        await _runtime.stop();
+        await _stopRuntimeAllowingElevation(
+          elevatedStatusMessage: '正在以管理员身份停止后台服务...',
+          elevatedLogMessage: 'Elevated user exit cleanup requested',
+        );
         _logger.info(
           'core',
           'Runtime stopped for user exit',
@@ -208,18 +233,39 @@ class CoreLifecycleService {
     });
   }
 
-  Future<void> _stopRuntimeWithElevation() async {
-    status.value = const CoreRunStatus(
+  Future<void> _stopRuntimeAllowingElevation({
+    required String elevatedStatusMessage,
+    required String elevatedLogMessage,
+  }) async {
+    try {
+      await _runtime.stop();
+    } catch (error) {
+      if (error is _ElevationRequiredException) {
+        await _stopRuntimeWithElevation(
+          statusMessage: elevatedStatusMessage,
+          logMessage: elevatedLogMessage,
+        );
+        return;
+      }
+      rethrow;
+    }
+  }
+
+  Future<void> _stopRuntimeWithElevation({
+    required String statusMessage,
+    required String logMessage,
+  }) async {
+    status.value = CoreRunStatus(
       phase: CoreRunPhase.repairing,
-      message: '正在以管理员身份停止连接引擎...',
+      message: statusMessage,
     );
-    _logger.info('core', 'Elevated logout cleanup requested');
+    _logger.info('core', logMessage);
 
     await _runElevatedDesktopCommand('uninstall', const {'purge': false});
     _cliPath = null;
     _logger.info(
       'core',
-      'Elevated logout cleanup completed',
+      'Elevated runtime stop completed',
       context: {'runtime': _runtime.runtimeType.toString()},
     );
   }
@@ -326,6 +372,7 @@ class CoreLifecycleService {
         );
         _logger.info('core', 'Elevation repair requested');
 
+        var elevatedUninstallRequested = false;
         try {
           final bootstrap = await authService.prepareCoreBootstrap(
             accessToken: session.tokenSet.accessToken,
@@ -336,11 +383,74 @@ class CoreLifecycleService {
             'version': bootstrap.version,
             'config_server': bootstrap.configServer,
           };
-          final event = await _runElevatedDesktopCommand('install', request);
+          final shouldUninstall = await _runtime
+              .shouldUninstallBeforeElevatedInstall(bootstrap);
+          elevatedUninstallRequested = shouldUninstall;
+          if (shouldUninstall) {
+            status.value = const CoreRunStatus(
+              phase: CoreRunPhase.repairing,
+              message: '正在以管理员身份重建连接引擎...',
+            );
+            _logger.info(
+              'core',
+              'Elevated repair will uninstall existing desktop service first',
+            );
+          }
+
+          final commands = <_ElevatedDesktopCommandRequest>[
+            if (shouldUninstall)
+              const _ElevatedDesktopCommandRequest('uninstall', {
+                'purge': false,
+              }),
+            _ElevatedDesktopCommandRequest('install', request),
+          ];
+          final events = await _runElevatedDesktopCommands(commands);
+          if (shouldUninstall) {
+            _cliPath = null;
+            _logger.info('core', 'Elevated pre-install uninstall completed');
+          }
+          final event = events.last;
           _completeElevatedInstall(
             session: session,
             bootstrap: bootstrap,
             event: event,
+          );
+        } on _ElevatedDesktopCommandFailure catch (error) {
+          final cause = error.cause;
+          _logger.error(
+            'core',
+            error.command == 'uninstall'
+                ? 'Elevated pre-install uninstall failed'
+                : 'Elevation repair failed',
+            context: {'error': cause.toString()},
+          );
+          if (error.command == 'uninstall') {
+            status.value = CoreRunStatus(
+              phase: CoreRunPhase.error,
+              message: '旧连接引擎停止失败',
+              lastError: _normalizeError(cause),
+            );
+            return;
+          }
+          if (elevatedUninstallRequested) {
+            _cliPath = null;
+            _logger.info(
+              'core',
+              'Elevated pre-install uninstall completed before install failure',
+            );
+          }
+          if (cause is _ElevationRequiredException) {
+            status.value = CoreRunStatus(
+              phase: CoreRunPhase.needsElevation,
+              message: '需要管理员权限以安装连接引擎',
+              lastError: _elevationLastError(cause),
+            );
+            return;
+          }
+          status.value = CoreRunStatus(
+            phase: CoreRunPhase.error,
+            message: '连接引擎启动失败',
+            lastError: _normalizeError(cause),
           );
         } catch (error) {
           _logger.error(
@@ -397,20 +507,55 @@ class CoreLifecycleService {
     String command,
     Map<String, Object?> request,
   ) async {
-    if (command != 'install' && command != 'uninstall') {
-      throw ArgumentError.value(command, 'command', '不支持的提权 desktop 命令');
+    try {
+      final events = await _runElevatedDesktopCommands([
+        _ElevatedDesktopCommandRequest(command, request),
+      ]);
+      return events.single;
+    } on _ElevatedDesktopCommandFailure catch (error) {
+      Error.throwWithStackTrace(error.cause, error.stackTrace);
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> _runElevatedDesktopCommands(
+    List<_ElevatedDesktopCommandRequest> requests,
+  ) async {
+    if (requests.isEmpty) {
+      return const <Map<String, dynamic>>[];
+    }
+    for (final request in requests) {
+      if (request.command != 'install' && request.command != 'uninstall') {
+        throw ArgumentError.value(
+          request.command,
+          'command',
+          '不支持的提权 desktop 命令',
+        );
+      }
     }
 
     final elevatedRunner = _elevatedDesktopCommandRunner;
     if (elevatedRunner != null) {
-      return elevatedRunner(command, request);
+      final events = <Map<String, dynamic>>[];
+      for (final request in requests) {
+        try {
+          final event = await elevatedRunner(request.command, request.request);
+          _validateElevatedDesktopCommandEvent(request.command, event);
+          events.add(event);
+        } catch (error, stackTrace) {
+          throw _ElevatedDesktopCommandFailure(
+            request.command,
+            error,
+            stackTrace,
+          );
+        }
+      }
+      return events;
     }
 
-    File? inputFile;
-    File? outputFile;
-    File? errorFile;
     File? commandFile;
     Directory? elevationTempDir;
+    final tempFiles = <File>[];
+    final commandFiles = <_ElevatedDesktopCommandFile>[];
     try {
       elevationTempDir = await Directory.systemTemp.createTemp(
         'easytier_pro_elevated_',
@@ -419,28 +564,48 @@ class CoreLifecycleService {
         elevationTempDir,
         ownerExecutable: true,
       );
-      inputFile = File(_joinPath(elevationTempDir.path, 'request.json'));
-      outputFile = File(_joinPath(elevationTempDir.path, 'output.json'));
-      errorFile = File(_joinPath(elevationTempDir.path, 'error.json'));
-
-      await inputFile.writeAsString(jsonEncode(request), encoding: utf8);
-      await _restrictOwnerOnlyPermissions(inputFile);
+      for (var index = 0; index < requests.length; index += 1) {
+        final request = requests[index];
+        final inputFile = File(
+          _joinPath(elevationTempDir.path, 'request_$index.json'),
+        );
+        final outputFile = File(
+          _joinPath(elevationTempDir.path, 'output_$index.json'),
+        );
+        final errorFile = File(
+          _joinPath(elevationTempDir.path, 'error_$index.json'),
+        );
+        final exitFile = File(_joinPath(elevationTempDir.path, 'exit_$index'));
+        await inputFile.writeAsString(
+          jsonEncode(request.request),
+          encoding: utf8,
+        );
+        await _restrictOwnerOnlyPermissions(inputFile);
+        tempFiles.addAll([inputFile, outputFile, errorFile, exitFile]);
+        commandFiles.add(
+          _ElevatedDesktopCommandFile(
+            command: request.command,
+            inputFile: inputFile,
+            outputFile: outputFile,
+            errorFile: errorFile,
+            exitFile: exitFile,
+          ),
+        );
+      }
 
       final installerPath = _resolveInstallerExecutable();
       commandFile = await _writeElevatedDesktopCommandFile(
-        command: command,
+        commands: commandFiles,
         tempDir: elevationTempDir,
         installerPath: installerPath,
-        inputFile: inputFile,
-        outputFile: outputFile,
-        errorFile: errorFile,
       );
 
+      final commandNames = requests.map((request) => request.command).join(',');
       _logger.info(
         'core.desktop',
         'Launching elevated desktop command',
         context: {
-          'command': command,
+          'command': commandNames,
           'command_file': commandFile.path,
           'installer': installerPath,
           'platform': Platform.operatingSystem,
@@ -452,25 +617,58 @@ class CoreLifecycleService {
         'core.desktop',
         'Elevated desktop command process completed',
         context: {
-          'command': command,
+          'command': commandNames,
           'exit_code': elevationResult,
-          'output_exists': outputFile.existsSync(),
-          'error_exists': errorFile.existsSync(),
+          'output_exists': commandFiles.every(
+            (command) => command.outputFile.existsSync(),
+          ),
+          'error_exists': commandFiles.every(
+            (command) => command.errorFile.existsSync(),
+          ),
+          'exit_exists': commandFiles.every(
+            (command) => command.exitFile.existsSync(),
+          ),
         },
       );
 
-      return await _readElevatedDesktopCommandResult(
-        command,
-        outputFile,
-        errorFile,
-      );
+      final events = <Map<String, dynamic>>[];
+      for (final command in commandFiles) {
+        try {
+          final exitCode = await _readElevatedDesktopCommandExitCode(
+            command.exitFile,
+          );
+          final event = await _readElevatedDesktopCommandResult(
+            command.command,
+            command.outputFile,
+            command.errorFile,
+          );
+          if (exitCode != null && exitCode != 0) {
+            throw StateError('提权 ${command.command} 执行失败 (exit=$exitCode)');
+          }
+          if (exitCode == null && elevationResult != 0) {
+            throw StateError(
+              '提权 ${command.command} 执行状态缺失 (exit=$elevationResult)',
+            );
+          }
+          events.add(event);
+        } catch (error, stackTrace) {
+          throw _ElevatedDesktopCommandFailure(
+            command.command,
+            error,
+            stackTrace,
+          );
+        }
+      }
+      if (elevationResult != 0) {
+        throw _ElevatedDesktopCommandFailure(
+          requests.last.command,
+          StateError('提权命令执行失败 (exit=$elevationResult)'),
+          StackTrace.current,
+        );
+      }
+      return events;
     } finally {
-      await _cleanupElevationTempFiles([
-        ?inputFile,
-        ?outputFile,
-        ?errorFile,
-        ?commandFile,
-      ]);
+      await _cleanupElevationTempFiles([...tempFiles, ?commandFile]);
       await _cleanupElevationTempDirectory(elevationTempDir);
     }
   }
@@ -490,16 +688,7 @@ class CoreLifecycleService {
           orElse: () => const <String, dynamic>{},
         );
         if (errorEvent.isNotEmpty) {
-          final data = errorEvent['data'] as Map<String, dynamic>? ?? const {};
-          final message = data['message']?.toString() ?? '提权操作返回错误';
-          if (_isElevationRequired(
-            0,
-            message,
-            includeUnixPermissionErrors: true,
-          )) {
-            throw _ElevationRequiredException(message);
-          }
-          throw StateError(message);
+          _throwElevatedDesktopErrorEvent(errorEvent);
         }
 
         for (var index = events.length - 1; index >= 0; index--) {
@@ -518,6 +707,42 @@ class CoreLifecycleService {
       throw StateError(errorText);
     }
     throw StateError('提权 $command 没有返回有效结果');
+  }
+
+  Future<int?> _readElevatedDesktopCommandExitCode(File exitFile) async {
+    if (!exitFile.existsSync()) {
+      return null;
+    }
+    final text = (await exitFile.readAsString()).trim();
+    if (text.isEmpty) {
+      return null;
+    }
+    final exitCode = int.tryParse(text);
+    if (exitCode == null) {
+      throw StateError('提权命令返回了无效退出码: $text');
+    }
+    return exitCode;
+  }
+
+  void _validateElevatedDesktopCommandEvent(
+    String command,
+    Map<String, dynamic> event,
+  ) {
+    if (event['event'] == 'error') {
+      _throwElevatedDesktopErrorEvent(event);
+    }
+    if (event['event'] != 'finished') {
+      throw StateError('提权 $command 没有返回有效结果');
+    }
+  }
+
+  void _throwElevatedDesktopErrorEvent(Map<String, dynamic> event) {
+    final data = event['data'] as Map<String, dynamic>? ?? const {};
+    final message = data['message']?.toString() ?? '提权操作返回错误';
+    if (_isElevationRequired(0, message, includeUnixPermissionErrors: true)) {
+      throw _ElevationRequiredException(message);
+    }
+    throw StateError(message);
   }
 
   List<Map<String, dynamic>> _parseDesktopCommandEvents(String outputText) {
@@ -540,47 +765,147 @@ class CoreLifecycleService {
   }
 
   Future<File> _writeElevatedDesktopCommandFile({
-    required String command,
+    required List<_ElevatedDesktopCommandFile> commands,
     required Directory tempDir,
     required String installerPath,
-    required File inputFile,
-    required File outputFile,
-    required File errorFile,
   }) async {
     if (Platform.isWindows) {
       final batFile = File(_joinPath(tempDir.path, 'elevated.bat'));
+      final validatorFile = File(
+        _joinPath(tempDir.path, 'validate_output.ps1'),
+      );
+      await validatorFile.writeAsString(
+        _windowsElevatedOutputValidatorScript,
+        encoding: utf8,
+      );
+      await _restrictOwnerOnlyPermissions(validatorFile);
       final installerDir = File(installerPath).parent.path;
-      final batContent =
-          '''@echo off
+      final buffer = StringBuffer('''@echo off
 chcp 65001 >nul
+set "POWERSHELL_EXE=%SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"
+if not exist "%POWERSHELL_EXE%" set "POWERSHELL_EXE=powershell.exe"
 cd /d "$installerDir"
-"$installerPath" desktop $command --json < "${inputFile.path}" > "${outputFile.path}" 2> "${errorFile.path}"
-''';
-      await batFile.writeAsString(batContent, encoding: utf8);
+''');
+      for (final command in commands) {
+        buffer.writeln(
+          '"$installerPath" desktop ${command.command} --json < '
+          '"${command.inputFile.path}" > "${command.outputFile.path}" '
+          '2> "${command.errorFile.path}"',
+        );
+        buffer.writeln('set "EASYTIER_COMMAND_EXIT=%ERRORLEVEL%"');
+        buffer.writeln(
+          '> "${command.exitFile.path}" echo %EASYTIER_COMMAND_EXIT%',
+        );
+        buffer.writeln(
+          'if not "%EASYTIER_COMMAND_EXIT%"=="0" '
+          'exit /b %EASYTIER_COMMAND_EXIT%',
+        );
+        buffer.writeln(
+          '"%POWERSHELL_EXE%" -NoProfile -ExecutionPolicy Bypass -File '
+          '"${validatorFile.path}" '
+          '"${command.outputFile.path}"',
+        );
+        buffer.writeln('if errorlevel 1 exit /b %errorlevel%');
+      }
+      await batFile.writeAsString(buffer.toString(), encoding: utf8);
       return batFile;
     }
 
     if (Platform.isMacOS) {
       final scriptFile = File(_joinPath(tempDir.path, 'elevated.sh'));
-      await outputFile.writeAsString('', encoding: utf8);
-      await _restrictOwnerOnlyPermissions(outputFile);
-      await errorFile.writeAsString('', encoding: utf8);
-      await _restrictOwnerOnlyPermissions(errorFile);
+      for (final command in commands) {
+        await command.outputFile.writeAsString('', encoding: utf8);
+        await _restrictOwnerOnlyPermissions(command.outputFile);
+        await command.errorFile.writeAsString('', encoding: utf8);
+        await _restrictOwnerOnlyPermissions(command.errorFile);
+        await command.exitFile.writeAsString('', encoding: utf8);
+        await _restrictOwnerOnlyPermissions(command.exitFile);
+      }
 
       final installerDir = File(installerPath).parent.path;
-      final scriptContent =
-          '''#!/bin/sh
+      final buffer = StringBuffer('''#!/bin/sh
 set -eu
+check_desktop_output() {
+  output_file=\$1
+  if /usr/bin/grep -Eq '"event"[[:space:]]*:[[:space:]]*"error"' "\$output_file"; then
+    return 2
+  fi
+  if ! /usr/bin/grep -Eq '"event"[[:space:]]*:[[:space:]]*"finished"' "\$output_file"; then
+    return 3
+  fi
+}
+run_desktop_command() {
+  command_name=\$1
+  input_file=\$2
+  output_file=\$3
+  error_file=\$4
+  exit_file=\$5
+  set +e
+  "\$installer_path" desktop "\$command_name" --json < "\$input_file" > "\$output_file" 2> "\$error_file"
+  command_exit=\$?
+  set -e
+  printf '%s\\n' "\$command_exit" > "\$exit_file"
+  if [ "\$command_exit" -ne 0 ]; then
+    return "\$command_exit"
+  fi
+  check_desktop_output "\$output_file"
+}
+installer_path=${_quotePosixShellArgument(installerPath)}
 cd ${_quotePosixShellArgument(installerDir)}
-${_quotePosixShellArgument(installerPath)} desktop ${_quotePosixShellArgument(command)} --json < ${_quotePosixShellArgument(inputFile.path)} > ${_quotePosixShellArgument(outputFile.path)} 2> ${_quotePosixShellArgument(errorFile.path)}
-''';
-      await scriptFile.writeAsString(scriptContent, encoding: utf8);
+''');
+      for (final command in commands) {
+        buffer.writeln(
+          'run_desktop_command '
+          '${_quotePosixShellArgument(command.command)} '
+          '${_quotePosixShellArgument(command.inputFile.path)} '
+          '${_quotePosixShellArgument(command.outputFile.path)} '
+          '${_quotePosixShellArgument(command.errorFile.path)} '
+          '${_quotePosixShellArgument(command.exitFile.path)}',
+        );
+      }
+      await scriptFile.writeAsString(buffer.toString(), encoding: utf8);
       await _restrictOwnerOnlyPermissions(scriptFile);
       return scriptFile;
     }
 
     throw StateError('当前平台不支持提权操作');
   }
+
+  static const String _windowsElevatedOutputValidatorScript = r'''
+param(
+  [Parameter(Mandatory=$true)]
+  [string]$OutputFile
+)
+
+$ErrorActionPreference = 'Stop'
+$finished = $false
+
+foreach ($line in [System.IO.File]::ReadLines($OutputFile)) {
+  if ([string]::IsNullOrWhiteSpace($line)) {
+    continue
+  }
+
+  try {
+    $event = $line | ConvertFrom-Json
+  } catch {
+    continue
+  }
+
+  if ($event.event -eq 'error') {
+    exit 2
+  }
+
+  if ($event.event -eq 'finished') {
+    $finished = $true
+  }
+}
+
+if ($finished) {
+  exit 0
+}
+
+exit 3
+''';
 
   Future<int> _runElevatedInstaller(String commandPath) {
     if (Platform.isWindows) {
@@ -1287,7 +1612,11 @@ ${_quotePosixShellArgument(installerPath)} desktop ${_quotePosixShellArgument(co
         'config_server': bootstrap.configServer,
       });
       final desktopStatus = _DesktopCoreStatus.fromEvent(event);
-      _rememberCliPath(desktopStatus.cliPath);
+      if (desktopStatus.hasInstallArtifacts) {
+        _rememberCliPath(desktopStatus.cliPath);
+      } else {
+        _cliPath = null;
+      }
       _logger.info(
         'core.desktop',
         'Desktop status loaded',
@@ -1295,6 +1624,7 @@ ${_quotePosixShellArgument(installerPath)} desktop ${_quotePosixShellArgument(co
           'ready': desktopStatus.ready,
           'installed': desktopStatus.installed,
           'running': desktopStatus.running,
+          'binaries_present': desktopStatus.binariesPresent,
           'machine_id': desktopStatus.machineId ?? '',
           'version': desktopStatus.version ?? '',
         },
@@ -1465,6 +1795,13 @@ ${_quotePosixShellArgument(installerPath)} desktop ${_quotePosixShellArgument(co
     return cliPath.isEmpty ? null : cliPath;
   }
 
+  @visibleForTesting
+  static bool desktopStatusHasInstallArtifactsForTesting(
+    Map<String, dynamic> event,
+  ) {
+    return _DesktopCoreStatus.fromEvent(event).hasInstallArtifacts;
+  }
+
   static bool supportsDesktopElevationRepairForPlatform({
     required bool isWindows,
     required bool isMacOS,
@@ -1592,6 +1929,26 @@ ${_quotePosixShellArgument(installerPath)} desktop ${_quotePosixShellArgument(co
       return;
     }
     _cliPath = value;
+  }
+
+  bool _rememberedCliPathExists() {
+    return _isExistingFilePath(_cliPath);
+  }
+
+  @visibleForTesting
+  static bool isExistingFilePathForTesting(String? path) {
+    return _isExistingFilePath(path);
+  }
+
+  static bool _isExistingFilePath(String? path) {
+    final value = path?.trim();
+    if (value == null || value.isEmpty) {
+      return false;
+    }
+    if (!value.contains(Platform.pathSeparator)) {
+      return false;
+    }
+    return File(value).existsSync();
   }
 
   String _resolveInstallerExecutable() {
@@ -1775,11 +2132,24 @@ ${_quotePosixShellArgument(installerPath)} desktop ${_quotePosixShellArgument(co
         text.contains('写入失败');
   }
 
-  static bool _shouldTreatUnixPermissionAsElevation(String command) {
-    if (!Platform.isMacOS) {
+  @visibleForTesting
+  static bool shouldTreatUnixPermissionAsElevationForTesting(
+    String command, {
+    required bool isMacOS,
+  }) {
+    return _shouldTreatUnixPermissionAsElevation(command, isMacOS: isMacOS);
+  }
+
+  static bool _shouldTreatUnixPermissionAsElevation(
+    String command, {
+    bool? isMacOS,
+  }) {
+    if (!(isMacOS ?? Platform.isMacOS)) {
       return false;
     }
-    return command == 'install' || command == 'uninstall';
+    return command == 'install' ||
+        command == 'uninstall' ||
+        command == 'status';
   }
 
   static bool _isMacOsAuthorizationCanceled(String message) {

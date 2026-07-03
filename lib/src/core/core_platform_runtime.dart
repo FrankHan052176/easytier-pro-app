@@ -27,6 +27,12 @@ abstract class CorePlatformRuntime {
 
   Future<String?> readInstalledVersion() async => null;
 
+  Future<bool> shouldUninstallBeforeElevatedInstall(
+    CoreBootstrapConfig bootstrap,
+  ) async {
+    return false;
+  }
+
   Future<void> stop();
 
   Future<Map<String, CoreNetworkTrafficTotals>> readNetworkTrafficTotals();
