@@ -97,6 +97,14 @@ install(FILES "${EASYTIER_INSTALLER_EXE}"
   DESTINATION "${CMAKE_INSTALL_PREFIX}/resources"
   COMPONENT Runtime)
 
+file(GLOB EASYTIER_BUNDLED_ARCHIVES CONFIGURE_DEPENDS
+  "${CMAKE_CURRENT_SOURCE_DIR}/runner/resources/easytier-*.zip")
+if(EASYTIER_BUNDLED_ARCHIVES)
+  install(FILES ${EASYTIER_BUNDLED_ARCHIVES}
+    DESTINATION "${CMAKE_INSTALL_PREFIX}/resources"
+    COMPONENT Runtime)
+endif()
+
 # Copy the native assets provided by the build.dart from all packages.
 set(NATIVE_ASSETS_DIR "${PROJECT_BUILD_DIR}native_assets/windows/")
 install(DIRECTORY "${NATIVE_ASSETS_DIR}"
