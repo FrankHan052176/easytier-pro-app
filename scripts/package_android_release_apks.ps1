@@ -11,6 +11,8 @@ $artifacts = [ordered]@{
     "app-x86_64-release.apk" = "easytier-pro-android-x86_64.apk"
 }
 
+& (Join-Path $PSScriptRoot "verify_android_release_apks.ps1") -RepoRoot $RepoRoot
+
 New-Item -ItemType Directory -Force $OutputDir | Out-Null
 
 foreach ($sourceName in $artifacts.Keys) {

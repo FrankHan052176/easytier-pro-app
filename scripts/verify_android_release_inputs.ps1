@@ -7,6 +7,7 @@ $ErrorActionPreference = "Stop"
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 $androidRoot = Join-Path $repoRoot "android"
 $buildGradle = Join-Path $androidRoot "app/build.gradle.kts"
+$proguardRules = Join-Path $androidRoot "app/proguard-rules.pro"
 $mainManifest = Join-Path $androidRoot "app/src/main/AndroidManifest.xml"
 $debugManifest = Join-Path $androidRoot "app/src/debug/AndroidManifest.xml"
 $profileManifest = Join-Path $androidRoot "app/src/profile/AndroidManifest.xml"
@@ -93,6 +94,7 @@ function Assert-KeystoreAlias {
 & (Join-Path $PSScriptRoot "verify_android_jni_libs.ps1")
 
 Assert-FileExists $buildGradle "Android app Gradle file"
+Assert-FileExists $proguardRules "Android app ProGuard rules"
 Assert-FileExists $mainManifest "Android main manifest"
 Assert-FileExists $debugManifest "Android debug manifest"
 Assert-FileExists $profileManifest "Android profile manifest"
@@ -112,6 +114,20 @@ Assert-Matches `
     $gradleText `
     'Release signing requires android/key\.properties' `
     "Release builds must fail when android/key.properties is missing."
+Assert-Matches `
+    $gradleText `
+    'proguard-rules\.pro' `
+    "Android release builds must load app/proguard-rules.pro."
+
+$proguardText = Get-Content -Path $proguardRules -Raw
+Assert-Matches `
+    $proguardText `
+    '-keep\s+class\s+com\.easytier\.jni\.\*\*' `
+    "Android ProGuard rules must keep EasyTier JNI bridge classes."
+Assert-Matches `
+    $proguardText `
+    'native\s+<methods>;' `
+    "Android ProGuard rules must keep native method names."
 
 $mainManifestText = Get-Content -Path $mainManifest -Raw
 Assert-Matches `
