@@ -1,7 +1,8 @@
 param(
     [string] $ReleaseDir = "build/windows/x64/runner/Release",
     [string] $OutputDir = "dist",
-    [string] $AppVersion = ""
+    [string] $AppVersion = "",
+    [string] $VcRuntimeDir = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -14,6 +15,9 @@ $appExe = Join-Path $releasePath "easytier_pro_app.exe"
 if (-not (Test-Path $appExe)) {
     throw "Windows release executable was not found: $appExe"
 }
+
+$copyVcRuntimeScript = Join-Path $PSScriptRoot "copy_windows_vc_runtime.ps1"
+& $copyVcRuntimeScript -ReleaseDir $releasePath.Path -VcRuntimeDir $VcRuntimeDir -CopyToResources
 
 if ([string]::IsNullOrWhiteSpace($AppVersion)) {
     $pubspec = Get-Content -Path (Join-Path $repoRoot "pubspec.yaml") -Raw
