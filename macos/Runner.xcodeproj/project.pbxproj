@@ -391,7 +391,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "set -eu\nif [ -z \"${EASYTIER_BUNDLED_INSTALLER:-}\" ]; then\n  echo \"EASYTIER_BUNDLED_INSTALLER is not set; skipping bundled installer.\"\n  exit 0\nfi\nif [ ! -f \"$EASYTIER_BUNDLED_INSTALLER\" ]; then\n  echo \"error: EASYTIER_BUNDLED_INSTALLER was not found: $EASYTIER_BUNDLED_INSTALLER\" >&2\n  exit 1\nfi\nresources_dir=\"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH\"\nmkdir -p \"$resources_dir\"\ninstall -m 0755 \"$EASYTIER_BUNDLED_INSTALLER\" \"$resources_dir/easytier-pro-installer\"\n";
+			shellScript = "set -eu\nif [ -z \"${EASYTIER_BUNDLED_INSTALLER:-}\" ]; then\n  echo \"EASYTIER_BUNDLED_INSTALLER is not set; skipping bundled installer.\"\n  exit 0\nfi\nif [ ! -f \"$EASYTIER_BUNDLED_INSTALLER\" ]; then\n  echo \"error: EASYTIER_BUNDLED_INSTALLER was not found: $EASYTIER_BUNDLED_INSTALLER\" >&2\n  exit 1\nfi\nresources_dir=\"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH\"\nmkdir -p \"$resources_dir\"\ninstall -m 0755 \"$EASYTIER_BUNDLED_INSTALLER\" \"$resources_dir/easytier-pro-installer\"\nif [ -n \"${EASYTIER_BUNDLED_ARCHIVE:-}\" ]; then\n  if [ ! -f \"$EASYTIER_BUNDLED_ARCHIVE\" ]; then\n    echo \"error: EASYTIER_BUNDLED_ARCHIVE was not found: $EASYTIER_BUNDLED_ARCHIVE\" >&2\n    exit 1\n  fi\n  install -m 0644 \"$EASYTIER_BUNDLED_ARCHIVE\" \"$resources_dir/$(basename \"$EASYTIER_BUNDLED_ARCHIVE\")\"\nfi\n";
 		};
 		33CC111E2044C6BF0003C045 /* ShellScript */ = {
 			isa = PBXShellScriptBuildPhase;

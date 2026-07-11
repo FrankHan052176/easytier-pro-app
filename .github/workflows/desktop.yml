@@ -15,6 +15,7 @@ permissions:
 env:
   INSTALLER_REPOSITORY: EasyTier-Pro/installer
   INSTALLER_REF: main
+  EASYTIER_CORE_VERSION: v2.6.4
   ANDROID_NDK_VERSION: 28.2.13676358
   APPCAST_GITEE_BASE_URL: https://gitee.com/EasyTier-Pro/easytier-pro-app/releases/download/latest
   APPCAST_OSS_BASE_URL: https://easytier.net/releases
@@ -101,6 +102,37 @@ jobs:
             .installer-cache/x86_64-pc-windows-msvc/easytier-pro-installer.exe `
             windows/runner/resources/easytier-pro-installer.exe `
             -Force
+
+      - name: Stage bundled EasyTier core archive
+        shell: pwsh
+        run: |
+          $coreVersion = $env:EASYTIER_CORE_VERSION
+          $asset = "easytier-windows-x86_64-$coreVersion.zip"
+          $destination = Join-Path "windows/runner/resources" $asset
+          $urls = @(
+            "https://github.com/EasyTier/EasyTier/releases/download/$coreVersion/$asset",
+            "https://gitee.com/EasyTier/EasyTier/releases/download/$coreVersion/$asset"
+          )
+
+          Remove-Item (Join-Path "windows/runner/resources" "easytier-*.zip") -Force -ErrorAction SilentlyContinue
+          $downloaded = $false
+          foreach ($url in $urls) {
+            try {
+              Invoke-WebRequest -Uri $url -OutFile $destination -UseBasicParsing -ErrorAction Stop
+              $downloaded = $true
+              break
+            } catch {
+              Write-Warning "Failed to download ${url}: $($_.Exception.Message)"
+              Remove-Item $destination -Force -ErrorAction SilentlyContinue
+            }
+          }
+
+          if (-not $downloaded) {
+            throw "Failed to download bundled EasyTier core archive $asset."
+          }
+          if ((Get-Item $destination).Length -le 0) {
+            throw "Downloaded bundled EasyTier core archive is empty: $destination"
+          }
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
@@ -210,9 +242,11 @@ jobs:
           - runner: macos-15
             arch: arm64
             installer_target: aarch64-apple-darwin
+            core_arch: aarch64
           - runner: macos-15-intel
             arch: x64
             installer_target: x86_64-apple-darwin
+            core_arch: x86_64
 
     steps:
       - name: Checkout app
@@ -289,6 +323,36 @@ jobs:
 
       - name: Install Flutter dependencies
         run: flutter pub get
+
+      - name: Download bundled EasyTier core archive
+        run: |
+          set -euo pipefail
+          asset="easytier-macos-${{ matrix.core_arch }}-${EASYTIER_CORE_VERSION}.zip"
+          destination="$RUNNER_TEMP/$asset"
+          urls=(
+            "https://github.com/EasyTier/EasyTier/releases/download/${EASYTIER_CORE_VERSION}/$asset"
+            "https://gitee.com/EasyTier/EasyTier/releases/download/${EASYTIER_CORE_VERSION}/$asset"
+          )
+
+          downloaded=0
+          for url in "${urls[@]}"; do
+            if curl -fL --retry 3 --retry-delay 2 --connect-timeout 20 -o "$destination" "$url"; then
+              downloaded=1
+              break
+            fi
+            rm -f "$destination"
+          done
+
+          if [ "$downloaded" -ne 1 ]; then
+            echo "Failed to download bundled EasyTier core archive $asset." >&2
+            exit 1
+          fi
+          if [ ! -s "$destination" ]; then
+            echo "Downloaded bundled EasyTier core archive is empty: $destination" >&2
+            exit 1
+          fi
+
+          echo "EASYTIER_BUNDLED_ARCHIVE=$destination" >> "$GITHUB_ENV"
 
       - name: Build macOS release
         env:
