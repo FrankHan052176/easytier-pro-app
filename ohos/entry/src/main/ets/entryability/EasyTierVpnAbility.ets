@@ -152,9 +152,9 @@ export default class EasyTierVpnAbility extends VpnExtensionAbility {
         case 'isConfigServerClientConnected':
           return Promise.resolve(easytier.isConfigServerClientConnected());
         case 'listInstances':
-          return Promise.resolve(easytier.listInstancesJson());
+          return Promise.resolve(easytier.listProInstancesJson());
         case 'callJsonRpc':
-          return Promise.resolve(easytier.callJsonRpc(
+          return Promise.resolve(easytier.callProJsonRpc(
             readStringParam(params, 'serviceName'),
             readStringParam(params, 'methodName'),
             readStringParam(params, 'payloadJson'),

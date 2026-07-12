@@ -116,9 +116,7 @@ extension _WorkspaceHomeJoinActions on _WorkspaceHomeViewState {
       ),
       CoreRunPhase.checking => _JoinNetworkState.error('连接引擎正在检查，请稍后再试。'),
       CoreRunPhase.repairing => _JoinNetworkState.error('连接引擎正在修复，请稍后再试。'),
-      CoreRunPhase.signedOut => _JoinNetworkState.error(
-        '登录状态已断开，请重新登录后再加入网络。',
-      ),
+      CoreRunPhase.signedOut => _JoinNetworkState.error('登录状态已断开，请重新登录后再加入网络。'),
       CoreRunPhase.running when machineId == null || machineId.isEmpty =>
         _JoinNetworkState.error('本机设备正在注册，请稍后再试。'),
       CoreRunPhase.running => null,
@@ -176,6 +174,7 @@ extension _WorkspaceHomeJoinActions on _WorkspaceHomeViewState {
       return null;
     }
 
+    ManagedDevice? latestLocalDevice;
     for (
       var attempt = 0;
       attempt < _WorkspaceHomeViewState._devicePollAttempts;
@@ -192,16 +191,22 @@ extension _WorkspaceHomeJoinActions on _WorkspaceHomeViewState {
           _isLoadingDevices = false;
         });
       }
+      ManagedDevice? localDevice;
       for (final device in _visibleManagedDevices(devices)) {
         if (device.machineId == machineId) {
-          return device;
+          localDevice = device;
+          break;
         }
+      }
+      latestLocalDevice = localDevice;
+      if (localDevice?.online == true) {
+        return localDevice;
       }
       if (attempt < _WorkspaceHomeViewState._devicePollAttempts - 1) {
         await Future<void>.delayed(_WorkspaceHomeViewState._devicePollDelay);
       }
     }
-    return null;
+    return latestLocalDevice;
   }
 
   ConsoleNetwork? _joinedAndroidNetworkExcluding(String networkId) {
