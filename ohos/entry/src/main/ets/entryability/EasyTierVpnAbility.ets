@@ -406,6 +406,9 @@ export default class EasyTierVpnAbility extends VpnExtensionAbility {
       for (const event of events) {
         this.emitEvent('config_server', event);
       }
+      if (events.length > 0) {
+        this.emitEvent('runtime_instances_changed', new EmptyPayload());
+      }
     } catch (error) {
       this.lastError = `HarmonyOS config server event drain failed: ${this.errorMessage(error)}`;
       this.emitEvent('error', new ErrorPayload(this.lastError));

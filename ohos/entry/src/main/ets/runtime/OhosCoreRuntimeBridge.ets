@@ -1,4 +1,5 @@
 import { common, Context, Want } from '@kit.AbilityKit';
+import { JSON } from '@kit.ArkTS';
 import { preferences } from '@kit.ArkData';
 import { deviceInfo } from '@kit.BasicServicesKit';
 import { util } from '@kit.ArkTS';
@@ -23,6 +24,7 @@ import {
   RuntimeVpnConfig,
   runtimeSocketPath,
 } from './OhosCoreRuntimeIpc';
+import { getOhosBackgroundTaskService } from './OhosBackgroundTaskService';
 
 const METHOD_CHANNEL_NAME = 'net.easytier.pro/core_runtime';
 const EVENT_CHANNEL_NAME = 'net.easytier.pro/core_runtime_events';
@@ -32,6 +34,10 @@ const PREFERENCES_NAME = 'EasyTierProCoreRuntime';
 const MACHINE_ID_KEY = 'machine_id';
 const MACHINE_ID_UUID_PATTERN =
   /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
+const RUNTIME_ACTIVITY_POLL_INTERVAL_MS: number = 5000;
+
+let nextRuntimeBridgeGeneration: number = 0;
+let activeRuntimeBridgeGeneration: number = 0;
 
 class RuntimeEvent {
   type: string;
@@ -76,15 +82,29 @@ class DetachedStreamHandler implements StreamHandler {
 }
 
 export default class OhosCoreRuntimeBridge implements FlutterPlugin, MethodCallHandler, StreamHandler, AbilityAware {
+  private bridgeGeneration: number = ++nextRuntimeBridgeGeneration;
   private channel: MethodChannel | null = null;
   private eventChannel: EventChannel | null = null;
   private eventSink: EventSink | null = null;
   private context: Context | null = null;
   private abilityContext: common.UIAbilityContext | null = null;
   private lastError: string = '';
-  private runtimeClient: RuntimeIpcClient = new RuntimeIpcClient((type: string, payload: RuntimeValue) => {
-    this.emitEvent(type, payload);
-  });
+  private runtimeActivityRefreshInFlight: boolean = false;
+  private runtimeActivityRefreshRequested: boolean = false;
+  private runtimeActivitySession: number = 0;
+  private runtimeActivityRefreshSession: number = 0;
+  private runtimeActivityMonitoring: boolean = false;
+  private runtimeActivityPollTimer: number = -1;
+  private runtimeActivityActive: boolean | null = null;
+  private runtimeClient: RuntimeIpcClient = new RuntimeIpcClient(
+    (type: string, payload: RuntimeValue) => {
+      this.handleRuntimeEvent(type, payload);
+      this.emitEvent(type, payload);
+    },
+    () => {
+      this.handleRuntimeSocketClosed();
+    },
+  );
 
   getUniqueClassName(): string {
     return 'OhosCoreRuntimeBridge';
@@ -99,6 +119,7 @@ export default class OhosCoreRuntimeBridge implements FlutterPlugin, MethodCallH
   }
 
   onDetachedFromEngine(binding: FlutterPluginBinding): void {
+    this.stopRuntimeActivityPolling(true);
     this.runtimeClient.close();
     this.channel?.setMethodCallHandler(null);
     this.eventChannel?.setStreamHandler(new DetachedStreamHandler());
@@ -113,6 +134,7 @@ export default class OhosCoreRuntimeBridge implements FlutterPlugin, MethodCallH
   }
 
   onDetachedFromAbility(): void {
+    this.stopRuntimeActivityPolling(true);
     this.abilityContext = null;
   }
 
@@ -137,7 +159,7 @@ export default class OhosCoreRuntimeBridge implements FlutterPlugin, MethodCallH
           this.startConfigServerClient(call, result);
           return;
         case 'stopConfigServerClient':
-          this.forwardRuntimeCall('stopConfigServerClient', new RuntimeParams(), result);
+          this.stopConfigServerClient(result);
           return;
         case 'stopRuntime':
           this.stopRuntime(result);
@@ -207,15 +229,29 @@ export default class OhosCoreRuntimeBridge implements FlutterPlugin, MethodCallH
         socketFilesDir: filesDir,
       },
     };
+    this.stopRuntimeActivityPolling(true);
     vpnExtension.startVpnExtensionAbility(want)
       .then(() => this.runtimeClient.connect(runtimeSocketPath(filesDir)))
       .then(() => {
+        this.startRuntimeActivityPolling();
         this.emitEvent('config_server_started', new ConfigServerStartedPayload(url, hostname, machineId));
         result.success(null);
       })
       .catch((error: Error) => {
         this.lastError = `HarmonyOS EasyTier VPN extension start failed: ${this.errorMessage(error)}`;
         result.error('OHOS_CORE_START_FAILED', this.lastError, null);
+      });
+  }
+
+  private stopConfigServerClient(result: MethodResult): void {
+    this.runtimeClient.request('stopConfigServerClient', new RuntimeParams())
+      .then((value: RuntimeValue): void => {
+        this.stopRuntimeActivityPolling(true);
+        result.success(value);
+      })
+      .catch((error: Error): void => {
+        this.stopRuntimeActivityPolling(true);
+        this.completeRuntimeFailure('stopConfigServerClient', error, result);
       });
   }
 
@@ -230,11 +266,13 @@ export default class OhosCoreRuntimeBridge implements FlutterPlugin, MethodCallH
     stopCore
       .then(() => vpnExtension.stopVpnExtensionAbility(want))
       .then(() => {
+        this.stopRuntimeActivityPolling(true);
         this.runtimeClient.close();
         this.emitEvent('config_server_stopped', new EmptyPayload());
         result.success(null);
       })
       .catch((error: Error) => {
+        this.stopRuntimeActivityPolling(true);
         this.runtimeClient.close();
         this.lastError = this.errorMessage(error);
         result.error('OHOS_RUNTIME_STOP_FAILED', this.lastError, null);
@@ -288,6 +326,127 @@ export default class OhosCoreRuntimeBridge implements FlutterPlugin, MethodCallH
       return;
     }
     result.error('OHOS_RUNTIME_IPC_FAILED', `HarmonyOS core runtime ${method} failed: ${this.lastError}`, null);
+  }
+
+  private handleRuntimeEvent(type: string, payload: RuntimeValue): void {
+    if (this.abilityContext === null) {
+      return;
+    }
+    if (type === 'config_server_stopped') {
+      if (this.isCurrentRuntimeBridge()) {
+        this.stopRuntimeActivityPolling(true);
+      }
+      return;
+    }
+    if (type === 'vpn_started' || type === 'vpn_stopped' || type === 'config_server' || type === 'runtime_instances_changed') {
+      this.refreshRuntimeActivity();
+    }
+  }
+
+  private handleRuntimeSocketClosed(): void {
+    if (!this.runtimeActivityMonitoring) {
+      return;
+    }
+    this.stopRuntimeActivityPolling(true);
+  }
+
+  private startRuntimeActivityPolling(): void {
+    this.runtimeActivitySession++;
+    this.runtimeActivityMonitoring = true;
+    activeRuntimeBridgeGeneration = this.bridgeGeneration;
+    this.runtimeActivityRefreshInFlight = false;
+    this.runtimeActivityRefreshRequested = false;
+    this.refreshRuntimeActivity();
+    if (this.runtimeActivityPollTimer !== -1) {
+      return;
+    }
+    this.runtimeActivityPollTimer = setInterval((): void => {
+      this.refreshRuntimeActivity();
+    }, RUNTIME_ACTIVITY_POLL_INTERVAL_MS);
+  }
+
+  private stopRuntimeActivityPolling(forceInactive: boolean): void {
+    this.runtimeActivitySession++;
+    this.runtimeActivityMonitoring = false;
+    if (this.runtimeActivityPollTimer !== -1) {
+      clearInterval(this.runtimeActivityPollTimer);
+    }
+    this.runtimeActivityPollTimer = -1;
+    this.runtimeActivityRefreshRequested = false;
+    this.runtimeActivityRefreshInFlight = false;
+    if (!forceInactive || this.abilityContext === null || !this.isCurrentRuntimeBridge()) {
+      return;
+    }
+    this.runtimeActivityActive = false;
+    getOhosBackgroundTaskService(this.abilityContext).setRuntimeActive(false);
+    activeRuntimeBridgeGeneration = 0;
+  }
+
+  private refreshRuntimeActivity(): void {
+    if (!this.runtimeActivityMonitoring || this.abilityContext === null || this.filesDir().length === 0) {
+      return;
+    }
+    if (this.runtimeActivityRefreshInFlight) {
+      this.runtimeActivityRefreshRequested = true;
+      return;
+    }
+    const session = this.runtimeActivitySession;
+    this.runtimeActivityRefreshSession = session;
+    this.runtimeActivityRefreshInFlight = true;
+    this.runtimeClient.request('listInstances', new RuntimeParams())
+      .then((value: RuntimeValue): void => {
+        if (session !== this.runtimeActivitySession || !this.runtimeActivityMonitoring) {
+          return;
+        }
+        const anyRunning = this.hasRunningInstances(value);
+        if (!this.isCurrentRuntimeBridge() || this.abilityContext === null) {
+          return;
+        }
+        if (this.runtimeActivityActive !== anyRunning) {
+          this.runtimeActivityActive = anyRunning;
+          getOhosBackgroundTaskService(this.abilityContext).setRuntimeActive(anyRunning);
+        }
+      })
+      .catch((_error: Error): void => {
+        if (session !== this.runtimeActivitySession || !this.runtimeActivityMonitoring) {
+          return;
+        }
+        // Retain the prior aggregate activity state until a later event or poll succeeds.
+      })
+      .then((): void => {
+        if (session !== this.runtimeActivitySession || !this.runtimeActivityMonitoring) {
+          return;
+        }
+        this.finishRuntimeActivityRefresh(session);
+      });
+  }
+
+  private finishRuntimeActivityRefresh(session: number): void {
+    if (session !== this.runtimeActivitySession || session !== this.runtimeActivityRefreshSession
+      || !this.runtimeActivityMonitoring) {
+      return;
+    }
+    this.runtimeActivityRefreshInFlight = false;
+    if (this.runtimeActivityRefreshRequested) {
+      this.runtimeActivityRefreshRequested = false;
+      this.refreshRuntimeActivity();
+    }
+  }
+
+  private hasRunningInstances(value: RuntimeValue): boolean {
+    if (typeof value !== 'string') {
+      throw new Error('HarmonyOS runtime listInstances response is not a JSON string');
+    }
+    const trimmed = value.trim();
+    if (trimmed.length === 0 || trimmed.charAt(0) !== '{' || trimmed.charAt(trimmed.length - 1) !== '}') {
+      throw new Error('HarmonyOS runtime listInstances response is not a JSON object');
+    }
+    const instances = JSON.parse(trimmed) as Record<string, string>;
+    return Object.keys(instances).length > 0;
+  }
+
+  private isCurrentRuntimeBridge(): boolean {
+    return this.bridgeGeneration === activeRuntimeBridgeGeneration;
   }
 
   private emitEvent(type: string, payload: RuntimeValue): void {

@@ -4,26 +4,30 @@ import { appTasks, OhosAppContext, OhosPluginId } from '@ohos/hvigor-ohos-plugin
 import { flutterHvigorPlugin } from 'flutter-hvigor-plugin';
 import { getNode } from '@ohos/hvigor';
 
-function loadSigningConfigs() {
-    const path = 'C:\\Users\\23820\\Documents\\HomoPublish\\EasyTier_All\\Sign\\pro\\sign.json';
+function loadSigningConfigs(): Array<Object> {
+    const signingConfigPath = 'C:\\Users\\23820\\Documents\\HomoPublish\\EasyTier_All\\Sign\\pro\\sign.json';
     try {
-        fs.accessSync(path);
-    } catch (e) {
-        if (e.code !== 'ENOENT') {
-            console.error(e);
+        const data = fs.readFileSync(signingConfigPath);
+        const signingConfigs: Object = JSON.parse(data.toString());
+        if (!Array.isArray(signingConfigs) || signingConfigs.length === 0) {
+            return [];
         }
+        return signingConfigs;
+    } catch {
         return [];
     }
-    const data = fs.readFileSync(path);
-    return JSON.parse(data.toString());
 }
 const rootNode = getNode(__filename);
 rootNode.afterNodeEvaluate(node => {
     const appContext = node.getContext(OhosPluginId.OHOS_APP_PLUGIN) as OhosAppContext;
     const buildProfileOpt = appContext.getBuildProfileOpt();
-    console.log("✅ 覆写签名")
-    buildProfileOpt['app']['signingConfigs'] = loadSigningConfigs();
-    appContext.setBuildProfileOpt(buildProfileOpt);
+    const signingConfigs = loadSigningConfigs();
+    const localSigningConfigs = buildProfileOpt['app']['signingConfigs'];
+    if (Array.isArray(signingConfigs) && signingConfigs.length > 0
+        && (!Array.isArray(localSigningConfigs) || localSigningConfigs.length === 0)) {
+        buildProfileOpt['app']['signingConfigs'] = signingConfigs;
+        appContext.setBuildProfileOpt(buildProfileOpt);
+    }
 })
 
 export default {

@@ -164,9 +164,11 @@ export class RuntimeIpcClient {
   private nextRequestId: number = 1;
   private pending: Map<number, PendingRuntimeRequest> = new Map();
   private onEvent: RuntimeEventHandler;
+  private onRemoteClose: (() => void) | undefined;
 
-  constructor(onEvent: RuntimeEventHandler) {
+  constructor(onEvent: RuntimeEventHandler, onRemoteClose?: () => void) {
     this.onEvent = onEvent;
+    this.onRemoteClose = onRemoteClose;
   }
 
   isConnected(): boolean {
@@ -208,14 +210,15 @@ export class RuntimeIpcClient {
   }
 
   close(): void {
+    const client = this.client;
+    this.client = null;
     this.connected = false;
     this.messageBuffer = '';
     this.rejectAllPending(new Error('HarmonyOS core runtime socket closed'));
     try {
-      this.client?.close();
+      client?.close();
     } catch (_) {
     }
-    this.client = null;
   }
 
   private connectWithRetry(attempt: number): Promise<void> {
@@ -223,17 +226,25 @@ export class RuntimeIpcClient {
       const client = socket.constructLocalSocketInstance();
       this.client = client;
       client.on('message', (value: socket.LocalSocketMessageInfo) => {
+        if (this.client !== client) {
+          return;
+        }
         this.handleSocketMessage(value.message);
       });
       client.on('close', () => {
+        if (this.client !== client) {
+          return;
+        }
         this.connected = false;
         this.rejectAllPending(new Error('HarmonyOS core runtime socket closed'));
+        this.onRemoteClose?.();
       });
       client.on('error', (error: BusinessError) => {
-        this.connected = false;
-        if (this.client === client) {
-          this.rejectAllPending(new Error(this.errorMessage(error)));
+        if (this.client !== client) {
+          return;
         }
+        this.connected = false;
+        this.rejectAllPending(new Error(this.errorMessage(error)));
       });
 
       const connectOptions: socket.LocalConnectOptions = {
