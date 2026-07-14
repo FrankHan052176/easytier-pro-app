@@ -46,7 +46,12 @@
         {
           "name": "default",
           "applyToProducts": [
-            "default",
+            "default"
+          ]
+        },
+        {
+          "name": "publish",
+          "applyToProducts": [
             "publish"
           ]
         }

@@ -8,6 +8,10 @@
       "runtimeOS": "HarmonyOS"
     },
     {
+      "name": "publish",
+      "runtimeOS": "HarmonyOS"
+    },
+    {
       "name": "ohosTest",
     }
   ]
