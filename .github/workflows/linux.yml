@@ -1,4 +1,4 @@
-name: Linux
+name: Linux and HarmonyOS
 
 on:
   push:
@@ -61,4 +61,50 @@ jobs:
         with:
           name: easytier-pro-linux-x64
           path: build/linux/x64/release/bundle
+          if-no-files-found: error
+
+  ohos:
+    name: HarmonyOS unsigned HAP
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout app
+        uses: actions/checkout@v4
+
+      - name: Install HarmonyOS host dependency
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes libgl1-mesa-dev
+
+      - name: Set up HarmonyOS Command Line Tools
+        uses: ErBWs/setup-ohos@v2
+        with:
+          version: 6.1.1.280
+          cache: true
+
+      - name: Set up Flutter OHOS
+        run: |
+          git clone --depth 1 --branch "$FLUTTER_OHOS_REF" \
+            "$FLUTTER_OHOS_REPOSITORY" "$RUNNER_TEMP/flutter-ohos"
+          echo "$RUNNER_TEMP/flutter-ohos/bin" >> "$GITHUB_PATH"
+          echo "FLUTTER_GIT_URL=$FLUTTER_OHOS_REPOSITORY" >> "$GITHUB_ENV"
+          "$RUNNER_TEMP/flutter-ohos/bin/flutter" --version
+
+      - name: Configure Flutter for HarmonyOS
+        run: |
+          flutter config --enable-ohos
+          flutter config --ohos-sdk "$OHOS_NDK_HOME"
+          flutter doctor -v
+
+      - name: Install Flutter dependencies
+        run: flutter pub get
+
+      - name: Build unsigned HarmonyOS HAP
+        run: flutter build hap --debug --no-codesign --no-pub
+
+      - name: Upload unsigned HarmonyOS HAP
+        uses: actions/upload-artifact@v4
+        with:
+          name: easytier-pro-ohos-arm64-unsigned
+          path: build/ohos/hap/entry-default-unsigned.hap
           if-no-files-found: error

@@ -22,7 +22,9 @@ rootNode.afterNodeEvaluate(node => {
     const appContext = node.getContext(OhosPluginId.OHOS_APP_PLUGIN) as OhosAppContext;
     const buildProfileOpt = appContext.getBuildProfileOpt();
     const signingConfigs = loadSigningConfigs();
-    const localSigningConfigs = buildProfileOpt.app.signingConfigs;
+    const localSigningConfigs = Array.isArray(buildProfileOpt.app.signingConfigs)
+        ? buildProfileOpt.app.signingConfigs
+        : [];
     buildProfileOpt.app.signingConfigs = [...localSigningConfigs,...signingConfigs];
     appContext.setBuildProfileOpt(buildProfileOpt);
 })
