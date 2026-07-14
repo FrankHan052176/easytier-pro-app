@@ -4,8 +4,8 @@ import { appTasks, OhosAppContext, OhosPluginId } from '@ohos/hvigor-ohos-plugin
 import { flutterHvigorPlugin } from 'flutter-hvigor-plugin';
 import { getNode } from '@ohos/hvigor';
 
-function loadSigningConfigs(): Array<Object> {
-    const signingConfigPath = 'C:\\Users\\23820\\Documents\\HomoPublish\\EasyTier_All\\Sign\\pro\\sign.json';
+function loadSigningConfigs(): Array<any> {
+    const signingConfigPath = path.resolve(__dirname, '../../Sign/EasyTierPro/sign.json');
     try {
         const data = fs.readFileSync(signingConfigPath);
         const signingConfigs: Object = JSON.parse(data.toString());
@@ -22,12 +22,9 @@ rootNode.afterNodeEvaluate(node => {
     const appContext = node.getContext(OhosPluginId.OHOS_APP_PLUGIN) as OhosAppContext;
     const buildProfileOpt = appContext.getBuildProfileOpt();
     const signingConfigs = loadSigningConfigs();
-    const localSigningConfigs = buildProfileOpt['app']['signingConfigs'];
-    if (Array.isArray(signingConfigs) && signingConfigs.length > 0
-        && (!Array.isArray(localSigningConfigs) || localSigningConfigs.length === 0)) {
-        buildProfileOpt['app']['signingConfigs'] = signingConfigs;
-        appContext.setBuildProfileOpt(buildProfileOpt);
-    }
+    const localSigningConfigs = buildProfileOpt.app.signingConfigs;
+    buildProfileOpt.app.signingConfigs = [...localSigningConfigs,...signingConfigs];
+    appContext.setBuildProfileOpt(buildProfileOpt);
 })
 
 export default {
