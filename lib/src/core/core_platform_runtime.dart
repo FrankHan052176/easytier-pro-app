@@ -28,6 +28,8 @@ abstract class CorePlatformRuntime {
     required bool forceReinstall,
   });
 
+  Future<bool> shouldRecoverAfterAppResume() async => false;
+
   Future<String?> readInstalledVersion() async => null;
 
   Future<bool> shouldUninstallBeforeElevatedInstall(

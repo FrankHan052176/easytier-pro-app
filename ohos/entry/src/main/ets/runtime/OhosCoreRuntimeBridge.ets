@@ -165,6 +165,7 @@ export default class OhosCoreRuntimeBridge implements FlutterPlugin, MethodCallH
           this.stopRuntime(result);
           return;
         case 'isConfigServerClientConnected':
+          this.runtimeClient.close();
           this.forwardRuntimeCall('isConfigServerClientConnected', new RuntimeParams(), result, false);
           return;
         case 'listInstances':
@@ -284,7 +285,10 @@ export default class OhosCoreRuntimeBridge implements FlutterPlugin, MethodCallH
       bundleName: BUNDLE_NAME,
       abilityName: VPN_ABILITY_NAME,
     };
-    vpnExtension.startVpnExtensionAbility(want)
+    vpnExtension.stopVpnExtensionAbility(want)
+      .catch((_error: Error): void => {
+      })
+      .then(() => vpnExtension.startVpnExtensionAbility(want))
       .then(() => vpnExtension.stopVpnExtensionAbility(want))
       .then(() => {
         this.emitEvent('vpn_permission_granted', new EmptyPayload());

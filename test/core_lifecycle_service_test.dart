@@ -1298,6 +1298,87 @@ void main() {
   });
 
   group('CoreLifecycleService runtime events', () {
+    test('recovers an unhealthy runtime after app resume', () async {
+      final authService = _LifecycleAuthService();
+      final runtime = _LifecycleRuntime();
+      final service = CoreLifecycleService(
+        authService: authService,
+        runtime: runtime,
+      );
+      addTearDown(service.dispose);
+
+      await service.bindSession(_session('tenant-1'));
+      runtime
+        ..connected = false
+        ..resumeRecoveryRequired = true;
+
+      await service.recoverAfterAppResume();
+
+      expect(runtime.resumeRecoveryCheckCount, 1);
+      expect(runtime.ensureRunningCount, 2);
+      expect(runtime.forceReinstallValues, [false, false]);
+      expect(service.status.value.phase, CoreRunPhase.running);
+    });
+
+    test('keeps a healthy runtime after app resume', () async {
+      final authService = _LifecycleAuthService();
+      final runtime = _LifecycleRuntime();
+      final service = CoreLifecycleService(
+        authService: authService,
+        runtime: runtime,
+      );
+      addTearDown(service.dispose);
+
+      await service.bindSession(_session('tenant-1'));
+      await service.recoverAfterAppResume();
+
+      expect(runtime.resumeRecoveryCheckCount, 1);
+      expect(runtime.ensureRunningCount, 1);
+      expect(service.status.value.phase, CoreRunPhase.running);
+    });
+
+    test(
+      'does not recover an intentionally stopped runtime on resume',
+      () async {
+        final authService = _LifecycleAuthService();
+        final runtime = _LifecycleRuntime()..resumeRecoveryRequired = true;
+        final service = CoreLifecycleService(
+          authService: authService,
+          runtime: runtime,
+        );
+        addTearDown(service.dispose);
+
+        await service.bindSession(_session('tenant-1'));
+        await service.stopRuntimeForUserExit();
+        await service.recoverAfterAppResume();
+
+        expect(runtime.resumeRecoveryCheckCount, 0);
+        expect(runtime.ensureRunningCount, 1);
+        expect(service.status.value.phase, CoreRunPhase.stopped);
+      },
+    );
+
+    test('does not retry VPN permission immediately after resume', () async {
+      final authService = _LifecycleAuthService();
+      final runtime = _LifecycleRuntime()..resumeRecoveryRequired = true;
+      final service = CoreLifecycleService(
+        authService: authService,
+        runtime: runtime,
+      );
+      addTearDown(service.dispose);
+
+      await service.bindSession(_session('tenant-1'));
+      service.status.value = const CoreRunStatus(
+        phase: CoreRunPhase.needsVpnPermission,
+        message: '需要授权 VPN 连接',
+      );
+      await service.recoverAfterAppResume();
+
+      expect(runtime.resumeRecoveryCheckCount, 0);
+      expect(runtime.ensureRunningCount, 1);
+      expect(service.status.value.phase, CoreRunPhase.needsVpnPermission);
+    });
+
     test(
       'reconnects when config server stops while session is active',
       () async {
@@ -1783,6 +1864,8 @@ class _LifecycleRuntime extends CorePlatformRuntime {
   var supportsElevationRepairValue = false;
   var uninstallBeforeElevatedInstall = false;
   var preElevatedInstallCheckCount = 0;
+  var resumeRecoveryRequired = false;
+  var resumeRecoveryCheckCount = 0;
   final forceReinstallValues = <bool>[];
   final ensureRunningBootstraps = <CoreBootstrapConfig>[];
 
@@ -1838,6 +1921,12 @@ class _LifecycleRuntime extends CorePlatformRuntime {
       details: 'EasyTier $installedVersion',
       coreVersion: installedVersion,
     );
+  }
+
+  @override
+  Future<bool> shouldRecoverAfterAppResume() async {
+    resumeRecoveryCheckCount++;
+    return resumeRecoveryRequired;
   }
 
   @override

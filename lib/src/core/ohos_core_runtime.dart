@@ -10,6 +10,20 @@ class OhosCoreRuntime extends AndroidCoreRuntime {
   }) : super(platformLabel: 'HarmonyOS', fallbackHostname: 'harmony-device');
 
   @override
+  Future<bool> shouldRecoverAfterAppResume() async {
+    try {
+      final connected =
+          await _methodChannel.invokeMethod<bool>(
+            'isConfigServerClientConnected',
+          ) ??
+          false;
+      return !connected;
+    } on Object {
+      return true;
+    }
+  }
+
+  @override
   Future<CoreRuntimeStartResult> ensureRunning(
     CoreBootstrapConfig bootstrap, {
     required bool forceReinstall,

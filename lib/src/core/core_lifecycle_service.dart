@@ -293,6 +293,32 @@ class CoreLifecycleService {
     });
   }
 
+  Future<void> recoverAfterAppResume() {
+    return _enqueue(() async {
+      if (!_hasActiveConnection) {
+        return;
+      }
+      final phase = status.value.phase;
+      if (phase == CoreRunPhase.signedOut ||
+          phase == CoreRunPhase.stopped ||
+          phase == CoreRunPhase.checking ||
+          phase == CoreRunPhase.repairing ||
+          phase == CoreRunPhase.needsVpnPermission ||
+          phase == CoreRunPhase.needsElevation) {
+        return;
+      }
+      if (!await _runtime.shouldRecoverAfterAppResume()) {
+        return;
+      }
+      _logger.warn(
+        'core.runtime',
+        'Runtime health check failed after app resume; reconnecting',
+        context: {'runtime': _runtime.runtimeType.toString()},
+      );
+      await _ensureActiveConnection(forceReinstall: false);
+    });
+  }
+
   Future<void> dispose() async {
     _invalidateEngineVersionChecks();
     _stopEngineVersionCheckTimer();

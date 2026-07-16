@@ -96,6 +96,7 @@ class _AuthGateState extends State<AuthGate> with WidgetsBindingObserver {
     );
     if (state == AppLifecycleState.resumed) {
       _startApprovalPollingIfReady();
+      unawaited(widget.coreLifecycleService.recoverAfterAppResume());
     }
   }
 

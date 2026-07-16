@@ -45,14 +45,15 @@ void main() {
     UrlLauncherPlatform.instance = launcher;
 
     try {
+      final lifecycleService = _NoopCoreLifecycleService(
+        authService: authService,
+        machineId: 'machine-1',
+      );
       await tester.pumpWidget(
         MyApp(
           authService: authService,
           traySupport: createTraySupport(),
-          coreLifecycleService: _NoopCoreLifecycleService(
-            authService: authService,
-            machineId: 'machine-1',
-          ),
+          coreLifecycleService: lifecycleService,
         ),
       );
       await tester.pumpAndSettle();
@@ -71,6 +72,7 @@ void main() {
       tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
       await tester.pumpAndSettle();
       expect(authService.completeDeviceAuthCount, 1);
+      expect(lifecycleService.resumeRecoveryCount, 1);
     } finally {
       UrlLauncherPlatform.instance = previousLauncher;
       debugDefaultTargetPlatformOverride = null;
@@ -6183,6 +6185,7 @@ class _NoopCoreLifecycleService extends CoreLifecycleService {
   int repairCount = 0;
   int peerReadCount = 0;
   int userExitStopCount = 0;
+  int resumeRecoveryCount = 0;
 
   @override
   Future<void> bindSession(AuthSession session) async {
@@ -6234,6 +6237,11 @@ class _NoopCoreLifecycleService extends CoreLifecycleService {
       message: '本机设备已就绪',
       machineId: machineId,
     );
+  }
+
+  @override
+  Future<void> recoverAfterAppResume() async {
+    resumeRecoveryCount++;
   }
 
   @override
