@@ -4,8 +4,13 @@ import { appTasks, OhosAppContext, OhosPluginId } from '@ohos/hvigor-ohos-plugin
 import { flutterHvigorPlugin } from 'flutter-hvigor-plugin';
 import { getNode } from '@ohos/hvigor';
 
+const signingConfigFileName = 'signingConfigs.json';
+
 function loadSigningConfigs(): Array<any> {
-    const signingConfigPath = path.resolve(__dirname, '../../Sign/EasyTierPro/sign.json');
+    const signingDir = process.env.EASYTIER_PRO_SIGNING_DIR;
+    const signingConfigPath = signingDir
+        ? path.join(signingDir, signingConfigFileName)
+        : path.resolve(__dirname, '../../Sign/EasyTierPro/sign.json');
     try {
         const data = fs.readFileSync(signingConfigPath);
         const signingConfigs: Object = JSON.parse(data.toString());
@@ -13,7 +18,12 @@ function loadSigningConfigs(): Array<any> {
             return [];
         }
         return signingConfigs;
-    } catch {
+    } catch (error) {
+        if (signingDir) {
+            throw new Error(
+                `Unable to read EasyTier Pro signing configuration from EASYTIER_PRO_SIGNING_DIR: ${error}`
+            );
+        }
         return [];
     }
 }
@@ -22,10 +32,17 @@ rootNode.afterNodeEvaluate(node => {
     const appContext = node.getContext(OhosPluginId.OHOS_APP_PLUGIN) as OhosAppContext;
     const buildProfileOpt = appContext.getBuildProfileOpt();
     const signingConfigs = loadSigningConfigs();
-    const localSigningConfigs = Array.isArray(buildProfileOpt.app.signingConfigs)
-        ? buildProfileOpt.app.signingConfigs
-        : [];
-    buildProfileOpt.app.signingConfigs = [...localSigningConfigs,...signingConfigs];
+    if (signingConfigs.length > 0) {
+        buildProfileOpt.app.signingConfigs = signingConfigs;
+        const products = buildProfileOpt.app.products;
+        if (Array.isArray(products)) {
+            products.forEach(product => {
+                if (product.name === 'publish') {
+                    product.signingConfig = 'publish';
+                }
+            });
+        }
+    }
     appContext.setBuildProfileOpt(buildProfileOpt);
 })
 

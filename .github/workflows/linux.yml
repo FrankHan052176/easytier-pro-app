@@ -111,7 +111,6 @@ jobs:
           test -n "${{ steps.setup-ohos.outputs.sdk-version }}"
           test "${{ steps.setup-ohos.outputs.api-version }}" = "24"
           flutter config --enable-ohos
-          flutter config --ohos-sdk "$OHOS_NDK_HOME"
           flutter config --list
           flutter doctor -v
           ohpm --version
