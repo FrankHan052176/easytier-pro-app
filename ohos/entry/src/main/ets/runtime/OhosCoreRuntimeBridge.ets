@@ -219,20 +219,26 @@ export default class OhosCoreRuntimeBridge implements FlutterPlugin, MethodCallH
       result.error('OHOS_RUNTIME_CONTEXT_MISSING', this.lastError, null);
       return;
     }
+    // 仅用于把扩展进程拉起来；真正的启动参数通过 IPC 显式下发。
+    // 这样即使扩展是此前权限探测拉起的存量单例（不会再走 onCreate），
+    // 或系统杀后台后处于任意残留状态，都能可靠地重启核心运行时。
     const want: Want = {
       bundleName: BUNDLE_NAME,
       abilityName: VPN_ABILITY_NAME,
       parameters: {
-        url,
-        hostname,
-        machineId,
-        secureMode,
         socketFilesDir: filesDir,
       },
     };
+    const startParams = new RuntimeParams();
+    startParams.url = url;
+    startParams.hostname = hostname;
+    startParams.machineId = machineId;
+    startParams.secureMode = secureMode;
+    startParams.socketFilesDir = filesDir;
     this.stopRuntimeActivityPolling(true);
     vpnExtension.startVpnExtensionAbility(want)
       .then(() => this.runtimeClient.connect(runtimeSocketPath(filesDir)))
+      .then(() => this.runtimeClient.request('startConfigServerClient', startParams))
       .then(() => {
         this.startRuntimeActivityPolling();
         this.emitEvent('config_server_started', new ConfigServerStartedPayload(url, hostname, machineId));
@@ -281,23 +287,42 @@ export default class OhosCoreRuntimeBridge implements FlutterPlugin, MethodCallH
   }
 
   private prepareVpn(result: MethodResult): void {
-    const want: Want = {
-      bundleName: BUNDLE_NAME,
-      abilityName: VPN_ABILITY_NAME,
-    };
-    vpnExtension.stopVpnExtensionAbility(want)
-      .catch((_error: Error): void => {
-      })
-      .then(() => vpnExtension.startVpnExtensionAbility(want))
-      .then(() => vpnExtension.stopVpnExtensionAbility(want))
+    // 运行时已在线（例如仅主进程被杀、扩展仍在跑，或刚重启成功）时，
+    // 绝不能再走“stop→start→stop”探测——那会把正在运行的 VPN 打断，
+    // 且与后续启动产生生命周期竞速。已连接即视为权限已具备。
+    if (this.runtimeClient.isConnected()) {
+      this.emitEvent('vpn_permission_granted', new EmptyPayload());
+      result.success(true);
+      return;
+    }
+    const filesDir = this.filesDir();
+    const probe: Promise<void> = filesDir.length > 0
+      ? this.runtimeClient.connect(runtimeSocketPath(filesDir), 3)
+      : Promise.reject(new Error('filesDir unavailable'));
+    probe
       .then(() => {
         this.emitEvent('vpn_permission_granted', new EmptyPayload());
         result.success(true);
       })
-      .catch((error: Error) => {
-        this.lastError = `HarmonyOS VPN permission failed: ${this.errorMessage(error)}`;
-        this.emitEvent('vpn_permission_denied', new ErrorPayload(this.lastError));
-        result.success(false);
+      .catch(() => {
+        const want: Want = {
+          bundleName: BUNDLE_NAME,
+          abilityName: VPN_ABILITY_NAME,
+        };
+        vpnExtension.stopVpnExtensionAbility(want)
+          .catch((_error: Error): void => {
+          })
+          .then(() => vpnExtension.startVpnExtensionAbility(want))
+          .then(() => vpnExtension.stopVpnExtensionAbility(want))
+          .then(() => {
+            this.emitEvent('vpn_permission_granted', new EmptyPayload());
+            result.success(true);
+          })
+          .catch((error: Error) => {
+            this.lastError = `HarmonyOS VPN permission failed: ${this.errorMessage(error)}`;
+            this.emitEvent('vpn_permission_denied', new ErrorPayload(this.lastError));
+            result.success(false);
+          });
       });
   }
 

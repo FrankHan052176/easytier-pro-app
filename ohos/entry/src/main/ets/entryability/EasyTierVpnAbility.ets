@@ -15,7 +15,6 @@ import {
 
 const IPV4_FAMILY = 1;
 const DEFAULT_MTU = 1380;
-const DEFAULT_DNS = '223.5.5.5';
 const EVENT_POLL_INTERVAL_MS = 500;
 
 interface CidrParts {
@@ -93,14 +92,19 @@ export default class EasyTierVpnAbility extends VpnExtensionAbility {
     }
     const filesDir = readStringParam(params, 'socketFilesDir') || this.context.filesDir;
     this.ensureCoreInitialized(filesDir);
-    if (readStringParam(params, 'url').length === 0) {
-      return;
-    }
-
+    // 关键修复：无论本次拉起是否携带 url（权限探测拉起不带 url），
+    // 都必须启动 IPC 服务器。VpnExtensionAbility 是进程单例，二次
+    // startVpnExtensionAbility 不会再触发 onCreate——如果探测拉起的
+    // 裸实例没有 IPC 服务器，被杀后台后重进 App 将永远连不上运行时，
+    // 表现为“无法重启 VPN”。启动参数改由主进程通过 IPC 显式下发。
     this.ipcServer = new RuntimeIpcServer((method: string, requestParams: RuntimeParams) => {
       return this.handleRuntimeRequest(method, requestParams);
     });
     this.ipcServer.start(filesDir);
+    if (readStringParam(params, 'url').length === 0) {
+      console.info('[EasyTierProVpn] created without url (permission probe or IPC-driven start), ipc server ready');
+      return;
+    }
     console.info(`[EasyTierProVpn] starting config server client url=${readStringParam(params, 'url')}`);
     this.protectProcessNetwork()
       .then(() => {
@@ -334,7 +338,7 @@ export default class EasyTierVpnAbility extends VpnExtensionAbility {
         },
       ],
       routes,
-      dnsAddresses: dns.length > 0 ? dns : [DEFAULT_DNS],
+      dnsAddresses: dns.length > 0 ? dns : undefined,
       blockedApplications: disallowedApplications,
       trustedApplications: [],
       mtu,

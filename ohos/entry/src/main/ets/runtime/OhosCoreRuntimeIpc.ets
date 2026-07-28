@@ -175,13 +175,13 @@ export class RuntimeIpcClient {
     return this.connected;
   }
 
-  connect(path: string): Promise<void> {
+  connect(path: string, maxAttempts: number = CONNECT_RETRY_LIMIT): Promise<void> {
     if (this.connected && this.socketPath === path && this.client !== null) {
       return Promise.resolve();
     }
     this.close();
     this.socketPath = path;
-    return this.connectWithRetry(0);
+    return this.connectWithRetry(0, maxAttempts);
   }
 
   request(method: string, params: RuntimeParams): Promise<RuntimeValue> {
@@ -221,7 +221,7 @@ export class RuntimeIpcClient {
     }
   }
 
-  private connectWithRetry(attempt: number): Promise<void> {
+  private connectWithRetry(attempt: number, maxAttempts: number = CONNECT_RETRY_LIMIT): Promise<void> {
     return new Promise<void>((resolve, reject) => {
       const client = socket.constructLocalSocketInstance();
       this.client = client;
@@ -259,12 +259,12 @@ export class RuntimeIpcClient {
           client.close();
         } catch (_) {
         }
-        if (attempt >= CONNECT_RETRY_LIMIT) {
+        if (attempt >= maxAttempts) {
           reject(new Error(this.errorMessage(error)));
           return;
         }
         setTimeout(() => {
-          this.connectWithRetry(attempt + 1).then(resolve).catch(reject);
+          this.connectWithRetry(attempt + 1, maxAttempts).then(resolve).catch(reject);
         }, CONNECT_RETRY_DELAY_MS);
       });
     });
