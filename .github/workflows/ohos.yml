@@ -1,75 +1,38 @@
-name: Core HAR publish App
+name: HarmonyOS
 
 on:
-  repository_dispatch:
-    types: [core-har-published]
+  push:
+    branches:
+      - main
+  pull_request:
   workflow_dispatch:
-    inputs:
-      package_name:
-        description: Exact private OHPM package name
-        required: true
-        default: easytier-ohos_pro-runtime
-        type: string
-      package_version:
-        description: Exact private OHPM package version
-        required: true
-        type: string
-      core_sha:
-        description: Optional Core commit SHA for provenance
-        required: false
-        type: string
-      core_version:
-        description: Optional Core version for provenance
-        required: false
-        type: string
 
 permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.client_payload.package_version || inputs.package_version || github.run_id }}
+  group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  FLUTTER_OHOS_REPOSITORY: https://gitcode.com/CPF-Flutter/flutter_flutter.git
+  FLUTTER_OHOS_REF: 3.41.10-ohos-0.0.2-beta
+  FLUTTER_OHOS_COMMIT: eea47c62cc5ff1000db068306ffe7279d53e889b
+  OHOS_COMMAND_LINE_TOOLS_VERSION: 6.1.1.280
+  OHRS_HAR_SHA256: 8c659f30247a0a3350a3e8e875f9562d9ab14115ab9d209f6d2aa1f68e23fd4a
+  SIGNING_REPOSITORY: ${{ vars.SIGNING_REPOSITORY || 'FrankHan052176/EasyTierProSigning' }}
+  SIGNING_REPOSITORY_REF: ${{ vars.SIGNING_REPOSITORY_REF || 'main' }}
+
 jobs:
-  publish-app:
-    name: Signed HarmonyOS publish release App
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      (
-        github.event.client_payload.core_repository == 'EasyTier/EasyTier' &&
-        github.event.client_payload.core_ref == 'refs/heads/ohos/pro-runtime'
-      )
+  ohos:
+    name: HarmonyOS release App
     runs-on: ubuntu-latest
-    env:
-      CORE_HAR_PACKAGE: ${{ github.event.client_payload.package_name || inputs.package_name }}
-      CORE_HAR_VERSION: ${{ github.event.client_payload.package_version || inputs.package_version }}
-      CORE_SHA: ${{ github.event.client_payload.core_sha || inputs.core_sha }}
-      CORE_VERSION: ${{ github.event.client_payload.core_version || inputs.core_version }}
-      CORE_HAR_ORIGINAL_SHA256: ${{ github.event.client_payload.har_sha256 }}
-      CODEARTS_PRIVATE_OHPM_READ: ${{ secrets.CODEARTS_PRIVATE_OHPM_READ }}
-      SIGNING_REPOSITORY_TOKEN: ${{ secrets.SIGNING_REPOSITORY_TOKEN }}
-      SIGNING_REPOSITORY: ${{ vars.SIGNING_REPOSITORY || 'FrankHan052176/EasyTierProSigning' }}
-      SIGNING_REPOSITORY_REF: ${{ vars.SIGNING_REPOSITORY_REF || 'main' }}
-      FLUTTER_OHOS_REPOSITORY: https://gitcode.com/CPF-Flutter/flutter_flutter.git
-      FLUTTER_OHOS_REF: 3.41.10-ohos-0.0.2-beta
-      FLUTTER_OHOS_COMMIT: eea47c62cc5ff1000db068306ffe7279d53e889b
-      OHOS_COMMAND_LINE_TOOLS_VERSION: 6.1.1.280
 
     steps:
-      - name: Checkout EasyTier Pro
+      - name: Checkout app
         uses: actions/checkout@v4
         with:
           persist-credentials: false
-
-      - name: Validate dispatch and secrets
-        run: |
-          set -euo pipefail
-          test -n "$CORE_HAR_PACKAGE"
-          test -n "$CORE_HAR_VERSION"
-          test -n "$CODEARTS_PRIVATE_OHPM_READ"
-          test -n "$SIGNING_REPOSITORY_TOKEN"
-          test -n "$SIGNING_REPOSITORY"
-          test -n "$SIGNING_REPOSITORY_REF"
 
       - name: Install HarmonyOS host dependency
         run: |
@@ -115,18 +78,51 @@ jobs:
           node --version
           java -version
 
-      - name: Fetch exact Core HAR
-        env:
-          CORE_HAR_DESTINATION: ${{ github.workspace }}/ohos/easytier-ohrs-0.0.1.har
-          CORE_HAR_MODULE_NAME: easytier-ohrs
-        run: .github/ci/prepare-core-har.sh
+      - name: Verify HarmonyOS native bridge
+        run: |
+          set -euo pipefail
+          test -s ohos/easytier-ohrs-0.0.1.har
+          actual_sha256="$(sha256sum ohos/easytier-ohrs-0.0.1.har | awk '{print $1}')"
+          test "$actual_sha256" = "$OHRS_HAR_SHA256"
 
       - name: Install Flutter dependencies
         run: flutter pub get
 
-      - name: Checkout private signing repository
+      - name: Build unsigned HarmonyOS release App for pull request
+        if: github.event_name == 'pull_request'
+        run: >-
+          CI=true flutter build app
+          --release
+          --target-platform ohos-arm64
+          --no-codesign
+          --no-pub
+
+      - name: Verify unsigned HarmonyOS App
+        if: github.event_name == 'pull_request'
+        run: test -s build/ohos/app/ohos-default-unsigned.app
+
+      - name: Upload unsigned HarmonyOS App
+        if: github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: easytier-pro-harmonyos-arm64-release-unsigned-app
+          path: build/ohos/app/ohos-default-unsigned.app
+          if-no-files-found: error
+
+      - name: Validate signing configuration
+        if: github.event_name != 'pull_request'
         env:
-          GH_TOKEN: ${{ env.SIGNING_REPOSITORY_TOKEN }}
+          SIGNING_REPOSITORY_TOKEN: ${{ secrets.SIGNING_REPOSITORY_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$SIGNING_REPOSITORY_TOKEN"
+          test -n "$SIGNING_REPOSITORY"
+          test -n "$SIGNING_REPOSITORY_REF"
+
+      - name: Checkout private signing repository
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ secrets.SIGNING_REPOSITORY_TOKEN }}
         run: |
           set -euo pipefail
           rm -rf "$RUNNER_TEMP/signing-repository"
@@ -138,6 +134,7 @@ jobs:
             --branch "$SIGNING_REPOSITORY_REF"
 
       - name: Prepare EasyTier Pro signing configuration
+        if: github.event_name != 'pull_request'
         env:
           SIGNING_REPOSITORY_DIR: ${{ runner.temp }}/signing-repository
           SIGNING_APP_DIR: .
@@ -149,6 +146,7 @@ jobs:
           echo "EASYTIER_PRO_SIGNING_DIR=$SIGNING_OUTPUT_DIR" >> "$GITHUB_ENV"
 
       - name: Build signed HarmonyOS publish release App
+        if: github.event_name != 'pull_request'
         run: >-
           CI=true flutter build app
           --release
@@ -156,8 +154,9 @@ jobs:
           --target-platform ohos-arm64
           --no-pub
 
-      - name: Verify signed App
-        id: app_artifact
+      - name: Verify signed HarmonyOS App
+        if: github.event_name != 'pull_request'
+        id: signed_app
         run: |
           set -euo pipefail
           mapfile -t signed_apps < <(
@@ -167,7 +166,7 @@ jobs:
           signed_app="${signed_apps[0]}"
           test -s "$signed_app"
 
-          verify_dir=$(mktemp -d "$RUNNER_TEMP/easytier-pro-app-verify.XXXXXX")
+          verify_dir="$(mktemp -d "$RUNNER_TEMP/easytier-pro-app-verify.XXXXXX")"
           java -jar "$OHOS_NDK_HOME/toolchains/lib/hap-sign-tool.jar" verify-app \
             -inFile "$signed_app" \
             -outCertChain "$verify_dir/cert-chain.cer" \
@@ -176,27 +175,16 @@ jobs:
           rm -rf "$verify_dir"
           echo "path=$signed_app" >> "$GITHUB_OUTPUT"
 
-      - name: Record build provenance
-        run: |
-          {
-            echo "### EasyTier Pro HarmonyOS publish App"
-            echo
-            echo "- Core package: \`$CORE_HAR_PACKAGE@$CORE_HAR_VERSION\`"
-            echo "- Core version: \`${CORE_VERSION:-not supplied}\`"
-            echo "- Core commit: \`${CORE_SHA:-not supplied}\`"
-            echo "- Published HAR SHA-256: \`${CORE_HAR_ORIGINAL_SHA256:-not supplied}\`"
-          } >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Upload signed App
+      - name: Upload signed HarmonyOS App
+        if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@v4
         with:
-          name: easytier-pro-${{ env.CORE_HAR_VERSION }}-signed-app
-          path: ${{ steps.app_artifact.outputs.path }}
+          name: easytier-pro-harmonyos-arm64-publish-release-signed-app
+          path: ${{ steps.signed_app.outputs.path }}
           retention-days: 14
           if-no-files-found: error
 
       - name: Remove credentials and signing material
-        if: always()
+        if: always() && github.event_name != 'pull_request'
         run: |
           rm -rf "$RUNNER_TEMP/signing-repository" "$RUNNER_TEMP/easytier-pro-signing"
-          rm -f "$HOME/.ohpm/.ohpmrc"
