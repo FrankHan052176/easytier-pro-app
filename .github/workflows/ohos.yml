@@ -5,13 +5,21 @@ on:
     branches:
       - main
   pull_request:
+  repository_dispatch:
+    types: [core-har-published]
   workflow_dispatch:
+    inputs:
+      package_name:
+        description: Private OHPM package name for the Core branch
+        required: true
+        default: easytier-main
+        type: string
 
 permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event.client_payload.package_name || inputs.package_name || github.ref }}
   cancel-in-progress: true
 
 env:
@@ -20,12 +28,21 @@ env:
   FLUTTER_OHOS_COMMIT: eea47c62cc5ff1000db068306ffe7279d53e889b
   OHOS_COMMAND_LINE_TOOLS_VERSION: 6.1.1.280
   OHRS_HAR_SHA256: 8c659f30247a0a3350a3e8e875f9562d9ab14115ab9d209f6d2aa1f68e23fd4a
+  CORE_HAR_PACKAGE: ${{ github.event.client_payload.package_name || inputs.package_name || 'easytier-main' }}
+  CORE_HAR_TAG: arkts-latest
+  CODEARTS_PRIVATE_OHPM_READ: ${{ secrets.CODEARTS_PRIVATE_OHPM_READ }}
   SIGNING_REPOSITORY: ${{ vars.SIGNING_REPOSITORY || 'FrankHan052176/EasyTierProSigning' }}
   SIGNING_REPOSITORY_REF: ${{ vars.SIGNING_REPOSITORY_REF || 'main' }}
 
 jobs:
   ohos:
     name: HarmonyOS release App
+    if: >-
+      github.event_name != 'repository_dispatch' ||
+      (
+        github.event.client_payload.core_repository == 'EasyTier/EasyTier' &&
+        github.event.client_payload.package_name != ''
+      )
     runs-on: ubuntu-latest
 
     steps:
@@ -78,12 +95,33 @@ jobs:
           node --version
           java -version
 
+      - name: Validate private build configuration
+        if: github.event_name != 'pull_request'
+        env:
+          SIGNING_REPOSITORY_TOKEN: ${{ secrets.SIGNING_REPOSITORY_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$CORE_HAR_PACKAGE"
+          test -n "$CODEARTS_PRIVATE_OHPM_READ"
+          test -n "$SIGNING_REPOSITORY_TOKEN"
+          test -n "$SIGNING_REPOSITORY"
+          test -n "$SIGNING_REPOSITORY_REF"
+
       - name: Verify HarmonyOS native bridge
+        if: github.event_name == 'pull_request'
         run: |
           set -euo pipefail
           test -s ohos/easytier-ohrs-0.0.1.har
           actual_sha256="$(sha256sum ohos/easytier-ohrs-0.0.1.har | awk '{print $1}')"
           test "$actual_sha256" = "$OHRS_HAR_SHA256"
+
+      - name: Fetch latest Core HAR for package
+        if: github.event_name != 'pull_request'
+        id: core_har
+        env:
+          CORE_HAR_DESTINATION: ${{ github.workspace }}/ohos/easytier-ohrs-0.0.1.har
+          CORE_HAR_MODULE_NAME: easytier-ohrs
+        run: .github/ci/prepare-core-har.sh
 
       - name: Install Flutter dependencies
         run: flutter pub get
@@ -108,16 +146,6 @@ jobs:
           name: easytier-pro-harmonyos-arm64-release-unsigned-app
           path: build/ohos/app/ohos-default-unsigned.app
           if-no-files-found: error
-
-      - name: Validate signing configuration
-        if: github.event_name != 'pull_request'
-        env:
-          SIGNING_REPOSITORY_TOKEN: ${{ secrets.SIGNING_REPOSITORY_TOKEN }}
-        run: |
-          set -euo pipefail
-          test -n "$SIGNING_REPOSITORY_TOKEN"
-          test -n "$SIGNING_REPOSITORY"
-          test -n "$SIGNING_REPOSITORY_REF"
 
       - name: Checkout private signing repository
         if: github.event_name != 'pull_request'
@@ -179,7 +207,7 @@ jobs:
         if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@v4
         with:
-          name: easytier-pro-harmonyos-arm64-publish-release-signed-app
+          name: easytier-pro-${{ steps.core_har.outputs.package_version }}-signed-app
           path: ${{ steps.signed_app.outputs.path }}
           retention-days: 14
           if-no-files-found: error
@@ -188,3 +216,4 @@ jobs:
         if: always() && github.event_name != 'pull_request'
         run: |
           rm -rf "$RUNNER_TEMP/signing-repository" "$RUNNER_TEMP/easytier-pro-signing"
+          rm -f "$HOME/.ohpm/.ohpmrc"
