@@ -7,12 +7,6 @@ on:
   repository_dispatch:
     types: [core-har-published]
   workflow_dispatch:
-    inputs:
-      package_name:
-        description: Private OHPM package name for the Core branch
-        required: true
-        default: easytier-main
-        type: string
 
 permissions:
   contents: read
@@ -23,7 +17,7 @@ env:
   FLUTTER_OHOS_COMMIT: eea47c62cc5ff1000db068306ffe7279d53e889b
   OHOS_COMMAND_LINE_TOOLS_VERSION: 6.1.1.280
   CODEARTS_OHPM_REGISTRY: https://devrepo.devcloud.cn-north-4.huaweicloud.com/artgalaxy/api/ohpm/cn-north-4_c07b1b38744f424b8d87a86532d38003_ohpm_1/
-  CORE_HAR_PACKAGE: ${{ github.event.client_payload.package_name || inputs.package_name || 'easytier-main' }}
+  CORE_HAR_PACKAGE: ${{ github.event.client_payload.package_name || 'easytier-ohrs' }}
   CORE_HAR_TAG: arkts-latest
   SIGNING_REPOSITORY: ${{ vars.SIGNING_REPOSITORY || 'FrankHan052176/EasyTierProSigning' }}
   SIGNING_REPOSITORY_REF: ${{ vars.SIGNING_REPOSITORY_REF || 'main' }}
@@ -70,7 +64,7 @@ jobs:
           CODEARTS_PRIVATE_OHPM_READ: ${{ secrets.CODEARTS_PRIVATE_OHPM_READ }}
         run: |
           set -euo pipefail
-          ohpm uninstall easytier-ohrs
+          ohpm uninstall "$CORE_HAR_PACKAGE"
 
           mkdir -p "$HOME/.ohpm"
           umask 077
@@ -84,9 +78,6 @@ jobs:
             "oh_modules/$CORE_HAR_PACKAGE/oh-package.json5")
           echo "Installed Core HAR: ${CORE_HAR_PACKAGE}@${installed_version}"
 
-          bridge_source="entry/src/main/ets/entryability/EasyTierVpnAbility.ets"
-          sed -i "s/from 'easytier-ohrs';/from '$CORE_HAR_PACKAGE';/" \
-            "$bridge_source"
           cd ..
           flutter pub get
 
