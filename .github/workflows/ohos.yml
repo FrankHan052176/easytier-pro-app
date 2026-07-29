@@ -19,7 +19,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.client_payload.package_name || inputs.package_name || github.ref }}
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.event.client_payload.package_name || inputs.package_name || 'easytier-main' }}
   cancel-in-progress: true
 
 env:
@@ -27,10 +27,10 @@ env:
   FLUTTER_OHOS_REF: 3.41.10-ohos-0.0.2-beta
   FLUTTER_OHOS_COMMIT: eea47c62cc5ff1000db068306ffe7279d53e889b
   OHOS_COMMAND_LINE_TOOLS_VERSION: 6.1.1.280
-  OHRS_HAR_SHA256: 8c659f30247a0a3350a3e8e875f9562d9ab14115ab9d209f6d2aa1f68e23fd4a
+  CODEARTS_OHPM_REGISTRY: https://devrepo.devcloud.cn-north-4.huaweicloud.com/artgalaxy/api/ohpm/cn-north-4_c07b1b38744f424b8d87a86532d38003_ohpm_1/
   CORE_HAR_PACKAGE: ${{ github.event.client_payload.package_name || inputs.package_name || 'easytier-main' }}
   CORE_HAR_TAG: arkts-latest
-  CODEARTS_PRIVATE_OHPM_READ: ${{ secrets.CODEARTS_PRIVATE_OHPM_READ }}
+  BUNDLED_OHRS_HAR_SHA256: 8c659f30247a0a3350a3e8e875f9562d9ab14115ab9d209f6d2aa1f68e23fd4a
   SIGNING_REPOSITORY: ${{ vars.SIGNING_REPOSITORY || 'FrankHan052176/EasyTierProSigning' }}
   SIGNING_REPOSITORY_REF: ${{ vars.SIGNING_REPOSITORY_REF || 'main' }}
 
@@ -95,33 +95,92 @@ jobs:
           node --version
           java -version
 
-      - name: Validate private build configuration
+      - name: Validate Core package configuration
+        if: github.event_name != 'pull_request'
+        run: |
+          set -euo pipefail
+          test -n "$CORE_HAR_PACKAGE"
+          test -n "$CODEARTS_OHPM_REGISTRY"
+          [[ "$CORE_HAR_PACKAGE" =~ ^[a-z][a-z0-9._-]{0,127}$ ]]
+
+      - name: Validate signing configuration
         if: github.event_name != 'pull_request'
         env:
           SIGNING_REPOSITORY_TOKEN: ${{ secrets.SIGNING_REPOSITORY_TOKEN }}
         run: |
           set -euo pipefail
-          test -n "$CORE_HAR_PACKAGE"
-          test -n "$CODEARTS_PRIVATE_OHPM_READ"
           test -n "$SIGNING_REPOSITORY_TOKEN"
           test -n "$SIGNING_REPOSITORY"
           test -n "$SIGNING_REPOSITORY_REF"
 
-      - name: Verify HarmonyOS native bridge
+      - name: Configure private OHPM authentication
+        if: github.event_name != 'pull_request'
+        env:
+          CODEARTS_PRIVATE_OHPM_READ: ${{ secrets.CODEARTS_PRIVATE_OHPM_READ }}
+        run: |
+          set -euo pipefail
+          test -n "$CODEARTS_PRIVATE_OHPM_READ"
+          mkdir -p "$HOME/.ohpm"
+          printf '%s' "$CODEARTS_PRIVATE_OHPM_READ" > "$HOME/.ohpm/.ohpmrc"
+          chmod 600 "$HOME/.ohpm/.ohpmrc"
+
+      - name: Install published Core HAR from private OHPM
+        if: github.event_name != 'pull_request'
+        id: core_har
+        run: |
+          set -euo pipefail
+          cd ohos
+
+          # The repository keeps a local HAR for offline development. CI uses
+          # the branch package published by Core, so remove the local dependency
+          # before resolving Core's explicit arkts-latest dist-tag. The private
+          # registry's unversioned resolution can select an older prerelease
+          # because its numeric-looking components are compared lexicographically.
+          ohpm uninstall easytier-ohrs --log_level error
+          ohpm install "$CORE_HAR_PACKAGE@tag:$CORE_HAR_TAG" \
+            --registry "$CODEARTS_OHPM_REGISTRY" \
+            --strict_ssl false \
+            --retry_times 5 \
+            --retry_interval 3000
+
+          installed_package="oh_modules/$CORE_HAR_PACKAGE"
+          test -d "$installed_package"
+          jq -e --arg package "$CORE_HAR_PACKAGE" \
+            '.name == $package and (.version | type == "string" and length > 0)' \
+            "$installed_package/oh-package.json5" >/dev/null
+          test -s "$installed_package/libs/arm64-v8a/libeasytier_ohrs.so"
+          resolved_version="$(jq -r '.version' "$installed_package/oh-package.json5")"
+          echo "Installed Core HAR: $CORE_HAR_PACKAGE@$resolved_version"
+          echo "package_version=$resolved_version" >> "$GITHUB_OUTPUT"
+
+      - name: Verify bundled Core HAR for pull request
         if: github.event_name == 'pull_request'
         run: |
           set -euo pipefail
           test -s ohos/easytier-ohrs-0.0.1.har
           actual_sha256="$(sha256sum ohos/easytier-ohrs-0.0.1.har | awk '{print $1}')"
-          test "$actual_sha256" = "$OHRS_HAR_SHA256"
+          test "$actual_sha256" = "$BUNDLED_OHRS_HAR_SHA256"
 
-      - name: Fetch latest Core HAR for package
+      - name: Install remaining HarmonyOS dependencies
+        working-directory: ohos
+        run: ohpm install
+
+      - name: Select installed Core HAR import
         if: github.event_name != 'pull_request'
-        id: core_har
-        env:
-          CORE_HAR_DESTINATION: ${{ github.workspace }}/ohos/easytier-ohrs-0.0.1.har
-          CORE_HAR_MODULE_NAME: easytier-ohrs
-        run: .github/ci/prepare-core-har.sh
+        run: |
+          set -euo pipefail
+          bridge_source="ohos/entry/src/main/ets/entryability/EasyTierVpnAbility.ets"
+          stable_import="from 'easytier-ohrs';"
+          selected_import="from '$CORE_HAR_PACKAGE';"
+
+          test "$(grep -Foc "$stable_import" "$bridge_source")" -eq 1
+          sed -i "s/from 'easytier-ohrs';/from '$CORE_HAR_PACKAGE';/" "$bridge_source"
+          grep -Fq "$selected_import" "$bridge_source"
+          ! grep -Fq "$stable_import" "$bridge_source"
+
+          jq -e --arg package "$CORE_HAR_PACKAGE" \
+            '.dependencies[$package] != null and .dependencies["easytier-ohrs"] == null' \
+            ohos/oh-package.json5 >/dev/null
 
       - name: Install Flutter dependencies
         run: flutter pub get
@@ -182,6 +241,10 @@ jobs:
           --target-platform ohos-arm64
           --no-pub
 
+      - name: Remove private OHPM authentication
+        if: ${{ always() && github.event_name != 'pull_request' }}
+        run: rm -f "$HOME/.ohpm/.ohpmrc"
+
       - name: Verify signed HarmonyOS App
         if: github.event_name != 'pull_request'
         id: signed_app
@@ -207,13 +270,27 @@ jobs:
         if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@v4
         with:
-          name: easytier-pro-${{ steps.core_har.outputs.package_version }}-signed-app
+          name: easytier-pro-${{ env.CORE_HAR_PACKAGE }}-${{ steps.core_har.outputs.package_version }}-signed-app
           path: ${{ steps.signed_app.outputs.path }}
           retention-days: 14
           if-no-files-found: error
 
+      # TODO(AGC): Enable after AGC credentials and upload parameters are ready.
+      - name: Upload signed App to AGC (placeholder)
+        if: ${{ github.event_name != 'pull_request' && vars.ENABLE_AGC_SIGNED_APP_UPLOAD == 'true' }}
+        run: |
+          echo "::error::Implement the AGC signed App upload before enabling this step."
+          exit 1
+
+      # TODO(AGC): Enable only after the AGC upload step returns a release ID.
+      - name: Publish AGC test release (placeholder)
+        if: ${{ github.event_name != 'pull_request' && vars.ENABLE_AGC_TEST_RELEASE == 'true' }}
+        run: |
+          echo "::error::Implement the AGC test release before enabling this step."
+          exit 1
+
       - name: Remove credentials and signing material
-        if: always() && github.event_name != 'pull_request'
+        if: always()
         run: |
           rm -rf "$RUNNER_TEMP/signing-repository" "$RUNNER_TEMP/easytier-pro-signing"
           rm -f "$HOME/.ohpm/.ohpmrc"
