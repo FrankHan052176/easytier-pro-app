@@ -25,6 +25,12 @@ jobs:
   ohos:
     name: ohos
     runs-on: ubuntu-latest
+    env:
+      AGC_CLIENT_ID: ${{ secrets.AGC_CLIENT_ID }}
+      AGC_CLIENT_SECRET: ${{ secrets.AGC_CLIENT_SECRET }}
+      AGC_APP_ID: ${{ secrets.AGC_APP_ID }}
+      AGC_API_DOMAIN: ${{ vars.AGC_API_DOMAIN || 'connect-api.cloud.huawei.com' }}
+      AGC_TEST_DURATION_DAYS: ${{ vars.AGC_TEST_DURATION_DAYS || '14' }}
 
     steps:
       - name: Checkout app
@@ -133,8 +139,19 @@ jobs:
           retention-days: 14
           if-no-files-found: error
 
-      # TODO(AGC): Upload the signed App after AGC credentials are configured.
-      # TODO(AGC): Publish an AGC test release after the upload returns a release ID.
+      - name: Upload and submit AGC test version
+        if: ${{ env.AGC_CLIENT_ID != '' && env.AGC_CLIENT_SECRET != '' && env.AGC_APP_ID != '' }}
+        id: agc
+        env:
+          AGC_APP_FILE: ${{ steps.app.outputs.path }}
+          AGC_EVENT_NAME: ${{ github.event_name }}
+          AGC_RUN_ATTEMPT: ${{ github.run_attempt }}
+          AGC_NOTIFY_ON_PUSH: "0"
+          AGC_APP_NAME_PREFIX: EasyTierPro
+          AGC_CORE_HAR_VERSION: ${{ steps.core_har.outputs.package_version }}
+          AGC_PUSH_COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
+          AGC_WORKFLOW_SHA: ${{ github.sha }}
+        run: .github/scripts/agc-test-release.sh "$AGC_APP_FILE"
 
       - name: Remove credentials and signing material
         if: always()
