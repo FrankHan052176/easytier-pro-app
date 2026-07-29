@@ -48,7 +48,7 @@ jobs:
       CORE_HAR_ORIGINAL_SHA256: ${{ github.event.client_payload.har_sha256 }}
       CODEARTS_PRIVATE_OHPM_READ: ${{ secrets.CODEARTS_PRIVATE_OHPM_READ }}
       SIGNING_REPOSITORY_TOKEN: ${{ secrets.SIGNING_REPOSITORY_TOKEN }}
-      SIGNING_REPOSITORY: ${{ vars.SIGNING_REPOSITORY || 'FrankHan052176/AppGallerySigning' }}
+      SIGNING_REPOSITORY: ${{ vars.SIGNING_REPOSITORY || 'FrankHan052176/EasyTierProSigning' }}
       SIGNING_REPOSITORY_REF: ${{ vars.SIGNING_REPOSITORY_REF || 'main' }}
       FLUTTER_OHOS_REPOSITORY: https://gitcode.com/CPF-Flutter/flutter_flutter.git
       FLUTTER_OHOS_REF: 3.41.10-ohos-0.0.2-beta
@@ -140,7 +140,8 @@ jobs:
       - name: Prepare EasyTier Pro signing configuration
         env:
           SIGNING_REPOSITORY_DIR: ${{ runner.temp }}/signing-repository
-          SIGNING_APP_DIR: EasyTierPro
+          SIGNING_APP_DIR: .
+          SIGNING_SOURCE_CONFIG_NAME: sign.json
           SIGNING_OUTPUT_DIR: ${{ runner.temp }}/easytier-pro-signing
         run: |
           set -euo pipefail

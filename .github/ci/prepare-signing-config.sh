@@ -30,7 +30,6 @@ chmod 600 "$output_config"
 jq -e '
   type == "array" and
   length > 0 and
-  any(.[]; .name == "default") and
   any(.[]; .name == "publish")
 ' "$output_config" >/dev/null
 
@@ -44,4 +43,14 @@ done < <(
     "$output_config"
 )
 
-echo "Prepared signing configuration for $SIGNING_APP_DIR."
+while IFS= read -r store_file; do
+  material_dir="$(dirname "$store_file")/material"
+  for material_component in fd ac ce; do
+    if [[ ! -d "$material_dir/$material_component" ]]; then
+      echo "Missing encrypted-password material: $material_dir/$material_component" >&2
+      exit 1
+    fi
+  done
+done < <(jq -r '.[].material.storeFile' "$output_config")
+
+echo "Prepared publish signing configuration from $SIGNING_SOURCE_CONFIG_NAME."
