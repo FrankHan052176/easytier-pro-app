@@ -1,4 +1,4 @@
-name: HarmonyOS
+name: ohos
 
 on:
   push:
@@ -17,15 +17,12 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: ${{ github.workflow }}-${{ github.event.client_payload.package_name || inputs.package_name || 'easytier-main' }}
-  cancel-in-progress: true
-
 env:
   FLUTTER_OHOS_REPOSITORY: https://gitcode.com/CPF-Flutter/flutter_flutter.git
   FLUTTER_OHOS_REF: 3.41.10-ohos-0.0.2-beta
   FLUTTER_OHOS_COMMIT: eea47c62cc5ff1000db068306ffe7279d53e889b
   OHOS_COMMAND_LINE_TOOLS_VERSION: 6.1.1.280
+  CODEARTS_OHPM_REGISTRY: https://devrepo.devcloud.cn-north-4.huaweicloud.com/artgalaxy/api/ohpm/cn-north-4_c07b1b38744f424b8d87a86532d38003_ohpm_1/
   CORE_HAR_PACKAGE: ${{ github.event.client_payload.package_name || inputs.package_name || 'easytier-main' }}
   CORE_HAR_TAG: arkts-latest
   SIGNING_REPOSITORY: ${{ vars.SIGNING_REPOSITORY || 'FrankHan052176/EasyTierProSigning' }}
@@ -33,13 +30,7 @@ env:
 
 jobs:
   ohos:
-    name: HarmonyOS signed release App
-    if: >-
-      github.event_name != 'repository_dispatch' ||
-      (
-        github.event.client_payload.core_repository == 'EasyTier/EasyTier' &&
-        github.event.client_payload.package_name != ''
-      )
+    name: ohos
     runs-on: ubuntu-latest
 
     steps:
@@ -48,11 +39,6 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Install HarmonyOS host dependency
-        run: |
-          sudo apt-get update
-          sudo apt-get install --yes libgl1-mesa-dev
-
       - name: Set up Java
         uses: actions/setup-java@v4
         with:
@@ -60,210 +46,91 @@ jobs:
           java-version: "17"
 
       - name: Set up HarmonyOS Command Line Tools
-        id: setup-ohos
         uses: ErBWs/setup-ohos@v2
         with:
           version: ${{ env.OHOS_COMMAND_LINE_TOOLS_VERSION }}
           cache: true
 
-      - name: Set up Flutter OHOS
+      - name: Set up Flutter OHOS build environment
         run: |
           set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install --yes libgl1-mesa-dev
           git clone --depth 1 --branch "$FLUTTER_OHOS_REF" \
             "$FLUTTER_OHOS_REPOSITORY" "$RUNNER_TEMP/flutter-ohos"
           test "$(git -C "$RUNNER_TEMP/flutter-ohos" rev-parse HEAD)" = \
             "$FLUTTER_OHOS_COMMIT"
           echo "$RUNNER_TEMP/flutter-ohos/bin" >> "$GITHUB_PATH"
           echo "FLUTTER_GIT_URL=$FLUTTER_OHOS_REPOSITORY" >> "$GITHUB_ENV"
-          "$RUNNER_TEMP/flutter-ohos/bin/flutter" --version
+          "$RUNNER_TEMP/flutter-ohos/bin/flutter" config --enable-ohos
 
-      - name: Configure Flutter for HarmonyOS
-        run: |
-          set -euo pipefail
-          test -d "$HOS_SDK_HOME"
-          test -d "$OHOS_NDK_HOME"
-          test -n "${{ steps.setup-ohos.outputs.sdk-version }}"
-          test "${{ steps.setup-ohos.outputs.api-version }}" = "24"
-          flutter config --enable-ohos
-          flutter config --list
-          flutter doctor -v
-          ohpm --version
-          hvigorw --version
-          node --version
-          java -version
-
-      - name: Validate signing configuration
+      - name: Install HarmonyOS dependencies and Core HAR
+        working-directory: ohos
         env:
-          SIGNING_REPOSITORY_TOKEN: ${{ secrets.SIGNING_REPOSITORY_TOKEN }}
-        run: |
-          set -euo pipefail
-          test -n "$SIGNING_REPOSITORY_TOKEN"
-          test -n "$SIGNING_REPOSITORY"
-          test -n "$SIGNING_REPOSITORY_REF"
-
-      - name: Install published Core HAR from private OHPM
-        id: core_har
-        env:
-          CODEARTS_OHPM_REGISTRY: https://devrepo.devcloud.cn-north-4.huaweicloud.com/artgalaxy/api/ohpm/cn-north-4_c07b1b38744f424b8d87a86532d38003_ohpm_1/
           CODEARTS_PRIVATE_OHPM_READ: ${{ secrets.CODEARTS_PRIVATE_OHPM_READ }}
         run: |
           set -euo pipefail
-          test -n "$CODEARTS_PRIVATE_OHPM_READ"
+          ohpm uninstall easytier-ohrs
 
-          core_har_spec="${CORE_HAR_PACKAGE}@tag:${CORE_HAR_TAG}"
-          echo "Core HAR package spec: $core_har_spec"
-
-          # Resolve the private package in an isolated OHPM project. Running
-          # this command in the app project would also send its public
-          # dependencies to the private registry.
-          core_fetch_project="$RUNNER_TEMP/easytier-core-ohpm"
-          rm -rf "$core_fetch_project"
-          mkdir -p "$core_fetch_project"
-          jq -n \
-            '{
-              modelVersion: "5.0.0",
-              name: "easytier-core-fetch",
-              version: "1.0.0",
-              dependencies: {},
-              devDependencies: {}
-            }' > "$core_fetch_project/oh-package.json5"
-
-          # Scope private authentication to this single registry install. It is
-          # removed before any ordinary OHPM or Flutter-OH dependency install.
-          private_ohpmrc="$HOME/.ohpm/.ohpmrc"
-          cleanup_private_ohpmrc() {
-            rm -f "$private_ohpmrc"
-          }
-          trap cleanup_private_ohpmrc EXIT
           mkdir -p "$HOME/.ohpm"
-          printf '%s' "$CODEARTS_PRIVATE_OHPM_READ" > "$private_ohpmrc"
-          chmod 600 "$private_ohpmrc"
+          umask 077
+          printf '%s' "$CODEARTS_PRIVATE_OHPM_READ" > "$HOME/.ohpm/.ohpmrc"
 
-          (
-            cd "$core_fetch_project"
-            ohpm install "$core_har_spec" \
-              --registry "$CODEARTS_OHPM_REGISTRY" \
-              --strict_ssl false \
-              --retry_times 5 \
-              --retry_interval 3000
-          )
+          ohpm install "$CORE_HAR_PACKAGE@tag:$CORE_HAR_TAG" \
+            --registry "$CODEARTS_OHPM_REGISTRY"
+          ohpm install
 
-          cleanup_private_ohpmrc
-          trap - EXIT
+          installed_version=$(jq -r '.version' \
+            "oh_modules/$CORE_HAR_PACKAGE/oh-package.json5")
+          echo "Installed Core HAR: ${CORE_HAR_PACKAGE}@${installed_version}"
 
-          installed_package="$(
-            cd "$core_fetch_project/oh_modules/$CORE_HAR_PACKAGE"
-            pwd -P
-          )"
+          bridge_source="entry/src/main/ets/entryability/EasyTierVpnAbility.ets"
+          sed -i "s/from 'easytier-ohrs';/from '$CORE_HAR_PACKAGE';/" \
+            "$bridge_source"
+          cd ..
+          flutter pub get
 
-          # Point the app at the already-installed local package directory.
-          # Its subsequent ordinary OHPM installs can therefore use only the
-          # default registry for all remaining dependencies.
-          local_core_spec="file:$installed_package"
-          jq --arg package "$CORE_HAR_PACKAGE" --arg spec "$local_core_spec" \
-            '.dependencies = ((.dependencies // {})
-              | del(.["easytier-ohrs"])
-              | .[$package] = $spec)' \
-            ohos/oh-package.json5 > ohos/oh-package.ci.json5
-          mv ohos/oh-package.ci.json5 ohos/oh-package.json5
-
-          echo "package_spec=$core_har_spec" >> "$GITHUB_OUTPUT"
-          printf '### Core HAR dependency\n\n- Requested: `%s`\n' \
-            "$core_har_spec" >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Install remaining HarmonyOS dependencies from default registry
-        working-directory: ohos
-        run: ohpm install
-
-      - name: Select installed Core HAR import
-        run: |
-          set -euo pipefail
-          bridge_source="ohos/entry/src/main/ets/entryability/EasyTierVpnAbility.ets"
-          sed -i "s/from 'easytier-ohrs';/from '$CORE_HAR_PACKAGE';/" "$bridge_source"
-
-      - name: Install Flutter dependencies
-        run: flutter pub get
-
-      - name: Checkout private signing repository
+      - name: Prepare signing configuration
         env:
           GH_TOKEN: ${{ secrets.SIGNING_REPOSITORY_TOKEN }}
-        run: |
-          set -euo pipefail
-          rm -rf "$RUNNER_TEMP/signing-repository"
-          gh repo clone \
-            "$SIGNING_REPOSITORY" \
-            "$RUNNER_TEMP/signing-repository" \
-            -- \
-            --depth=1 \
-            --branch "$SIGNING_REPOSITORY_REF"
-
-      - name: Prepare EasyTier Pro signing configuration
-        env:
           SIGNING_REPOSITORY_DIR: ${{ runner.temp }}/signing-repository
           SIGNING_APP_DIR: .
           SIGNING_SOURCE_CONFIG_NAME: sign.json
           SIGNING_OUTPUT_DIR: ${{ runner.temp }}/easytier-pro-signing
         run: |
           set -euo pipefail
+          gh repo clone \
+            "$SIGNING_REPOSITORY" \
+            "$SIGNING_REPOSITORY_DIR" \
+            -- \
+            --depth=1 \
+            --branch "$SIGNING_REPOSITORY_REF"
           .github/ci/prepare-signing-config.sh
           echo "EASYTIER_PRO_SIGNING_DIR=$SIGNING_OUTPUT_DIR" >> "$GITHUB_ENV"
 
-      - name: Build signed HarmonyOS publish release App
+      - name: Build signed publish release App
         run: |
-          set -euo pipefail
           CI=true flutter build app \
             --release \
             --flavor publish \
             --target-platform ohos-arm64 \
             --no-pub
 
-      - name: Verify signed HarmonyOS App
-        id: signed_app
-        run: |
-          set -euo pipefail
-          mapfile -t signed_apps < <(
-            find ohos/build/outputs/publish -maxdepth 1 -type f -name '*-signed.app' -print
-          )
-          test "${#signed_apps[@]}" -eq 1
-          signed_app="${signed_apps[0]}"
-          test -s "$signed_app"
-
-          verify_dir="$(mktemp -d "$RUNNER_TEMP/easytier-pro-app-verify.XXXXXX")"
-          java -jar "$OHOS_NDK_HOME/toolchains/lib/hap-sign-tool.jar" verify-app \
-            -inFile "$signed_app" \
-            -outCertChain "$verify_dir/cert-chain.cer" \
-            -outProfile "$verify_dir/profile.p7b" \
-            -inForm zip
-          rm -rf "$verify_dir"
-          echo "path=$signed_app" >> "$GITHUB_OUTPUT"
-
       - name: Upload signed HarmonyOS App
         uses: actions/upload-artifact@v4
         with:
           name: easytier-pro-${{ env.CORE_HAR_PACKAGE }}-signed-app
-          path: ${{ steps.signed_app.outputs.path }}
+          path: ohos/build/outputs/publish/*-signed.app
           retention-days: 14
           if-no-files-found: error
 
-      # TODO(AGC): Enable after AGC credentials and upload parameters are ready.
-      - name: Upload signed App to AGC (placeholder)
-        if: ${{ vars.ENABLE_AGC_SIGNED_APP_UPLOAD == 'true' }}
-        run: |
-          echo "::error::Implement the AGC signed App upload before enabling this step."
-          exit 1
-
-      # TODO(AGC): Enable only after the AGC upload step returns a release ID.
-      - name: Publish AGC test release (placeholder)
-        if: ${{ vars.ENABLE_AGC_TEST_RELEASE == 'true' }}
-        run: |
-          echo "::error::Implement the AGC test release before enabling this step."
-          exit 1
+      # TODO(AGC): Upload the signed App after AGC credentials are configured.
+      # TODO(AGC): Publish an AGC test release after the upload returns a release ID.
 
       - name: Remove credentials and signing material
         if: always()
         run: |
           rm -rf \
             "$RUNNER_TEMP/signing-repository" \
-            "$RUNNER_TEMP/easytier-pro-signing" \
-            "$RUNNER_TEMP/easytier-core-ohpm"
+            "$RUNNER_TEMP/easytier-pro-signing"
           rm -f "$HOME/.ohpm/.ohpmrc"
