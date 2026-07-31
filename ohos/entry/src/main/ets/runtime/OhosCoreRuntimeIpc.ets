@@ -113,40 +113,43 @@ export function runtimeSocketPath(filesDir: string): string {
 export function readStringParam(params: RuntimeParams, key: string): string {
   switch (key) {
     case 'type':
-      return params.type;
+      return typeof params.type === 'string' ? params.type : '';
     case 'url':
-      return params.url;
+      return typeof params.url === 'string' ? params.url : '';
     case 'hostname':
-      return params.hostname;
+      return typeof params.hostname === 'string' ? params.hostname : '';
     case 'machineId':
-      return params.machineId;
+      return typeof params.machineId === 'string' ? params.machineId : '';
     case 'socketFilesDir':
-      return params.socketFilesDir;
+      return typeof params.socketFilesDir === 'string' ? params.socketFilesDir : '';
     case 'serviceName':
-      return params.serviceName;
+      return typeof params.serviceName === 'string' ? params.serviceName : '';
     case 'methodName':
-      return params.methodName;
+      return typeof params.methodName === 'string' ? params.methodName : '';
     case 'domainName':
-      return params.domainName;
+      return typeof params.domainName === 'string' ? params.domainName : '';
     case 'payloadJson':
-      return params.payloadJson;
+      return typeof params.payloadJson === 'string' ? params.payloadJson : '';
     case 'instanceName':
-      return params.instanceName;
+      return typeof params.instanceName === 'string' ? params.instanceName : '';
     default:
       return '';
   }
 }
 
 export function readBoolParam(params: RuntimeParams, key: string): boolean {
-  return key === 'secureMode' ? params.secureMode : false;
+  return key === 'secureMode' && typeof params.secureMode === 'boolean' ? params.secureMode : false;
 }
 
 export function readArrayParam(params: RuntimeParams, key: string): Array<string> {
-  return key === 'instanceNames' ? params.instanceNames : [];
+  return key === 'instanceNames' && Array.isArray(params.instanceNames) ? params.instanceNames : [];
 }
 
 export function readObjectParam(params: RuntimeParams, key: string): RuntimeVpnConfig {
-  return key === 'vpnConfig' ? params.vpnConfig : new RuntimeVpnConfig();
+  if (key !== 'vpnConfig' || params.vpnConfig === undefined || params.vpnConfig === null) {
+    return new RuntimeVpnConfig();
+  }
+  return params.vpnConfig;
 }
 
 function encodeRuntimeMessage(message: Object): ArrayBuffer {
