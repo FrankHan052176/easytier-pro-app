@@ -1,7 +1,7 @@
 import { common, Context, Want } from '@kit.AbilityKit';
 import { JSON } from '@kit.ArkTS';
 import { preferences } from '@kit.ArkData';
-import { deviceInfo } from '@kit.BasicServicesKit';
+import { BusinessError, deviceInfo } from '@kit.BasicServicesKit';
 import { util } from '@kit.ArkTS';
 import { vpnExtension } from '@kit.NetworkKit';
 import {
@@ -18,6 +18,8 @@ import {
   StreamHandler,
 } from '@ohos/flutter_ohos';
 import {
+  RUNTIME_IPC_ERROR_REMOTE,
+  RuntimeIpcError,
   RuntimeIpcClient,
   RuntimeParams,
   RuntimeValue,
@@ -35,6 +37,7 @@ const MACHINE_ID_KEY = 'machine_id';
 const MACHINE_ID_UUID_PATTERN =
   /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
 const RUNTIME_ACTIVITY_POLL_INTERVAL_MS: number = 5000;
+const RUNTIME_READY_PROBE_TIMEOUT_MS: number = 2000;
 
 let nextRuntimeBridgeGeneration: number = 0;
 let activeRuntimeBridgeGeneration: number = 0;
@@ -96,6 +99,8 @@ export default class OhosCoreRuntimeBridge implements FlutterPlugin, MethodCallH
   private runtimeActivityMonitoring: boolean = false;
   private runtimeActivityPollTimer: number = -1;
   private runtimeActivityActive: boolean | null = null;
+  private runtimeReadyInFlight: Promise<void> | null = null;
+  private runtimeReadyGeneration: number = 0;
   private runtimeClient: RuntimeIpcClient = new RuntimeIpcClient(
     (type: string, payload: RuntimeValue) => {
       this.handleRuntimeEvent(type, payload);
@@ -120,7 +125,11 @@ export default class OhosCoreRuntimeBridge implements FlutterPlugin, MethodCallH
 
   onDetachedFromEngine(binding: FlutterPluginBinding): void {
     this.stopRuntimeActivityPolling(true);
-    this.runtimeClient.close();
+    this.cancelRuntimeReadyCheck().then(() => {
+    });
+    this.runtimeClient.close().catch((error: Error): void => {
+      console.error(`HarmonyOS core runtime socket close failed: ${this.errorMessage(error)}`);
+    });
     this.channel?.setMethodCallHandler(null);
     this.eventChannel?.setStreamHandler(new DetachedStreamHandler());
     this.channel = null;
@@ -165,7 +174,6 @@ export default class OhosCoreRuntimeBridge implements FlutterPlugin, MethodCallH
           this.stopRuntime(result);
           return;
         case 'isConfigServerClientConnected':
-          this.runtimeClient.close();
           this.forwardRuntimeCall('isConfigServerClientConnected', new RuntimeParams(), result, false);
           return;
         case 'listInstances':
@@ -219,16 +227,6 @@ export default class OhosCoreRuntimeBridge implements FlutterPlugin, MethodCallH
       result.error('OHOS_RUNTIME_CONTEXT_MISSING', this.lastError, null);
       return;
     }
-    // 仅用于把扩展进程拉起来；真正的启动参数通过 IPC 显式下发。
-    // 这样即使扩展是此前权限探测拉起的存量单例（不会再走 onCreate），
-    // 或系统杀后台后处于任意残留状态，都能可靠地重启核心运行时。
-    const want: Want = {
-      bundleName: BUNDLE_NAME,
-      abilityName: VPN_ABILITY_NAME,
-      parameters: {
-        socketFilesDir: filesDir,
-      },
-    };
     const startParams = new RuntimeParams();
     startParams.url = url;
     startParams.hostname = hostname;
@@ -236,16 +234,18 @@ export default class OhosCoreRuntimeBridge implements FlutterPlugin, MethodCallH
     startParams.secureMode = secureMode;
     startParams.socketFilesDir = filesDir;
     this.stopRuntimeActivityPolling(true);
-    vpnExtension.startVpnExtensionAbility(want)
-      .then(() => this.runtimeClient.connect(runtimeSocketPath(filesDir)))
-      .then(() => this.runtimeClient.request('startConfigServerClient', startParams))
+    this.ensureRuntimeExtensionConnected(filesDir)
+      .then(() => this.runtimeClient.request('startConfigServerClient', startParams)
+        .catch((error: Error) => {
+          throw this.runtimeRequestStageError('core_start', error);
+        }))
       .then(() => {
         this.startRuntimeActivityPolling();
         this.emitEvent('config_server_started', new ConfigServerStartedPayload(url, hostname, machineId));
         result.success(null);
       })
       .catch((error: Error) => {
-        this.lastError = `HarmonyOS EasyTier VPN extension start failed: ${this.errorMessage(error)}`;
+        this.lastError = `HarmonyOS EasyTier runtime start failed: ${this.errorMessage(error)}`;
         result.error('OHOS_CORE_START_FAILED', this.lastError, null);
       });
   }
@@ -263,67 +263,161 @@ export default class OhosCoreRuntimeBridge implements FlutterPlugin, MethodCallH
   }
 
   private stopRuntime(result: MethodResult): void {
+    const readyCheck = this.cancelRuntimeReadyCheck();
     const want: Want = {
       bundleName: BUNDLE_NAME,
       abilityName: VPN_ABILITY_NAME,
     };
-    const stopCore = this.runtimeClient.isConnected()
-      ? this.runtimeClient.request('stopRuntime', new RuntimeParams()).catch((_error: Error) => null)
-      : Promise.resolve(null);
+    const stopCore = readyCheck.then((): Promise<RuntimeValue> => {
+      return this.runtimeClient.isConnected()
+        ? this.runtimeClient.request('stopRuntime', new RuntimeParams()).catch((_error: Error) => null)
+        : Promise.resolve(null);
+    });
     stopCore
       .then(() => vpnExtension.stopVpnExtensionAbility(want))
+      .then(() => this.runtimeClient.close())
       .then(() => {
         this.stopRuntimeActivityPolling(true);
-        this.runtimeClient.close();
         this.emitEvent('config_server_stopped', new EmptyPayload());
         result.success(null);
       })
       .catch((error: Error) => {
         this.stopRuntimeActivityPolling(true);
-        this.runtimeClient.close();
+        this.runtimeClient.close().catch((closeError: Error): void => {
+          console.error(`HarmonyOS core runtime socket close failed: ${this.errorMessage(closeError)}`);
+        });
         this.lastError = this.errorMessage(error);
         result.error('OHOS_RUNTIME_STOP_FAILED', this.lastError, null);
       });
   }
 
   private prepareVpn(result: MethodResult): void {
-    // 运行时已在线（例如仅主进程被杀、扩展仍在跑，或刚重启成功）时，
-    // 绝不能再走“stop→start→stop”探测——那会把正在运行的 VPN 打断，
-    // 且与后续启动产生生命周期竞速。已连接即视为权限已具备。
-    if (this.runtimeClient.isConnected()) {
-      this.emitEvent('vpn_permission_granted', new EmptyPayload());
-      result.success(true);
+    const filesDir = this.filesDir();
+    if (filesDir.length === 0) {
+      this.lastError = 'HarmonyOS filesDir is unavailable';
+      this.emitEvent('vpn_permission_denied', new ErrorPayload(this.lastError));
+      result.success(false);
       return;
     }
-    const filesDir = this.filesDir();
-    const probe: Promise<void> = filesDir.length > 0
-      ? this.runtimeClient.connect(runtimeSocketPath(filesDir), 3)
-      : Promise.reject(new Error('filesDir unavailable'));
-    probe
+    // 权限探测拉起的 Extension 同时就是后续 Core 的运行容器。
+    // 将它保留并等待 IPC 就绪，避免 stop→start→stop 后立即再 start
+    // 造成 Extension 销毁与重建竞态。
+    this.ensureRuntimeExtensionConnected(filesDir)
       .then(() => {
         this.emitEvent('vpn_permission_granted', new EmptyPayload());
         result.success(true);
       })
-      .catch(() => {
-        const want: Want = {
-          bundleName: BUNDLE_NAME,
-          abilityName: VPN_ABILITY_NAME,
-        };
-        vpnExtension.stopVpnExtensionAbility(want)
-          .catch((_error: Error): void => {
-          })
-          .then(() => vpnExtension.startVpnExtensionAbility(want))
-          .then(() => vpnExtension.stopVpnExtensionAbility(want))
-          .then(() => {
-            this.emitEvent('vpn_permission_granted', new EmptyPayload());
-            result.success(true);
-          })
-          .catch((error: Error) => {
-            this.lastError = `HarmonyOS VPN permission failed: ${this.errorMessage(error)}`;
-            this.emitEvent('vpn_permission_denied', new ErrorPayload(this.lastError));
-            result.success(false);
-          });
+      .catch((error: Error) => {
+        this.lastError = `HarmonyOS VPN permission failed: ${this.errorMessage(error)}`;
+        this.emitEvent('vpn_permission_denied', new ErrorPayload(this.lastError));
+        result.success(false);
       });
+  }
+
+  private ensureRuntimeExtensionConnected(filesDir: string): Promise<void> {
+    if (this.runtimeReadyInFlight !== null) {
+      return this.runtimeReadyInFlight;
+    }
+    const socketPath = runtimeSocketPath(filesDir);
+    const want: Want = {
+      bundleName: BUNDLE_NAME,
+      abilityName: VPN_ABILITY_NAME,
+      parameters: {
+        socketFilesDir: filesDir,
+      },
+    };
+    const generation = ++this.runtimeReadyGeneration;
+    const request = this.probeRuntimeIpc(socketPath, 3)
+      .catch((_probeError: Error) => this.startRuntimeExtensionAndWait(want, socketPath, generation));
+    const trackedRequest = request.then((): void => {
+      this.clearRuntimeReadyCheck(generation);
+    }).catch((error: Error) => {
+      this.clearRuntimeReadyCheck(generation);
+      throw error;
+    });
+    this.runtimeReadyInFlight = trackedRequest;
+    return trackedRequest;
+  }
+
+  private startRuntimeExtensionAndWait(want: Want, socketPath: string, generation: number): Promise<void> {
+    let abilityStartError = '';
+    return Promise.resolve()
+      .then(() => {
+        this.assertRuntimeReadyGeneration(generation);
+        return vpnExtension.startVpnExtensionAbility(want);
+      })
+      .catch((error: Error): void => {
+        abilityStartError = this.errorMessage(error);
+      })
+      .then(() => {
+        this.assertRuntimeReadyGeneration(generation);
+        // A surviving singleton may reject another start while its IPC listener is
+        // still becoming ready. Always perform the longer wait before failing.
+        return this.probeRuntimeIpc(socketPath);
+      })
+      .catch((error: Error) => {
+        const abilityDetail = abilityStartError.length > 0 ?
+          `; ability_start=${abilityStartError}` : '';
+        throw new Error(`[ipc_connect] ${this.errorMessage(error)}${abilityDetail}`);
+      });
+  }
+
+  private probeRuntimeIpc(socketPath: string, maxAttempts?: number): Promise<void> {
+    const connectRequest = maxAttempts === undefined ?
+      this.runtimeClient.connect(socketPath) : this.runtimeClient.connect(socketPath, maxAttempts);
+    return connectRequest
+      .then(() => this.runtimeClient.request(
+        'isConfigServerClientConnected',
+        new RuntimeParams(),
+        RUNTIME_READY_PROBE_TIMEOUT_MS,
+      ))
+      .then((_value: RuntimeValue): void => {
+      })
+      .catch((error: Error): void => {
+        // A structured remote rejection still proves that the socket transport
+        // is alive. It must not invalidate or restart the Extension.
+        if (this.isRemoteRuntimeError(error)) {
+          return;
+        }
+        throw error;
+      });
+  }
+
+  private clearRuntimeReadyCheck(generation: number): void {
+    if (generation !== this.runtimeReadyGeneration) {
+      return;
+    }
+    this.runtimeReadyInFlight = null;
+  }
+
+  private cancelRuntimeReadyCheck(): Promise<void> {
+    const inFlight = this.runtimeReadyInFlight;
+    this.runtimeReadyGeneration += 1;
+    this.runtimeReadyInFlight = null;
+    if (inFlight === null) {
+      return Promise.resolve();
+    }
+    return inFlight.catch((_error: Error): void => {
+    });
+  }
+
+  private assertRuntimeReadyGeneration(generation: number): void {
+    if (generation !== this.runtimeReadyGeneration) {
+      throw new Error('HarmonyOS core runtime readiness check was superseded');
+    }
+  }
+
+  private runtimeStageError(stage: string, error: Object): Error {
+    return new Error(`[${stage}] ${this.errorMessage(error)}`);
+  }
+
+  private runtimeRequestStageError(coreStage: string, error: Error): Error {
+    return this.isRemoteRuntimeError(error) ?
+      this.runtimeStageError(coreStage, error) : this.runtimeStageError('ipc_request', error);
+  }
+
+  private isRemoteRuntimeError(error: Error): boolean {
+    return error instanceof RuntimeIpcError && (error as RuntimeIpcError).kind === RUNTIME_IPC_ERROR_REMOTE;
   }
 
   private forwardRuntimeCall(
@@ -349,7 +443,8 @@ export default class OhosCoreRuntimeBridge implements FlutterPlugin, MethodCallH
   }
 
   private completeRuntimeFailure(method: string, error: Error, result: MethodResult, fallback?: RuntimeValue): void {
-    this.lastError = this.errorMessage(error);
+    const stage = this.isRemoteRuntimeError(error) ? 'core_request' : 'ipc_request';
+    this.lastError = this.errorMessage(this.runtimeStageError(stage, error));
     if (fallback !== undefined) {
       result.success(fallback);
       return;
@@ -571,7 +666,9 @@ export default class OhosCoreRuntimeBridge implements FlutterPlugin, MethodCallH
   }
 
   private errorMessage(error: Object): string {
-    const typed = error as Error;
-    return typed.message ?? `${error}`;
+    const businessError = error as BusinessError;
+    const message = businessError.message ?? `${error}`;
+    return typeof businessError.code === 'number' ?
+      `code=${businessError.code}, message=${message}` : message;
   }
 }

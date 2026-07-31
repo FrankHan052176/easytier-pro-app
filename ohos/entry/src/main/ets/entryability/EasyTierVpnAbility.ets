@@ -100,9 +100,16 @@ export default class EasyTierVpnAbility extends VpnExtensionAbility {
     this.ipcServer = new RuntimeIpcServer((method: string, requestParams: RuntimeParams) => {
       return this.handleRuntimeRequest(method, requestParams);
     });
-    this.ipcServer.start(filesDir);
+    this.ipcServer.start(filesDir)
+      .then(() => {
+        console.info('[EasyTierProVpn] runtime IPC server ready');
+      })
+      .catch((error: Error) => {
+        this.lastError = this.errorMessage(error);
+        console.error(`[EasyTierProVpn] ${this.lastError}`);
+      });
     if (readStringParam(params, 'url').length === 0) {
-      console.info('[EasyTierProVpn] created without url (permission probe or IPC-driven start), ipc server ready');
+      console.info('[EasyTierProVpn] created without url (permission probe or IPC-driven start)');
       return;
     }
     console.info(`[EasyTierProVpn] starting config server client url=${readStringParam(params, 'url')}`);
@@ -136,8 +143,13 @@ export default class EasyTierVpnAbility extends VpnExtensionAbility {
       easytier.stopRuntime();
     } catch (_) {
     }
-    this.ipcServer?.close();
+    const ipcServer = this.ipcServer;
     this.ipcServer = null;
+    if (ipcServer !== null) {
+      ipcServer.close().catch((error: Error): void => {
+        console.error(`[EasyTierProVpn] runtime IPC close failed: ${this.errorMessage(error)}`);
+      });
+    }
     this.destroyVpnConnection().catch((_error: Error) => {
     });
   }

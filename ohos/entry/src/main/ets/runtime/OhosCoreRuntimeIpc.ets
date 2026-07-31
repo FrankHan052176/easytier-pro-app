@@ -10,6 +10,18 @@ const CONNECT_RETRY_LIMIT = 30;
 const CONNECT_RETRY_DELAY_MS = 200;
 const REQUEST_TIMEOUT_MS = 10000;
 
+export const RUNTIME_IPC_ERROR_TRANSPORT = 'transport';
+export const RUNTIME_IPC_ERROR_REMOTE = 'remote';
+
+export class RuntimeIpcError extends Error {
+  kind: string;
+
+  constructor(kind: string, message: string) {
+    super(message);
+    this.kind = kind;
+  }
+}
+
 export type RuntimeValue = Object | string | number | boolean | Array<string> | null;
 
 export class RuntimeVpnConfig {
@@ -68,9 +80,13 @@ class RuntimeEventMessage {
 class PendingRuntimeRequest {
   timer: number;
   resolve: (value: RuntimeValue) => void;
-  reject: (reason: Error) => void;
+  reject: (reason: RuntimeIpcError) => void;
 
-  constructor(timer: number, resolve: (value: RuntimeValue) => void, reject: (reason: Error) => void) {
+  constructor(
+    timer: number,
+    resolve: (value: RuntimeValue) => void,
+    reject: (reason: RuntimeIpcError) => void,
+  ) {
     this.timer = timer;
     this.resolve = resolve;
     this.reject = reject;
@@ -165,6 +181,9 @@ export class RuntimeIpcClient {
   private pending: Map<number, PendingRuntimeRequest> = new Map();
   private onEvent: RuntimeEventHandler;
   private onRemoteClose: (() => void) | undefined;
+  private connectionGeneration: number = 0;
+  private connectInFlight: Promise<void> | null = null;
+  private connectInFlightPath: string = '';
 
   constructor(onEvent: RuntimeEventHandler, onRemoteClose?: () => void) {
     this.onEvent = onEvent;
@@ -179,14 +198,32 @@ export class RuntimeIpcClient {
     if (this.connected && this.socketPath === path && this.client !== null) {
       return Promise.resolve();
     }
-    this.close();
+    if (this.connectInFlight !== null && this.connectInFlightPath === path) {
+      return this.connectInFlight;
+    }
+    const closeRequest = this.close();
     this.socketPath = path;
-    return this.connectWithRetry(0, maxAttempts);
+    this.connectInFlightPath = path;
+    const generation = this.connectionGeneration;
+    const request = closeRequest.then(() => this.connectWithRetry(path, 0, maxAttempts, generation));
+    const trackedRequest = request.then(() => {
+      this.clearConnectInFlight(generation);
+    }).catch((error: Error) => {
+      this.clearConnectInFlight(generation);
+      throw error;
+    });
+    this.connectInFlight = trackedRequest;
+    return trackedRequest;
   }
 
-  request(method: string, params: RuntimeParams): Promise<RuntimeValue> {
-    if (!this.connected || this.client === null) {
-      return Promise.reject(new Error('HarmonyOS core runtime socket is not connected'));
+  request(method: string, params: RuntimeParams, timeoutMs: number = REQUEST_TIMEOUT_MS): Promise<RuntimeValue> {
+    const client = this.client;
+    const generation = this.connectionGeneration;
+    if (!this.connected || client === null) {
+      return Promise.reject(new RuntimeIpcError(
+        RUNTIME_IPC_ERROR_TRANSPORT,
+        'HarmonyOS core runtime socket is not connected',
+      ));
     }
     const id = this.nextRequestId++;
     const request = new RuntimeRequestMessage();
@@ -196,78 +233,177 @@ export class RuntimeIpcClient {
     request.params = params;
     return new Promise<RuntimeValue>((resolve, reject) => {
       const timer = setTimeout(() => {
+        if (!this.pending.has(id)) {
+          return;
+        }
         this.pending.delete(id);
-        reject(new Error(`HarmonyOS core runtime request timed out: ${method}`));
-      }, REQUEST_TIMEOUT_MS);
+        const error = new RuntimeIpcError(
+          RUNTIME_IPC_ERROR_TRANSPORT,
+          `HarmonyOS core runtime request timed out: ${method}`,
+        );
+        this.invalidateTransport(client, generation, error);
+        reject(error);
+      }, timeoutMs);
       this.pending.set(id, new PendingRuntimeRequest(timer, resolve, reject));
       const sendOptions: socket.LocalSendOptions = { data: encodeRuntimeMessage(request) };
-      this.client?.send(sendOptions).catch((error: BusinessError) => {
+      try {
+        client.send(sendOptions).catch((error: BusinessError) => {
+          if (!this.pending.has(id)) {
+            return;
+          }
+          clearTimeout(timer);
+          this.pending.delete(id);
+          const transportError = new RuntimeIpcError(
+            RUNTIME_IPC_ERROR_TRANSPORT,
+            this.errorMessage(error),
+          );
+          this.invalidateTransport(client, generation, transportError);
+          reject(transportError);
+        });
+      } catch (error) {
         clearTimeout(timer);
         this.pending.delete(id);
-        reject(new Error(this.errorMessage(error)));
-      });
+        const transportError = new RuntimeIpcError(
+          RUNTIME_IPC_ERROR_TRANSPORT,
+          this.errorMessage(error),
+        );
+        this.invalidateTransport(client, generation, transportError);
+        reject(transportError);
+      }
     });
   }
 
-  close(): void {
+  close(): Promise<void> {
+    this.connectionGeneration += 1;
+    this.connectInFlight = null;
+    this.connectInFlightPath = '';
     const client = this.client;
     this.client = null;
     this.connected = false;
     this.messageBuffer = '';
-    this.rejectAllPending(new Error('HarmonyOS core runtime socket closed'));
-    try {
-      client?.close();
-    } catch (_) {
+    this.rejectAllPending(new RuntimeIpcError(
+      RUNTIME_IPC_ERROR_TRANSPORT,
+      'HarmonyOS core runtime socket closed',
+    ));
+    if (client === null) {
+      return Promise.resolve();
     }
+    return this.closeClient(client);
   }
 
-  private connectWithRetry(attempt: number, maxAttempts: number = CONNECT_RETRY_LIMIT): Promise<void> {
+  private connectWithRetry(path: string, attempt: number, maxAttempts: number, generation: number): Promise<void> {
+    if (generation !== this.connectionGeneration) {
+      return Promise.reject(new RuntimeIpcError(
+        RUNTIME_IPC_ERROR_TRANSPORT,
+        'HarmonyOS core runtime socket connection was superseded',
+      ));
+    }
     return new Promise<void>((resolve, reject) => {
       const client = socket.constructLocalSocketInstance();
       this.client = client;
       client.on('message', (value: socket.LocalSocketMessageInfo) => {
-        if (this.client !== client) {
+        if (generation !== this.connectionGeneration || this.client !== client) {
           return;
         }
-        this.handleSocketMessage(value.message);
+        try {
+          this.handleSocketMessage(value.message);
+        } catch (error) {
+          this.invalidateTransport(client, generation, new RuntimeIpcError(
+            RUNTIME_IPC_ERROR_TRANSPORT,
+            `HarmonyOS core runtime protocol error: ${this.errorMessage(error)}`,
+          ));
+        }
       });
       client.on('close', () => {
-        if (this.client !== client) {
-          return;
-        }
-        this.connected = false;
-        this.rejectAllPending(new Error('HarmonyOS core runtime socket closed'));
-        this.onRemoteClose?.();
+        this.invalidateTransport(client, generation, new RuntimeIpcError(
+          RUNTIME_IPC_ERROR_TRANSPORT,
+          'HarmonyOS core runtime socket closed',
+        ));
       });
       client.on('error', (error: BusinessError) => {
-        if (this.client !== client) {
-          return;
-        }
-        this.connected = false;
-        this.rejectAllPending(new Error(this.errorMessage(error)));
+        this.invalidateTransport(client, generation, new RuntimeIpcError(
+          RUNTIME_IPC_ERROR_TRANSPORT,
+          this.errorMessage(error),
+        ));
       });
 
       const connectOptions: socket.LocalConnectOptions = {
-        address: { address: this.socketPath },
+        address: { address: path },
         timeout: 3000,
       };
       client.connect(connectOptions).then(() => {
+        if (generation !== this.connectionGeneration || this.client !== client) {
+          this.closeClient(client).then(() => {
+            reject(new RuntimeIpcError(
+              RUNTIME_IPC_ERROR_TRANSPORT,
+              'HarmonyOS core runtime socket connection was superseded',
+            ));
+          });
+          return;
+        }
         this.connected = true;
         resolve();
       }).catch((error: BusinessError) => {
-        try {
-          client.close();
-        } catch (_) {
+        if (this.client === client) {
+          this.client = null;
         }
-        if (attempt >= maxAttempts) {
-          reject(new Error(this.errorMessage(error)));
-          return;
-        }
-        setTimeout(() => {
-          this.connectWithRetry(attempt + 1, maxAttempts).then(resolve).catch(reject);
-        }, CONNECT_RETRY_DELAY_MS);
+        this.closeClient(client).then(() => {
+          if (generation !== this.connectionGeneration) {
+            reject(new RuntimeIpcError(
+              RUNTIME_IPC_ERROR_TRANSPORT,
+              'HarmonyOS core runtime socket connection was superseded',
+            ));
+            return;
+          }
+          if (attempt + 1 >= maxAttempts) {
+            reject(new RuntimeIpcError(RUNTIME_IPC_ERROR_TRANSPORT, this.errorMessage(error)));
+            return;
+          }
+          setTimeout(() => {
+            this.connectWithRetry(path, attempt + 1, maxAttempts, generation).then(resolve).catch(reject);
+          }, CONNECT_RETRY_DELAY_MS);
+        });
       });
     });
+  }
+
+  private invalidateTransport(
+    client: socket.LocalSocket,
+    generation: number,
+    error: RuntimeIpcError,
+  ): void {
+    if (generation !== this.connectionGeneration || this.client !== client) {
+      return;
+    }
+    this.connectionGeneration += 1;
+    this.client = null;
+    this.connected = false;
+    this.messageBuffer = '';
+    this.connectInFlight = null;
+    this.connectInFlightPath = '';
+    this.rejectAllPending(error);
+    this.closeClient(client).then(() => {
+    });
+    this.onRemoteClose?.();
+  }
+
+  private closeClient(client: socket.LocalSocket): Promise<void> {
+    try {
+      return client.close().catch((error: BusinessError): void => {
+        console.error(`HarmonyOS core runtime socket close failed: ${this.errorMessage(error)}`);
+      });
+    } catch (error) {
+      console.error(`HarmonyOS core runtime socket close failed: ${this.errorMessage(error)}`);
+      return Promise.resolve();
+    }
+  }
+
+  private clearConnectInFlight(generation: number): void {
+    if (generation !== this.connectionGeneration) {
+      return;
+    }
+    this.connectInFlight = null;
+    this.connectInFlightPath = '';
   }
 
   private handleSocketMessage(message: ArrayBuffer | Uint8Array | string): void {
@@ -292,12 +428,13 @@ export class RuntimeIpcClient {
       if (parsed.ok) {
         pending.resolve(parsed.result);
       } else {
-        pending.reject(new Error(parsed.error.length > 0 ? parsed.error : 'HarmonyOS core runtime request failed'));
+        const message = parsed.error.length > 0 ? parsed.error : 'HarmonyOS core runtime request failed';
+        pending.reject(new RuntimeIpcError(RUNTIME_IPC_ERROR_REMOTE, message));
       }
     }
   }
 
-  private rejectAllPending(error: Error): void {
+  private rejectAllPending(error: RuntimeIpcError): void {
     this.pending.forEach((pending) => {
       clearTimeout(pending.timer);
       pending.reject(error);
@@ -306,8 +443,10 @@ export class RuntimeIpcClient {
   }
 
   private errorMessage(error: Object): string {
-    const typed = error as Error;
-    return typed.message ?? `${error}`;
+    const businessError = error as BusinessError;
+    const message = businessError.message ?? `${error}`;
+    return typeof businessError.code === 'number' ?
+      `code=${businessError.code}, message=${message}` : message;
   }
 }
 
@@ -316,13 +455,35 @@ export class RuntimeIpcServer {
   private connections: Map<number, socket.LocalSocketConnection> = new Map();
   private messageBuffers: Map<number, string> = new Map();
   private handler: RuntimeRequestHandler;
+  private lifecycle: Promise<void> = Promise.resolve();
+  private lifecycleGeneration: number = 0;
 
   constructor(handler: RuntimeRequestHandler) {
     this.handler = handler;
   }
 
-  start(socketFilesDir: string): void {
-    this.close();
+  start(socketFilesDir: string): Promise<void> {
+    const generation = ++this.lifecycleGeneration;
+    const operation = this.lifecycle
+      .then(() => this.closeCurrent())
+      .then(() => this.listen(socketFilesDir, generation));
+    this.lifecycle = operation.catch((_error: Error): void => {
+    });
+    return operation;
+  }
+
+  close(): Promise<void> {
+    ++this.lifecycleGeneration;
+    const operation = this.lifecycle.then(() => this.closeCurrent());
+    this.lifecycle = operation.catch((_error: Error): void => {
+    });
+    return operation;
+  }
+
+  private listen(socketFilesDir: string, generation: number): Promise<void> {
+    if (generation !== this.lifecycleGeneration) {
+      return Promise.reject(new Error('HarmonyOS core runtime socket server start was superseded'));
+    }
     const path = runtimeSocketPath(socketFilesDir);
     try {
       fileIo.unlinkSync(path);
@@ -332,6 +493,11 @@ export class RuntimeIpcServer {
     const server = socket.constructLocalSocketServerInstance();
     this.server = server;
     server.on('connect', (connection: socket.LocalSocketConnection) => {
+      if (generation !== this.lifecycleGeneration || this.server !== server) {
+        this.closeConnection(connection).then(() => {
+        });
+        return;
+      }
       this.connections.set(connection.clientId, connection);
       this.messageBuffers.set(connection.clientId, '');
       connection.on('message', (value: socket.LocalSocketMessageInfo) => {
@@ -345,24 +511,34 @@ export class RuntimeIpcServer {
       });
     });
     const listenAddress: socket.LocalAddress = { address: path };
-    server.listen(listenAddress).catch((_error: BusinessError) => {
+    return server.listen(listenAddress).catch((error: BusinessError) => {
+      if (this.server === server) {
+        this.server = null;
+      }
+      throw new Error(`HarmonyOS core runtime socket listen failed: ${this.errorMessage(error)}`);
     });
   }
 
-  close(): void {
+  private closeCurrent(): Promise<void> {
+    const closeRequests: Array<Promise<void>> = [];
     this.connections.forEach((connection) => {
-      try {
-        connection.close();
-      } catch (_) {
-      }
+      closeRequests.push(this.closeConnection(connection));
     });
     this.connections.clear();
     this.messageBuffers.clear();
-    try {
-      this.server?.close();
-    } catch (_) {
-    }
+    const server = this.server;
     this.server = null;
+    if (server !== null) {
+      try {
+        closeRequests.push(server.close().catch((error: BusinessError): void => {
+          console.error(`HarmonyOS core runtime socket close failed: ${this.errorMessage(error)}`);
+        }));
+      } catch (error) {
+        console.error(`HarmonyOS core runtime socket close failed: ${this.errorMessage(error)}`);
+      }
+    }
+    return Promise.all(closeRequests).then((): void => {
+    });
   }
 
   broadcastEvent(eventType: string, payload: RuntimeValue): void {
@@ -427,6 +603,8 @@ export class RuntimeIpcServer {
     const sendOptions: socket.LocalSendOptions = { data };
     connection.send(sendOptions).catch((_error: BusinessError) => {
       this.dropConnection(connection);
+      this.closeConnection(connection).then(() => {
+      });
     });
   }
 
@@ -435,8 +613,21 @@ export class RuntimeIpcServer {
     this.messageBuffers.delete(connection.clientId);
   }
 
+  private closeConnection(connection: socket.LocalSocketConnection): Promise<void> {
+    try {
+      return connection.close().catch((error: BusinessError): void => {
+        console.error(`HarmonyOS core runtime connection close failed: ${this.errorMessage(error)}`);
+      });
+    } catch (error) {
+      console.error(`HarmonyOS core runtime connection close failed: ${this.errorMessage(error)}`);
+      return Promise.resolve();
+    }
+  }
+
   private errorMessage(error: Object): string {
-    const typed = error as Error;
-    return typed.message ?? `${error}`;
+    const businessError = error as BusinessError;
+    const message = businessError.message ?? `${error}`;
+    return typeof businessError.code === 'number' ?
+      `code=${businessError.code}, message=${message}` : message;
   }
 }
