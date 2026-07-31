@@ -691,9 +691,15 @@ class HomeDiagnosticsSettingsSection extends StatelessWidget {
         context: {'file': file.path, 'shared': shared},
       );
       if (context.mounted) {
+        final exportedToDownloads =
+            !kIsWeb && defaultTargetPlatform == TargetPlatform.ohos;
         showHomeSettingsToast(
           context,
-          shared ? '诊断日志已生成，请在分享面板中发送文件' : '诊断日志已导出: ${file.path}',
+          shared
+              ? '诊断日志已生成，请在分享面板中发送文件'
+              : exportedToDownloads
+              ? '诊断日志已保存到下载目录: ${file.path}'
+              : '诊断日志已导出: ${file.path}',
         );
       }
     } catch (error) {

@@ -1,4 +1,5 @@
 import { common, Context, Want } from '@kit.AbilityKit';
+import { fileIo, fileUri, picker } from '@kit.CoreFileKit';
 import { JSON } from '@kit.ArkTS';
 import { preferences } from '@kit.ArkData';
 import { BusinessError, deviceInfo } from '@kit.BasicServicesKit';
@@ -113,6 +114,7 @@ export default class OhosCoreRuntimeBridge implements FlutterPlugin, MethodCallH
   private eventSink: EventSink | null = null;
   private context: Context | null = null;
   private abilityContext: common.UIAbilityContext | null = null;
+  private diagnosticsExportDirectory: string = '';
   private lastError: string = '';
   private runtimeActivityRefreshInFlight: boolean = false;
   private runtimeActivityRefreshRequested: boolean = false;
@@ -192,6 +194,9 @@ export default class OhosCoreRuntimeBridge implements FlutterPlugin, MethodCallH
         case 'getFilesDir':
           result.success(this.filesDir());
           return;
+        case 'prepareDiagnosticsExportDirectory':
+          this.prepareDiagnosticsExportDirectory(result);
+          return;
         case 'startConfigServerClient':
           this.startConfigServerClient(call, result);
           return;
@@ -242,6 +247,44 @@ export default class OhosCoreRuntimeBridge implements FlutterPlugin, MethodCallH
       this.lastError = message;
       result.error('OHOS_RUNTIME_ERROR', message, null);
     }
+  }
+
+  private prepareDiagnosticsExportDirectory(result: MethodResult): void {
+    if (this.abilityContext === null) {
+      this.lastError = 'HarmonyOS UIAbility context is unavailable';
+      result.error('OHOS_DIAGNOSTICS_CONTEXT_MISSING', this.lastError, null);
+      return;
+    }
+    if (this.diagnosticsExportDirectory.length > 0) {
+      try {
+        fileIo.listFileSync(this.diagnosticsExportDirectory);
+        result.success(this.diagnosticsExportDirectory);
+        return;
+      } catch (_) {
+        this.diagnosticsExportDirectory = '';
+      }
+    }
+
+    const documentPicker = new picker.DocumentViewPicker(this.abilityContext);
+    const options = new picker.DocumentSaveOptions();
+    options.pickerMode = picker.DocumentPickerMode.DOWNLOAD;
+    documentPicker.save(options)
+      .then((uris: Array<string>): void => {
+        if (uris.length === 0 || uris[0].trim().length === 0) {
+          throw new Error('HarmonyOS download directory URI is unavailable');
+        }
+        const directory = new fileUri.FileUri(uris[0]).path.trim();
+        if (directory.length === 0) {
+          throw new Error('HarmonyOS download directory path is unavailable');
+        }
+        fileIo.listFileSync(directory);
+        this.diagnosticsExportDirectory = directory;
+        result.success(directory);
+      })
+      .catch((error: Error): void => {
+        this.lastError = `HarmonyOS diagnostics directory preparation failed: ${this.errorMessage(error)}`;
+        result.error('OHOS_DIAGNOSTICS_DIRECTORY_FAILED', this.lastError, null);
+      });
   }
 
   private startConfigServerClient(call: MethodCall, result: MethodResult): void {

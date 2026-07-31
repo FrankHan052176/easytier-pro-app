@@ -10,6 +10,24 @@ const MethodChannel _ohosCoreRuntimeChannel = MethodChannel(
   'net.easytier.pro/core_runtime',
 );
 
+@visibleForTesting
+Future<String> requestOhosDiagnosticsExportDirectory({
+  MethodChannel channel = _ohosCoreRuntimeChannel,
+}) async {
+  final directory =
+      (await channel.invokeMethod<String>(
+        'prepareDiagnosticsExportDirectory',
+      ))?.trim() ??
+      '';
+  if (directory.isEmpty) {
+    throw PlatformException(
+      code: 'OHOS_DIAGNOSTICS_DIRECTORY_UNAVAILABLE',
+      message: 'HarmonyOS diagnostics export directory is unavailable',
+    );
+  }
+  return directory;
+}
+
 class AppLogEntry {
   const AppLogEntry({
     required this.time,
@@ -77,6 +95,7 @@ class AppLogger {
 
   bool _initialized = false;
   Directory? _logDir;
+  Directory? _diagnosticsExportDir;
   IOSink? _sink;
   String? _sinkDate;
   Future<void> _fileWriteSerial = Future<void>.value();
@@ -88,6 +107,9 @@ class AppLogger {
     _logDir = await _resolveLogDirectory();
     await _logDir!.create(recursive: true);
     await _cleanupOldLogs();
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.ohos) {
+      _diagnosticsExportDir = await _tryResolveOhosDiagnosticsExportDirectory();
+    }
     _initialized = true;
     info('logger', 'Logger initialized', context: {'directory': _logDir!.path});
   }
@@ -130,7 +152,10 @@ class AppLogger {
     final now = DateTime.now();
     final fileName =
         'diagnostics-${now.year.toString().padLeft(4, '0')}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}-${now.hour.toString().padLeft(2, '0')}${now.minute.toString().padLeft(2, '0')}${now.second.toString().padLeft(2, '0')}.log';
-    final outputFile = File('${logDir.path}${Platform.pathSeparator}$fileName');
+    final outputDir = await _resolveDiagnosticsOutputDirectory(logDir);
+    final outputFile = File(
+      '${outputDir.path}${Platform.pathSeparator}$fileName',
+    );
 
     final buffer = StringBuffer()
       ..writeln('# EasyTier Pro diagnostics export')
@@ -243,6 +268,34 @@ class AppLogger {
       systemTempPath: Directory.systemTemp.path,
       ohosFilesDir: ohosFilesDir,
     );
+  }
+
+  Future<Directory> _resolveDiagnosticsOutputDirectory(Directory logDir) async {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.ohos) {
+      return logDir;
+    }
+
+    final cachedDirectory = _diagnosticsExportDir;
+    if (cachedDirectory != null && await cachedDirectory.exists()) {
+      return cachedDirectory;
+    }
+    _diagnosticsExportDir = await _tryResolveOhosDiagnosticsExportDirectory();
+    if (_diagnosticsExportDir == null) {
+      throw const FileSystemException(
+        'HarmonyOS diagnostics export directory is unavailable',
+      );
+    }
+    return _diagnosticsExportDir!;
+  }
+
+  Future<Directory?> _tryResolveOhosDiagnosticsExportDirectory() async {
+    try {
+      final path = await requestOhosDiagnosticsExportDirectory();
+      return Directory(path);
+    } on Object catch (error) {
+      debugPrint('HarmonyOS diagnostics directory preparation failed: $error');
+      return null;
+    }
   }
 
   bool _isSourceLogFile(File file) {
