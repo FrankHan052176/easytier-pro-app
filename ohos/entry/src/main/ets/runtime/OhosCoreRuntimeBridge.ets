@@ -189,6 +189,9 @@ export default class OhosCoreRuntimeBridge implements FlutterPlugin, MethodCallH
         case 'getDeviceEnvironment':
           result.success(this.getDeviceEnvironment());
           return;
+        case 'getFilesDir':
+          result.success(this.filesDir());
+          return;
         case 'startConfigServerClient':
           this.startConfigServerClient(call, result);
           return;

@@ -4,6 +4,11 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
+
+const MethodChannel _ohosCoreRuntimeChannel = MethodChannel(
+  'net.easytier.pro/core_runtime',
+);
 
 class AppLogEntry {
   const AppLogEntry({
@@ -218,30 +223,25 @@ class AppLogger {
   }
 
   Future<Directory> _resolveLogDirectory() async {
-    if (Platform.isWindows) {
-      final base = Platform.environment['LOCALAPPDATA'];
-      if (base != null && base.isNotEmpty) {
-        return Directory(
-          '$base${Platform.pathSeparator}EasyTierPro${Platform.pathSeparator}logs',
-        );
+    var ohosFilesDir = '';
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.ohos) {
+      try {
+        ohosFilesDir =
+            (await _ohosCoreRuntimeChannel.invokeMethod<String>(
+              'getFilesDir',
+            ))?.trim() ??
+            '';
+      } on Object {
+        // Directory.systemTemp is still app-sandboxed on HarmonyOS.
       }
     }
 
-    if (Platform.isAndroid || Platform.isIOS) {
-      return Directory(
-        '${Directory.systemTemp.path}${Platform.pathSeparator}easytier-pro-app${Platform.pathSeparator}logs',
-      );
-    }
-
-    final home = Platform.environment['HOME'];
-    if (home != null && home.isNotEmpty) {
-      return Directory(
-        '$home${Platform.pathSeparator}.easytier-pro-app${Platform.pathSeparator}logs',
-      );
-    }
-
-    return Directory(
-      '${Directory.systemTemp.path}${Platform.pathSeparator}easytier-pro-app${Platform.pathSeparator}logs',
+    return resolveAppLogDirectoryForPlatform(
+      operatingSystem: Platform.operatingSystem,
+      targetPlatform: defaultTargetPlatform,
+      environment: Platform.environment,
+      systemTempPath: Directory.systemTemp.path,
+      ohosFilesDir: ohosFilesDir,
     );
   }
 
@@ -319,4 +319,49 @@ class AppLogger {
     );
     return value;
   }
+}
+
+@visibleForTesting
+Directory resolveAppLogDirectoryForPlatform({
+  required String operatingSystem,
+  required TargetPlatform targetPlatform,
+  required Map<String, String> environment,
+  required String systemTempPath,
+  String ohosFilesDir = '',
+}) {
+  if (targetPlatform == TargetPlatform.ohos) {
+    final sandboxFilesDir = ohosFilesDir.trim();
+    if (sandboxFilesDir.isNotEmpty) {
+      return Directory('$sandboxFilesDir${Platform.pathSeparator}logs');
+    }
+    return Directory(
+      '$systemTempPath${Platform.pathSeparator}easytier-pro-app${Platform.pathSeparator}logs',
+    );
+  }
+
+  if (operatingSystem == 'windows') {
+    final base = environment['LOCALAPPDATA'];
+    if (base != null && base.isNotEmpty) {
+      return Directory(
+        '$base${Platform.pathSeparator}EasyTierPro${Platform.pathSeparator}logs',
+      );
+    }
+  }
+
+  if (operatingSystem == 'android' || operatingSystem == 'ios') {
+    return Directory(
+      '$systemTempPath${Platform.pathSeparator}easytier-pro-app${Platform.pathSeparator}logs',
+    );
+  }
+
+  final home = environment['HOME'];
+  if (home != null && home.isNotEmpty) {
+    return Directory(
+      '$home${Platform.pathSeparator}.easytier-pro-app${Platform.pathSeparator}logs',
+    );
+  }
+
+  return Directory(
+    '$systemTempPath${Platform.pathSeparator}easytier-pro-app${Platform.pathSeparator}logs',
+  );
 }
