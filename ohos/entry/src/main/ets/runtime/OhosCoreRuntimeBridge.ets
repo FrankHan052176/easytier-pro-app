@@ -598,7 +598,12 @@ export default class OhosCoreRuntimeBridge implements FlutterPlugin, MethodCallH
   }
 
   private filesDir(): string {
-    return this.context?.filesDir ?? this.abilityContext?.filesDir ?? '';
+    // The UIAbility and VpnExtension run in different sandboxes, so the
+    // Extension must bind its IPC socket to the UIAbility directory that is
+    // passed in the start Want. The application context is only a fallback
+    // for calls made before AbilityAware attachment completes.
+    const abilityFilesDir = this.abilityContext?.filesDir ?? '';
+    return abilityFilesDir.length > 0 ? abilityFilesDir : (this.context?.filesDir ?? '');
   }
 
   private readStringArgument(call: MethodCall, key: string): string {
