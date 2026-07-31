@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:easytier_pro_app/src/auth/console_auth_service.dart';
@@ -56,6 +57,77 @@ void main() {
 
     expect(requests, hasLength(2));
   });
+
+  test(
+    'reports HarmonyOS identity with the product software version',
+    () async {
+      SharedPreferences.setMockInitialValues({
+        'app_client_installation_id': '99999999-9999-4999-8999-999999999999',
+      });
+      final preferences = await SharedPreferences.getInstance();
+      final requests = <http.Request>[];
+      final environment = AppClientEnvironment.fromPlatformData(
+        packageInfo: PackageInfo(
+          appName: 'EasyTier Pro',
+          packageName: 'net.easytier.pro',
+          version: '1.2.3',
+          buildNumber: '45',
+        ),
+        operatingSystem: 'ohos',
+        operatingSystemVersion: 'Linux HongMeng Kernel 1.12.0',
+        hostname: 'localhost',
+        ohosDeviceInfo: const <String, Object?>{
+          'displayVersion': 'TGR-W10G 6.1.0.117(SP6C00E115R2P3)',
+          'osFullName': 'OpenHarmony-6.1.0.115',
+          'distributionOSVersion': '6.1.0',
+          'deviceModel': 'HUAWEI MatePad Pro',
+          'hostname': 'HUAWEI MatePad Pro',
+        },
+      );
+      final reporter = AppClientReporter(
+        preferences: preferences,
+        consoleBaseUrl: 'https://console.test',
+        httpClient: MockClient((request) async {
+          requests.add(request);
+          return http.Response('{}', 200);
+        }),
+        environmentLoader: () async => environment,
+        now: () => DateTime.utc(2026, 6, 14, 1),
+      );
+
+      await reporter.reportSessionEstablished(_session('tenant-1'));
+
+      final body = jsonDecode(requests.single.body) as Map<String, dynamic>;
+      expect(body['app_platform'], 'HarmonyOS');
+      expect(body['os_name'], 'HarmonyOS');
+      expect(body['os_version'], 'HarmonyOS 6.1.0.117');
+      expect(body['hostname'], 'HUAWEI MatePad Pro');
+      expect(body['device_model'], 'HUAWEI MatePad Pro');
+      expect(jsonEncode(body), isNot(contains('Linux')));
+      expect(jsonEncode(body), isNot(contains('HongMeng Kernel')));
+    },
+  );
+
+  test(
+    'never reports the HarmonyOS kernel string when native info is absent',
+    () {
+      final environment = AppClientEnvironment.fromPlatformData(
+        packageInfo: PackageInfo(
+          appName: 'EasyTier Pro',
+          packageName: 'net.easytier.pro',
+          version: '1.2.3',
+          buildNumber: '45',
+        ),
+        operatingSystem: 'ohos',
+        operatingSystemVersion: 'Linux HongMeng Kernel 1.12.0',
+        hostname: 'localhost',
+      );
+
+      expect(environment.appPlatform, 'HarmonyOS');
+      expect(environment.osName, 'HarmonyOS');
+      expect(environment.osVersion, 'HarmonyOS');
+    },
+  );
 
   test('reports machine id immediately after base report', () async {
     SharedPreferences.setMockInitialValues({

@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 
+import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -16,6 +18,9 @@ typedef AppClientClock = DateTime Function();
 const Duration _defaultReportInterval = Duration(hours: 24);
 const Duration _defaultRequestTimeout = Duration(seconds: 10);
 const String _installationIdKey = 'app_client_installation_id';
+const MethodChannel _ohosDeviceInfoChannel = MethodChannel(
+  'net.easytier.pro/core_runtime',
+);
 final RegExp _uuidPattern = RegExp(
   r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$',
 );
@@ -333,15 +338,121 @@ class AppClientEnvironment {
 
   static Future<AppClientEnvironment> load() async {
     final packageInfo = await PackageInfo.fromPlatform();
+    final operatingSystem = Platform.operatingSystem;
+    final ohosDeviceInfo = operatingSystem == 'ohos'
+        ? await _loadOhosDeviceInfo()
+        : const <String, Object?>{};
+    return fromPlatformData(
+      packageInfo: packageInfo,
+      operatingSystem: operatingSystem,
+      operatingSystemVersion: Platform.operatingSystemVersion,
+      hostname: _loadHostname(),
+      ohosDeviceInfo: ohosDeviceInfo,
+    );
+  }
+
+  @visibleForTesting
+  static AppClientEnvironment fromPlatformData({
+    required PackageInfo packageInfo,
+    required String operatingSystem,
+    required String operatingSystemVersion,
+    required String hostname,
+    Map<String, Object?> ohosDeviceInfo = const <String, Object?>{},
+  }) {
+    if (operatingSystem == 'ohos') {
+      final nativeHostname = _readOhosString(ohosDeviceInfo, 'hostname');
+      final deviceModel = _readOhosString(ohosDeviceInfo, 'deviceModel');
+      return AppClientEnvironment(
+        appName: packageInfo.appName,
+        appVersion: packageInfo.version,
+        appBuild: packageInfo.buildNumber,
+        appPlatform: 'HarmonyOS',
+        osName: 'HarmonyOS',
+        osVersion: _formatHarmonyOsVersion(ohosDeviceInfo),
+        hostname: _firstNonEmpty(<String>[
+          nativeHostname,
+          hostname,
+          'HarmonyOS',
+        ]),
+        deviceModel: deviceModel.isEmpty ? null : deviceModel,
+      );
+    }
+
     return AppClientEnvironment(
       appName: packageInfo.appName,
       appVersion: packageInfo.version,
       appBuild: packageInfo.buildNumber,
-      appPlatform: Platform.operatingSystem,
-      osName: Platform.operatingSystem,
-      osVersion: Platform.operatingSystemVersion,
-      hostname: _loadHostname(),
+      appPlatform: operatingSystem,
+      osName: operatingSystem,
+      osVersion: operatingSystemVersion,
+      hostname: hostname,
     );
+  }
+
+  static Future<Map<String, Object?>> _loadOhosDeviceInfo() async {
+    try {
+      final payload = await _ohosDeviceInfoChannel.invokeMethod<String>(
+        'getDeviceEnvironment',
+      );
+      if (payload == null || payload.trim().isEmpty) {
+        return const <String, Object?>{};
+      }
+      final decoded = jsonDecode(payload);
+      if (decoded is Map<String, dynamic>) {
+        return Map<String, Object?>.from(decoded);
+      }
+    } on Object {
+      // Reporting must remain best-effort when a platform bridge is unavailable.
+    }
+    return const <String, Object?>{};
+  }
+
+  static String _formatHarmonyOsVersion(Map<String, Object?> deviceInfo) {
+    final candidates = <String>[
+      _readOhosString(deviceInfo, 'displayVersion'),
+      _readOhosString(deviceInfo, 'osFullName'),
+      _readOhosString(deviceInfo, 'distributionOSVersion'),
+    ];
+    for (final candidate in candidates) {
+      final version = _extractVersion(candidate, segmentCount: 4);
+      if (version.isNotEmpty) {
+        return 'HarmonyOS $version';
+      }
+    }
+    for (final candidate in candidates) {
+      final version = _extractVersion(candidate, segmentCount: 3);
+      if (version.isNotEmpty) {
+        return 'HarmonyOS $version';
+      }
+    }
+    return 'HarmonyOS';
+  }
+
+  static String _extractVersion(String value, {required int segmentCount}) {
+    final segment = r'\d+';
+    final dottedSegments = List<String>.filled(
+      segmentCount,
+      segment,
+    ).join(r'\.');
+    final match = RegExp(
+      '(?:^|[^\\d])($dottedSegments)(?:\$|[^\\d])',
+    ).firstMatch(value);
+    return match?.group(1) ?? '';
+  }
+
+  static String _readOhosString(Map<String, Object?> deviceInfo, String key) {
+    final value = deviceInfo[key];
+    return value is String ? value.trim() : '';
+  }
+
+  static String _firstNonEmpty(Iterable<String> values) {
+    for (final value in values) {
+      final trimmed = value.trim();
+      if (trimmed.isNotEmpty) {
+        return trimmed;
+      }
+    }
+    return '';
   }
 
   static String _loadHostname() {

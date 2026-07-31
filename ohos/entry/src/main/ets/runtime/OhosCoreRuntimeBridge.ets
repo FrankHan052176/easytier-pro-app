@@ -75,6 +75,28 @@ class ConfigServerStartedPayload {
   }
 }
 
+class DeviceEnvironmentPayload {
+  displayVersion: string;
+  osFullName: string;
+  distributionOSVersion: string;
+  deviceModel: string;
+  hostname: string;
+
+  constructor(
+    displayVersion: string,
+    osFullName: string,
+    distributionOSVersion: string,
+    deviceModel: string,
+    hostname: string,
+  ) {
+    this.displayVersion = displayVersion;
+    this.osFullName = osFullName;
+    this.distributionOSVersion = distributionOSVersion;
+    this.deviceModel = deviceModel;
+    this.hostname = hostname;
+  }
+}
+
 class DetachedStreamHandler implements StreamHandler {
   onListen(args: Object, events: EventSink): void {
     events.endOfStream();
@@ -163,6 +185,9 @@ export default class OhosCoreRuntimeBridge implements FlutterPlugin, MethodCallH
           return;
         case 'getHostname':
           result.success(this.getHostname());
+          return;
+        case 'getDeviceEnvironment':
+          result.success(this.getDeviceEnvironment());
           return;
         case 'startConfigServerClient':
           this.startConfigServerClient(call, result);
@@ -595,6 +620,18 @@ export default class OhosCoreRuntimeBridge implements FlutterPlugin, MethodCallH
   private getHostname(): string {
     const deviceName = deviceInfo.marketName || deviceInfo.productModel || deviceInfo.deviceType;
     return deviceName.length > 0 ? deviceName : 'HarmonyOS';
+  }
+
+  private getDeviceEnvironment(): string {
+    const deviceModel = deviceInfo.marketName || deviceInfo.productModel;
+    const payload = new DeviceEnvironmentPayload(
+      deviceInfo.displayVersion,
+      deviceInfo.osFullName,
+      deviceInfo.distributionOSVersion,
+      deviceModel,
+      this.getHostname(),
+    );
+    return `${JSON.stringify(payload)}`;
   }
 
   private filesDir(): string {
