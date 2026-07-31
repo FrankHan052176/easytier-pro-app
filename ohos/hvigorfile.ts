@@ -31,17 +31,25 @@ const rootNode = getNode(__filename);
 rootNode.afterNodeEvaluate(node => {
     const appContext = node.getContext(OhosPluginId.OHOS_APP_PLUGIN) as OhosAppContext;
     const buildProfileOpt = appContext.getBuildProfileOpt();
-    const signingConfigs = loadSigningConfigs();
-    if (signingConfigs.length > 0) {
-        buildProfileOpt.app.signingConfigs = signingConfigs;
-        const products = buildProfileOpt.app.products;
-        if (Array.isArray(products)) {
-            products.forEach(product => {
-                if (product.name === 'publish') {
-                    product.signingConfig = 'publish';
-                }
-            });
+    const localSigningConfigs = Array.isArray(buildProfileOpt.app.signingConfigs)
+        ? buildProfileOpt.app.signingConfigs
+        : [];
+    const signingConfigs = [...localSigningConfigs, ...loadSigningConfigs()];
+    buildProfileOpt.app.signingConfigs = signingConfigs;
+
+    const signingConfigNames = new Set<string>();
+    signingConfigs.forEach(signingConfig => {
+        if (typeof signingConfig.name === 'string') {
+            signingConfigNames.add(signingConfig.name);
         }
+    });
+    const products = buildProfileOpt.app.products;
+    if (Array.isArray(products)) {
+        products.forEach(product => {
+            if (signingConfigNames.has(product.name)) {
+                product.signingConfig = product.name;
+            }
+        });
     }
     appContext.setBuildProfileOpt(buildProfileOpt);
 })
