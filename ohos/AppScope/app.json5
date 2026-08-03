@@ -2,8 +2,8 @@
   "app": {
     "bundleName": "net.easytier.pro",
     "vendor": "EasyTier",
-    "versionCode": 9,
-    "versionName": "1.0.7",
+    "versionCode": 99999999,
+    "versionName": "0.0.1",
     "icon": "$media:app_icon",
     "label": "$string:app_name"
   }

@@ -68,6 +68,7 @@ jobs:
         working-directory: ohos
         env:
           CODEARTS_PRIVATE_OHPM_READ: ${{ secrets.CODEARTS_PRIVATE_OHPM_READ }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           ohpm uninstall "$CORE_HAR_PACKAGE"
@@ -82,11 +83,26 @@ jobs:
 
           resolved_version=$(jq -r '.version' \
             "oh_modules/$CORE_HAR_PACKAGE/oh-package.json5")
+          today=$(date -u +%F)
+          workflow_runs=$(curl --fail --silent --show-error --location \
+            --header "Authorization: Bearer $GH_TOKEN" \
+            --header 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/workflows/ohos.yml/runs?per_page=100")
+          first_run_number=$(jq -er --arg today "$today" \
+            '[.workflow_runs[] | select(.created_at | startswith($today)) | .run_number] | min' \
+            <<<"$workflow_runs")
+          build_number=$((10#$GITHUB_RUN_NUMBER - 10#$first_run_number + 1))
+          if (( build_number < 1 || build_number > 99 )); then
+            echo "Daily build number is outside the supported range: $build_number" >&2
+            exit 1
+          fi
           package_branch=$(printf '%s\n' "$resolved_version" | sed -E \
             's/^[0-9]+\.[0-9]+\.[0-9]+-//; s/-[0-9]+-[0-9]+-[0-9]+-g[0-9a-f]+$//')
           echo "Installed Core HAR: ${CORE_HAR_PACKAGE}@${resolved_version}"
+          echo "Daily build number: $build_number"
           echo "package_branch=$package_branch" >> "$GITHUB_OUTPUT"
           echo "package_version=$resolved_version" >> "$GITHUB_OUTPUT"
+          echo "build_number=$build_number" >> "$GITHUB_OUTPUT"
 
           cd ..
           flutter pub get
@@ -114,6 +130,7 @@ jobs:
         env:
           CORE_HAR_BRANCH: ${{ steps.core_har.outputs.package_branch }}
           CORE_HAR_VERSION: ${{ steps.core_har.outputs.package_version }}
+          EASYTIER_PRO_BUILD_NUMBER: ${{ steps.core_har.outputs.build_number }}
         run: |
           set -euo pipefail
           CI=true flutter build app \
