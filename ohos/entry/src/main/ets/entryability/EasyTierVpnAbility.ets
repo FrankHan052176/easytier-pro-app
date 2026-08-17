@@ -90,11 +90,15 @@ export default class EasyTierVpnAbility extends VpnExtensionAbility {
     if (want.parameters !== undefined) {
       params = want.parameters as Object as RuntimeParams;
     }
-    const filesDir = readStringParam(params, 'socketFilesDir');
+    const requestedFilesDir = readStringParam(params, 'socketFilesDir').trim();
+    const filesDir = requestedFilesDir.length > 0 ? requestedFilesDir : this.context.filesDir.trim();
     if (filesDir.length === 0) {
       this.lastError = 'HarmonyOS UIAbility socket files directory is missing';
       console.error(`[EasyTierProVpn] ${this.lastError}`);
       return;
+    }
+    if (requestedFilesDir.length === 0) {
+      console.info('[EasyTierProVpn] using VPN Extension files directory for runtime IPC');
     }
     this.ensureCoreInitialized(filesDir);
     // 关键修复：无论本次拉起是否携带 url（权限探测拉起不带 url），
