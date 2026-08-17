@@ -412,19 +412,35 @@ export default class OhosCoreRuntimeBridge implements FlutterPlugin, MethodCallH
 
   private startRuntimeExtensionAndWait(want: Want, socketPath: string, generation: number): Promise<void> {
     let abilityStartError = '';
-    return Promise.resolve()
+    let abilityStartSettled = false;
+    this.assertRuntimeReadyGeneration(generation);
+    const abilityStart = Promise.resolve()
       .then(() => {
         this.assertRuntimeReadyGeneration(generation);
         return vpnExtension.startVpnExtensionAbility(want);
       })
-      .catch((error: Error): void => {
+      .then((): void => {
+        abilityStartSettled = true;
+      }, (error: Error): void => {
         abilityStartError = this.errorMessage(error);
-      })
-      .then(() => {
+        abilityStartSettled = true;
+      });
+    // The first authorization can start the Extension before the system call
+    // returns to the UIAbility. Probe IPC concurrently so that successful
+    // authorization is not blocked by that pending Promise.
+    const probeWhileStarting = (): Promise<void> => this.probeRuntimeIpc(socketPath)
+      .catch((_probeError: Error): Promise<void> => {
         this.assertRuntimeReadyGeneration(generation);
+        if (!abilityStartSettled) {
+          return probeWhileStarting();
+        }
         // A surviving singleton may reject another start while its IPC listener is
         // still becoming ready. Always perform the longer wait before failing.
-        return this.probeRuntimeIpc(socketPath);
+        return abilityStart.then(() => this.probeRuntimeIpc(socketPath));
+      });
+    return probeWhileStarting()
+      .then((): void => {
+        this.assertRuntimeReadyGeneration(generation);
       })
       .catch((error: Error) => {
         const abilityDetail = abilityStartError.length > 0 ?
