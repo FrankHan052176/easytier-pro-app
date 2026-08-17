@@ -109,6 +109,43 @@ fetch_group_infos() {
   jq -cn --args '$ARGS.positional | map({groupId: .})' "${group_ids[@]}"
 }
 
+fetch_privacy_agreement_id() {
+  local response
+  local agreement_id
+
+  response=$(curl --silent --show-error --fail-with-body \
+    --request POST "$api_base/publish/v2/agreement/list" \
+    "${api_headers[@]}" \
+    --header "appId: $AGC_APP_ID" \
+    --data '{"name":"","status":2,"type":1,"fromRecCount":1,"maxReqCount":100}')
+  check_ret "$response"
+  agreement_id=$(jq -er '.agreements[0].id // empty' <<<"$response") || {
+    echo "No completed AGC privacy agreement is available for this app." >&2
+    exit 1
+  }
+  printf '%s\n' "$agreement_id"
+}
+
+update_app_metadata() {
+  local privacy_agreement_id="$1"
+  local response
+
+  response=$(curl --silent --show-error --fail-with-body \
+    --request PUT "$api_base/publish/v3/app-info?appId=$app_id_q" \
+    "${api_headers[@]}" \
+    --data "$(jq -cn \
+      --arg privacy_agreement_id "$privacy_agreement_id" \
+      '{
+        deviceTypes: [
+          {deviceType: 4, appAdapters: ""},
+          {deviceType: 5, appAdapters: ""},
+          {deviceType: 19, appAdapters: ""}
+        ],
+        privacyAgreementId: $privacy_agreement_id
+      }')")
+  check_ret "$response"
+}
+
 add_package() {
   local distribute_mode="$1"
   local response
@@ -170,6 +207,10 @@ api_headers=(
   --header "client_id: $AGC_CLIENT_ID"
   --header 'Content-Type: application/json'
 )
+
+privacy_agreement_id=$(fetch_privacy_agreement_id)
+update_app_metadata "$privacy_agreement_id"
+echo "AGC app metadata updated for phone, tablet and PC/2in1 with the first completed privacy agreement."
 
 upload_url_response=$(curl --silent --show-error --fail-with-body \
   --get "$api_base/publish/v2/upload-url/for-obs" \
