@@ -84,10 +84,11 @@ jobs:
 
           resolved_version=$(jq -r '.version' \
             "oh_modules/$CORE_HAR_PACKAGE/oh-package.json5")
-          version_line=$(rg -n --no-heading '^version:' pubspec.yaml | cut -d: -f1)
+          pubspec_path=../pubspec.yaml
+          version_line=$(grep -n -m 1 '^version:' "$pubspec_path" | cut -d: -f1)
           test -n "$version_line"
           version_commit=$(git blame -L "${version_line},${version_line}" \
-            --porcelain -- pubspec.yaml | sed -n '1s/ .*//p')
+            --porcelain -- "$pubspec_path" | sed -n '1s/ .*//p')
           version_epoch=$(git show -s --format=%ct "$version_commit")
           workflow_runs=$(curl --fail --silent --show-error --location \
             --header "Authorization: Bearer $GH_TOKEN" \
