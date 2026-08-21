@@ -258,14 +258,23 @@ case "$event_name" in
     ;;
 esac
 test_desc="${test_desc:0:30}"
-need_notify=0
-notify_on_push="${AGC_NOTIFY_ON_PUSH:-0}"
-if ! [[ "$notify_on_push" =~ ^[01]$ ]]; then
-  echo "AGC_NOTIFY_ON_PUSH must be 0 or 1." >&2
-  exit 1
+if [[ -n "${AGC_NEED_NOTIFY:-}" ]]; then
+  need_notify="$AGC_NEED_NOTIFY"
+else
+  need_notify=0
+  notify_on_push="${AGC_NOTIFY_ON_PUSH:-0}"
+  if ! [[ "$notify_on_push" =~ ^[01]$ ]]; then
+    echo "AGC_NOTIFY_ON_PUSH must be 0 or 1." >&2
+    exit 1
+  fi
+  if [[ "$notify_on_push" == "1" && "$event_name" == "push" && "$run_attempt" == "1" ]]; then
+    need_notify=1
+  fi
 fi
-if [[ "$notify_on_push" == "1" && "$event_name" == "push" && "$run_attempt" == "1" ]]; then
-  need_notify=1
+
+if ! [[ "$need_notify" =~ ^[01]$ ]]; then
+  echo "AGC_NEED_NOTIFY must be 0 or 1, got: $need_notify" >&2
+  exit 1
 fi
 
 create_response=$(curl --silent --show-error --fail-with-body \
