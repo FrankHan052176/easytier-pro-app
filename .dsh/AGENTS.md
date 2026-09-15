@@ -145,6 +145,12 @@ Core HAR 更新流程：
 
 不要在未确认 EasyTier Core 的 `easytier-ohrs` 桥接确有变化时随意重建或替换 HAR。
 
+当前集成包为 `easytier-ohrs@2.7.0-main-99-3112-1-gc96b6c19`，Core commit 为 `c96b6c1961edca732aea5189743727ad71f29baa`。HAR 大小 `9195315` 字节，SHA-256 为 `dc6106e0387e56eb937c97caf7367d90ed2a9a4d6aefab4076207e558e165435`。Core 的内部拆分没有改变 Pro 的包入口；不要从文件名推断版本或改用未经发布验证的独立 Pro HAR。
+
+VPN 使用排除列表语义：没有排除项时省略应用列表字段，不传空 `trustedApplications`，不生成多 VPN `vpnId`。`NativeSocketProtectionService` 只保护 Core 选定的底层传输 socket，必须等系统 `protect(fd)` 返回后 ACK；FD 由 Core 持有，ArkTS 不得关闭它。停止运行时时先停止保护请求并等待在途 ACK，再执行同步 native 停机；保护失败保持 fail-closed。不要恢复进程级 `protectProcessNet()`，它也会绕过需要留在 TUN 内的 socket。
+
+宿主机行为回归命令为 `bun test test/ohos_vpn_runtime.test.ts`，执行实际 ArkTS 源码，控制系统与 N-API 边界，覆盖排除列表、保护失败、ACK 时序、TUN 单独停止和运行时重启。通过不代表设备 UID 路由或原生浏览器访问子网 NAS 已通过；仍需按第 7 节真机验收。
+
 ## 5. 签名安全与选择
 
 CI 或可迁移环境通过以下变量注入签名目录：

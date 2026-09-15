@@ -2,6 +2,7 @@ import { Want } from '@kit.AbilityKit';
 import { JSON } from '@kit.ArkTS';
 import { connection, vpnExtension, VpnExtensionAbility } from '@kit.NetworkKit';
 import easytier from 'easytier-ohrs';
+import { NativeSocketProtectionService } from '../runtime/NativeSocketProtectionService';
 import {
   readArrayParam,
   readBoolParam,
@@ -81,7 +82,12 @@ export default class EasyTierVpnAbility extends VpnExtensionAbility {
   private eventTimer: number | null = null;
   private lastError: string = '';
   private coreInitialized: boolean = false;
-  private processNetProtected: boolean = false;
+  private runtimeOperationQueue: Promise<void> = Promise.resolve();
+  private shuttingDown: boolean = false;
+  private socketProtection: NativeSocketProtectionService = new NativeSocketProtectionService(
+    () => this.vpnConnection,
+    (error: Error) => this.handleSocketProtectionFailure(error),
+  );
   private activeVpnInstanceId: string = '';
   private activeVpnInstanceName: string = '';
 
@@ -121,37 +127,18 @@ export default class EasyTierVpnAbility extends VpnExtensionAbility {
       console.info('[EasyTierProVpn] created without url (permission probe or IPC-driven start)');
       return;
     }
-    console.info(`[EasyTierProVpn] starting config server client url=${readStringParam(params, 'url')}`);
-    this.protectProcessNetwork()
-      .then(() => {
-        const url = readStringParam(params, 'url');
-        const hostname = readStringParam(params, 'hostname');
-        const machineId = readStringParam(params, 'machineId');
-        const secureMode = readBoolParam(params, 'secureMode');
-        const ok = easytier.startConfigServerClient(url, hostname, machineId, secureMode);
-        if (!ok) {
-          this.lastError = 'HarmonyOS EasyTier config server client start failed';
-          console.error(`[EasyTierProVpn] ${this.lastError}`);
-          this.emitEvent('error', new ErrorPayload(this.lastError));
-          return;
-        }
-        console.info(`[EasyTierProVpn] config server client started machineId=${machineId}`);
-        this.emitEvent('config_server_started', new ConfigServerStartedPayload(url, hostname, machineId));
-        this.startEventPolling();
-      })
-      .catch((error: Error) => {
-        this.lastError = `HarmonyOS process network protection failed: ${this.errorMessage(error)}`;
-        console.error(`[EasyTierProVpn] ${this.lastError}`);
-        this.emitEvent('error', new ErrorPayload(this.lastError));
-      });
+    this.handleRuntimeRequest('startConfigServerClient', params).catch((error: Error) => {
+      this.lastError = this.errorMessage(error);
+      console.error(`[EasyTierProVpn] ${this.lastError}`);
+      this.emitEvent('error', new ErrorPayload(this.lastError));
+    });
   }
 
   onDestroy(): void {
-    this.stopEventPolling();
-    try {
-      easytier.stopRuntime();
-    } catch (_) {
-    }
+    this.shuttingDown = true;
+    this.runtimeOperationQueue.then(() => this.stopRuntime()).catch((error: Error) => {
+      console.error(`[EasyTierProVpn] runtime shutdown failed: ${this.errorMessage(error)}`);
+    });
     const ipcServer = this.ipcServer;
     this.ipcServer = null;
     if (ipcServer !== null) {
@@ -159,19 +146,28 @@ export default class EasyTierVpnAbility extends VpnExtensionAbility {
         console.error(`[EasyTierProVpn] runtime IPC close failed: ${this.errorMessage(error)}`);
       });
     }
-    this.destroyVpnConnection().catch((_error: Error) => {
-    });
   }
 
   private handleRuntimeRequest(method: string, params: RuntimeParams): Promise<RuntimeValue> {
+    if (this.shuttingDown) {
+      return Promise.reject(new Error('HarmonyOS VPN runtime is shutting down'));
+    }
+    const operation = this.runtimeOperationQueue.then(() => this.dispatchRuntimeRequest(method, params));
+    this.runtimeOperationQueue = operation.then(() => {}, () => {});
+    return operation;
+  }
+
+  private dispatchRuntimeRequest(method: string, params: RuntimeParams): Promise<RuntimeValue> {
     try {
       switch (method) {
         case 'startConfigServerClient':
           return this.startConfigServerClient(params);
         case 'stopConfigServerClient':
-          easytier.stopConfigServerClient();
-          this.emitEvent('config_server_stopped', new EmptyPayload());
-          return Promise.resolve(null);
+          return this.socketProtection.runNativeTeardown(() => {
+            easytier.stopConfigServerClient();
+            this.emitEvent('config_server_stopped', new EmptyPayload());
+            return null;
+          });
         case 'stopRuntime':
           return this.stopRuntime();
         case 'isConfigServerClientConnected':
@@ -185,8 +181,7 @@ export default class EasyTierVpnAbility extends VpnExtensionAbility {
             readStringParam(params, 'payloadJson'),
           ));
         case 'stopNetworkInstances':
-          this.stopNetworkInstances(params);
-          return Promise.resolve(null);
+          return this.stopNetworkInstances(params);
         case 'startVpn':
           return this.startVpn(params);
         case 'stopVpn':
@@ -216,7 +211,11 @@ export default class EasyTierVpnAbility extends VpnExtensionAbility {
   }
 
   private startConfigServerClient(params: RuntimeParams): Promise<RuntimeValue> {
-    return this.protectProcessNetwork().then(() => {
+    // Native start replaces any prior client synchronously. Stop it while ACKs
+    // can still settle, then enable protection before starting its replacement.
+    return this.socketProtection.runNativeTeardown(() => {
+      easytier.stopConfigServerClient();
+    }).then(() => this.prepareSocketProtection()).then(() => {
       const url = readStringParam(params, 'url');
       const hostname = readStringParam(params, 'hostname');
       const machineId = readStringParam(params, 'machineId');
@@ -232,26 +231,33 @@ export default class EasyTierVpnAbility extends VpnExtensionAbility {
     });
   }
 
-  private stopRuntime(): Promise<RuntimeValue> {
+  private async stopRuntime(): Promise<RuntimeValue> {
     this.stopEventPolling();
-    easytier.stopRuntime();
-    return this.destroyVpnConnection()
-      .then(() => {
-        this.activeVpnInstanceId = '';
-        this.activeVpnInstanceName = '';
-        this.emitEvent('config_server_stopped', new EmptyPayload());
-        return null;
-      });
+    // Resolve/reject dispatched protection requests before calling synchronous
+    // native teardown, which may otherwise wait for this ArkTS thread's ACK.
+    await this.socketProtection.stop();
+    try {
+      easytier.stopRuntime();
+    } finally {
+      await this.destroyVpnConnection();
+      this.activeVpnInstanceId = '';
+      this.activeVpnInstanceName = '';
+    }
+    this.emitEvent('config_server_stopped', new EmptyPayload());
+    return null;
   }
 
-  private stopNetworkInstances(params: RuntimeParams): void {
+  private async stopNetworkInstances(params: RuntimeParams): Promise<RuntimeValue> {
     const instanceNames = readArrayParam(params, 'instanceNames');
     const instanceIds = instanceNames
       .map((name: string) => easytier.resolveInstanceId(name) ?? name)
       .filter((id: string) => id.length > 0);
     if (instanceIds.length > 0) {
-      easytier.stopNetworkInstance(instanceIds);
+      await this.socketProtection.runNativeTeardown(() => {
+        easytier.stopNetworkInstance(instanceIds);
+      });
     }
+    return null;
   }
 
   private startVpn(params: RuntimeParams): Promise<RuntimeValue> {
@@ -269,9 +275,12 @@ export default class EasyTierVpnAbility extends VpnExtensionAbility {
     const configAddresses = config.addresses ?? [];
     const configRoutes = config.routes ?? [];
     console.info(`[EasyTierProVpn] startVpn config addresses=${configAddresses.length} routes=${configRoutes.length}`);
-    return this.createVpnConnection()
-      .then((vpnConnection) => this.protectProcessNetwork().then(() => vpnConnection))
-      .then((vpnConnection) => vpnConnection.destroy().then(() => vpnConnection.create(config)))
+    return this.prepareSocketProtection()
+      .then(() => this.socketProtection.runConnectionOperation(async () => {
+        const vpnConnection = await this.createVpnConnection();
+        await vpnConnection.destroy();
+        return vpnConnection.create(config);
+      }))
       .then((fd: number) => {
         if (!easytier.setTunFd(instanceId, fd)) {
           this.lastError = `HarmonyOS setTunFd failed for ${instanceId}`;
@@ -306,25 +315,27 @@ export default class EasyTierVpnAbility extends VpnExtensionAbility {
     return Promise.resolve(this.vpnConnection);
   }
 
-  private protectProcessNetwork(): Promise<void> {
-    if (this.processNetProtected) {
-      return Promise.resolve();
-    }
-    return this.createVpnConnection()
-      .then((vpnConnection) => vpnConnection.protectProcessNet())
-      .then(() => {
-        this.processNetProtected = true;
-      });
+  private prepareSocketProtection(): Promise<void> {
+    return this.createVpnConnection().then(() => this.socketProtection.start());
+  }
+
+  private handleSocketProtectionFailure(error: Error): void {
+    this.lastError = `HarmonyOS socket protection failed: ${this.errorMessage(error)}`;
+    console.error(`[EasyTierProVpn] ${this.lastError}`);
+    this.emitEvent('error', new ErrorPayload(this.lastError));
+    this.handleRuntimeRequest('stopRuntime', new RuntimeParams()).catch((stopError: Error) => {
+      console.error(`[EasyTierProVpn] protection fail-stop failed: ${this.errorMessage(stopError)}`);
+    });
   }
 
   private destroyVpnConnection(): Promise<void> {
-    if (this.vpnConnection === null) {
-      return Promise.resolve();
-    }
-    const vpnConnection = this.vpnConnection;
-    this.vpnConnection = null;
-    this.processNetProtected = false;
-    return vpnConnection.destroy();
+    return this.socketProtection.runConnectionOperation(async () => {
+      if (this.vpnConnection !== null) {
+        // Retain the connection handle: stopping only TUN does not stop the
+        // config client, whose new transport sockets still require protection.
+        await this.vpnConnection.destroy();
+      }
+    });
   }
 
   private buildVpnConfig(input: RuntimeVpnConfig): vpnExtension.VpnConfig {
@@ -348,7 +359,9 @@ export default class EasyTierVpnAbility extends VpnExtensionAbility {
     );
     const mtu = input.mtu > 0 ? input.mtu : DEFAULT_MTU;
 
-    return {
+    // Use the ordinary single-VPN all-app/exclusion policy. Do not generate a
+    // vpnId: older multi-VPN implementations require a real nonempty allowlist.
+    const config: vpnExtension.VpnConfig = {
       addresses: [
         {
           address: {
@@ -359,11 +372,15 @@ export default class EasyTierVpnAbility extends VpnExtensionAbility {
         },
       ],
       routes,
-      dnsAddresses: dns.length > 0 ? dns : undefined,
-      blockedApplications: disallowedApplications,
-      trustedApplications: [],
       mtu,
     };
+    if (dns.length > 0) {
+      config.dnsAddresses = dns;
+    }
+    if (disallowedApplications.length > 0) {
+      config.blockedApplications = disallowedApplications;
+    }
+    return config;
   }
 
   private buildRouteInfo(route: string, gateway: string): connection.RouteInfo | null {

@@ -113,7 +113,7 @@ sha256sum ohos/easytier-ohrs-0.0.1.har
 flutter pub get
 ```
 
-当前跟踪的 `ohos/easytier-ohrs-0.0.1.har` 大小为 `9357294` 字节，SHA-256 为 `8c659f30247a0a3350a3e8e875f9562d9ab14115ab9d209f6d2aa1f68e23fd4a`，并由 `ohos/oh-package.json5` 通过本地文件依赖引用。正常 Git clone 会带上该 HAR；除非 EasyTier Core 的 `easytier-ohrs` 桥接确有变更，否则不要重新构建或替换它。
+当前跟踪的 `ohos/easytier-ohrs-0.0.1.har` 包版本为 `2.7.0-main-99-3112-1-gc96b6c19`，Core commit 为 `c96b6c1961edca732aea5189743727ad71f29baa`，大小为 `9195315` 字节，SHA-256 为 `dc6106e0387e56eb937c97caf7367d90ed2a9a4d6aefab4076207e558e165435`。它由 `ohos/oh-package.json5` 通过本地文件依赖引用；文件名保持不变，实际版本以 HAR 内 `oh-package.json5` 为准。Core 内部拆分后，对 Pro 发布的入口仍为 `easytier-ohrs`，包含 Pro API 和逐 socket 保护接口。正常 Git clone 会带上该 HAR；除非 EasyTier Core 的 `easytier-ohrs` 桥接确有变更，否则不要重新构建或替换它。
 
 如需单独恢复 ArkTS 依赖，可执行：
 
