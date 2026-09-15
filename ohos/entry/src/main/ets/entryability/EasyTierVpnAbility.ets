@@ -1,5 +1,4 @@
 import { Want } from '@kit.AbilityKit';
-import { fileIo } from '@kit.CoreFileKit';
 import { JSON } from '@kit.ArkTS';
 import { connection, vpnExtension, VpnExtensionAbility } from '@kit.NetworkKit';
 import easytier from 'easytier-ohrs';
@@ -91,8 +90,6 @@ export default class EasyTierVpnAbility extends VpnExtensionAbility {
   );
   private activeVpnInstanceId: string = '';
   private activeVpnInstanceName: string = '';
-  private lastTunFd: number = -1;
-  private pinnedTunFds: fileIo.File[] = [];
 
   onCreate(want: Want): void {
     let params = new RuntimeParams();
@@ -139,12 +136,9 @@ export default class EasyTierVpnAbility extends VpnExtensionAbility {
 
   onDestroy(): void {
     this.shuttingDown = true;
-    this.runtimeOperationQueue
-      .then(() => this.stopRuntime())
-      .catch((error: Error) => {
-        console.error(`[EasyTierProVpn] runtime shutdown failed: ${this.errorMessage(error)}`);
-      })
-      .then(() => this.releasePinnedTunFds());
+    this.runtimeOperationQueue.then(() => this.stopRuntime()).catch((error: Error) => {
+      console.error(`[EasyTierProVpn] runtime shutdown failed: ${this.errorMessage(error)}`);
+    });
     const ipcServer = this.ipcServer;
     this.ipcServer = null;
     if (ipcServer !== null) {
@@ -285,7 +279,7 @@ export default class EasyTierVpnAbility extends VpnExtensionAbility {
       .then(() => this.socketProtection.runConnectionOperation(async () => {
         const vpnConnection = await this.createVpnConnection();
         await vpnConnection.destroy();
-        return this.createVpnInterface(vpnConnection, config);
+        return vpnConnection.create(config);
       }))
       .then((fd: number) => {
         if (!easytier.setTunFd(instanceId, fd)) {
@@ -295,51 +289,10 @@ export default class EasyTierVpnAbility extends VpnExtensionAbility {
         }
         this.activeVpnInstanceId = instanceId;
         this.activeVpnInstanceName = instanceName;
-        const previousFd = this.lastTunFd;
-        this.lastTunFd = fd;
-        console.info(`[EasyTierProVpn] vpn started instanceId=${instanceId} fd=${fd} previousFd=${previousFd}`);
+        console.info(`[EasyTierProVpn] vpn started instanceId=${instanceId} fd=${fd}`);
         this.emitEvent('vpn_started', new VpnStartedPayload(instanceName, instanceId, fd));
         return null;
       });
-  }
-
-  /**
-   * OHRS builds the TUN device straight from the fd number we pass
-   * (`raw_fd` + `close_fd_on_drop(false)`) and keeps the previous interface's
-   * reader alive after a config change. If a later interface were handed the
-   * same number, that stale reader would read the live tunnel and swallow its
-   * packets, which shows up as a VPN that is up with correct routes but carries
-   * nothing. Hand OHRS a duplicate that this ability keeps open until it is
-   * destroyed, so a number it once used can never be recycled.
-   */
-  private async createVpnInterface(
-    vpnConnection: vpnExtension.VpnConnection,
-    config: vpnExtension.VpnConfig,
-  ): Promise<number> {
-    const interfaceFd = await vpnConnection.create(config);
-    let owned: fileIo.File;
-    try {
-      owned = fileIo.dup(interfaceFd);
-    } finally {
-      try {
-        fileIo.closeSync(interfaceFd);
-      } catch (error) {
-        console.warn(`[EasyTierProVpn] failed to close the interface descriptor: ${this.errorMessage(error)}`);
-      }
-    }
-    this.pinnedTunFds.push(owned);
-    return owned.fd;
-  }
-
-  private releasePinnedTunFds(): void {
-    for (const pinned of this.pinnedTunFds) {
-      try {
-        fileIo.closeSync(pinned);
-      } catch (error) {
-        console.warn(`[EasyTierProVpn] failed to close a pinned descriptor: ${this.errorMessage(error)}`);
-      }
-    }
-    this.pinnedTunFds = [];
   }
 
   private stopVpn(): Promise<RuntimeValue> {
