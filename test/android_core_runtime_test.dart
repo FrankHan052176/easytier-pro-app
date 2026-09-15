@@ -1565,6 +1565,90 @@ void main() {
       expect(refreshDiagnostic['routes'], ['10.10.0.0/24', '192.168.50.0/24']);
     });
 
+    test('first interface already carries routes published after startup', () async {
+      await runtime.dispose();
+      runtime = AndroidCoreRuntime(
+        methodChannel: methodChannel,
+        eventChannel: _FakeEventChannel(nativeEvents.stream),
+        vpnRouteRefreshFastInterval: const Duration(milliseconds: 10),
+        vpnRouteRefreshSteadyInterval: const Duration(milliseconds: 10),
+        vpnRouteRefreshFastLimit: 2,
+      );
+      networkInfos = {
+        'instances': [
+          {
+            'instance_id': 'instance-a',
+            'instance_name': 'network-a',
+            'running': true,
+            'ipv4_cidr': '10.10.0.2/24',
+            'routes': [
+              {'address': '192.168.50.0', 'prefix': 24},
+            ],
+            'dns_servers': <String>[],
+          },
+        ],
+      };
+
+      await runtime.ensureRunning(_androidBootstrap(), forceReinstall: false);
+      nativeEvents.add({
+        'type': CoreRuntimeEventTypes.configServer,
+        'payload': {
+          'event': 'run_network_instance',
+          'instance_name': 'network-a',
+          'vpnConfig': {
+            'addresses': ['10.10.0.2'],
+            'routes': <String>[],
+            'dns': <String>[],
+          },
+        },
+      });
+
+      final startVpn = await _waitForCall(calls, 'startVpn');
+      expect(startVpn.arguments, {
+        'instanceName': 'network-a',
+        'vpnConfig': {
+          'addresses': ['10.10.0.2/24'],
+          'routes': ['10.10.0.0/24', '192.168.50.0/24'],
+          'dns': <String>[],
+        },
+      });
+      expect(
+        calls.where((call) => call.method == 'startVpn'),
+        hasLength(1),
+        reason: 'the routes arrived before the interface was created',
+      );
+    });
+
+    test('network exit drops the interface before the console confirms', () async {
+      await runtime.dispose();
+      runtime = AndroidCoreRuntime(
+        methodChannel: methodChannel,
+        eventChannel: _FakeEventChannel(nativeEvents.stream),
+        vpnRouteRefreshFastInterval: const Duration(milliseconds: 10),
+        vpnRouteRefreshSteadyInterval: const Duration(milliseconds: 10),
+        vpnRouteRefreshFastLimit: 2,
+      );
+
+      await runtime.ensureRunning(_androidBootstrap(), forceReinstall: false);
+      nativeEvents.add({
+        'type': CoreRuntimeEventTypes.configServer,
+        'payload': {
+          'event': 'run_network_instance',
+          'instance_name': 'network-a',
+        },
+      });
+      final startVpn = await _waitForCall(calls, 'startVpn');
+      calls.clear();
+
+      await runtime.preemptActiveVpnForExit();
+      expect(calls.map((call) => call.method), ['stopVpn']);
+
+      await runtime.restoreActiveVpnAfterFailedExit();
+      final restored = calls.where((call) => call.method == 'startVpn').toList();
+      expect(restored, hasLength(1));
+      expect(restored.single.arguments, startVpn.arguments);
+    });
+
     test(
       'keeps route refresh after same-instance native restart stop event',
       () async {

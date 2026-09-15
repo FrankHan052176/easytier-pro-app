@@ -40,6 +40,14 @@ abstract class CorePlatformRuntime {
 
   Future<void> stop();
 
+  /// Tears the active VPN interface down before the control plane confirms a
+  /// network exit; no-op on platforms without a managed VPN interface.
+  Future<void> preemptActiveVpnForExit() async {}
+
+  /// Brings back the interface [preemptActiveVpnForExit] took down when that
+  /// exit turned out to fail.
+  Future<void> restoreActiveVpnAfterFailedExit() async {}
+
   Future<Map<String, CoreNetworkTrafficTotals>> readNetworkTrafficTotals();
 
   Future<bool> isNetworkInstanceRunning(String runtimeNetworkName);

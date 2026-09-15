@@ -144,6 +144,7 @@ extension _WorkspaceHomeJoinActions on _WorkspaceHomeViewState {
     }
 
     _setJoinState(network.id, _JoinNetworkState.leaving);
+    await _preemptActiveVpnDrop();
     try {
       await widget.authService.removeNetworkNode(
         accessToken: widget.session.tokenSet.accessToken,
@@ -153,6 +154,7 @@ extension _WorkspaceHomeJoinActions on _WorkspaceHomeViewState {
       _markNetworkLeft(network.id, localDevice.id, machineId);
       _showNetworkActionToast('「${network.name}」已断开连接');
     } catch (error) {
+      await _restorePreemptedVpnDrop();
       final message = _normalizeError(error);
       _setJoinState(
         network.id,
@@ -164,6 +166,33 @@ extension _WorkspaceHomeJoinActions on _WorkspaceHomeViewState {
       _showNetworkActionToast(
         '退出「${network.name}」失败：$message',
         destructive: true,
+      );
+    }
+  }
+
+  /// The console round-trip decides when the instance actually goes away, so the
+  /// tunnel is dropped before waiting on it instead of staying up against a
+  /// network that is already leaving.
+  Future<void> _preemptActiveVpnDrop() async {
+    try {
+      await widget.coreLifecycleService.preemptActiveVpnForNetworkExit();
+    } catch (error) {
+      AppLogger.instance.warn(
+        'home.join',
+        'Failed to preempt the VPN interface for a network exit',
+        context: {'error': error.toString()},
+      );
+    }
+  }
+
+  Future<void> _restorePreemptedVpnDrop() async {
+    try {
+      await widget.coreLifecycleService.restoreActiveVpnAfterFailedExit();
+    } catch (error) {
+      AppLogger.instance.warn(
+        'home.join',
+        'Failed to restore the preempted VPN interface',
+        context: {'error': error.toString()},
       );
     }
   }

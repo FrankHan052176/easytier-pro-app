@@ -52,6 +52,10 @@ class AndroidCoreRuntime extends CorePlatformRuntime {
     seconds: 1,
   );
   static const int _androidVpnStartMissingInstanceRetryLimit = 3;
+  static const Duration _androidVpnInitialRoutePollInterval = Duration(
+    milliseconds: 200,
+  );
+  static const int _androidVpnInitialRoutePollLimit = 10;
 
   final MethodChannel _methodChannel;
   final EventChannel _eventChannel;
@@ -75,6 +79,8 @@ class AndroidCoreRuntime extends CorePlatformRuntime {
   String? _activeVpnConfigSignature;
   String? _pendingVpnStartInstanceName;
   Map<String, Object?>? _activeVpnFallbackConfig;
+  String? _preemptedVpnName;
+  Map<String, Object?>? _preemptedVpnConfig;
   int _activeVpnRefreshCount = 0;
   bool _vpnPrepared = false;
   bool _disposed = false;
@@ -618,13 +624,14 @@ class AndroidCoreRuntime extends CorePlatformRuntime {
       );
       return;
     }
+    final vpnConfig = await _awaitInitialVpnRoutes(target);
     _emitVpnRouteDiagnostic(
       phase: 'start_request',
       instanceKey: instanceKey,
       instanceName: target.instanceName,
       instanceId: target.instanceId,
       source: target.source,
-      config: target.vpnConfig,
+      config: vpnConfig,
       decision: 'start_vpn',
     );
 
@@ -646,7 +653,7 @@ class AndroidCoreRuntime extends CorePlatformRuntime {
     try {
       await _methodChannel.invokeMethod<void>('startVpn', {
         'instanceName': target.instanceName,
-        'vpnConfig': target.vpnConfig,
+        'vpnConfig': vpnConfig,
       });
     } on Object {
       if (_pendingVpnStartInstanceName == target.instanceName) {
@@ -656,11 +663,47 @@ class AndroidCoreRuntime extends CorePlatformRuntime {
     }
     _activeVpnInstanceName = target.instanceName;
     _activeVpnInstanceId = target.instanceId;
-    _activeVpnConfigSignature = _vpnConfigSignature(target.vpnConfig);
-    _activeVpnFallbackConfig = target.vpnConfig;
+    _activeVpnConfigSignature = _vpnConfigSignature(vpnConfig);
+    _activeVpnFallbackConfig = vpnConfig;
     _activeVpnRefreshCount = 0;
     _scheduleActiveVpnRefresh();
     _pendingVpnPayloads.remove(instanceKey);
+  }
+
+  /// The instance reports running before it publishes its subnet routes, and the
+  /// periodic refresh would then rebuild the interface on the next tick — an
+  /// interface that is up but unroutable until that flash. Poll briefly so the
+  /// first interface already carries the routes the instance asked for.
+  Future<Map<String, Object?>> _awaitInitialVpnRoutes(
+    _ResolvedAndroidVpnTarget target,
+  ) async {
+    var config = target.vpnConfig;
+    if (_readCidrList(config['routes'] ?? config['route']).isNotEmpty) {
+      return config;
+    }
+    for (
+      var attempt = 0;
+      attempt < _androidVpnInitialRoutePollLimit;
+      attempt++
+    ) {
+      await Future<void>.delayed(_androidVpnInitialRoutePollInterval);
+      try {
+        final read = await _readJsonRpcVpnConfig(
+          target.instanceName,
+          fallbackConfig: target.vpnConfig,
+        );
+        if (!_vpnConfigHasAddress(read.config)) {
+          continue;
+        }
+        config = read.config;
+        if (_readCidrList(config['routes'] ?? config['route']).isNotEmpty) {
+          break;
+        }
+      } on Object {
+        break;
+      }
+    }
+    return config;
   }
 
   Future<_ResolvedAndroidVpnTarget?> _resolveVpnTargetWithMissingInstanceRetry(
@@ -1245,6 +1288,10 @@ class AndroidCoreRuntime extends CorePlatformRuntime {
   Future<void> _stopActiveVpn(String instanceKey) async {
     final matchesActiveName = _activeVpnInstanceName == instanceKey;
     final matchesActiveId = _activeVpnInstanceId == instanceKey;
+    if (_preemptedVpnName == instanceKey) {
+      _preemptedVpnName = null;
+      _preemptedVpnConfig = null;
+    }
     if (!matchesActiveName && !matchesActiveId) {
       _pendingVpnPayloads.remove(instanceKey);
       return;
@@ -1256,6 +1303,52 @@ class AndroidCoreRuntime extends CorePlatformRuntime {
     _cancelActiveVpnRefresh();
     await _methodChannel.invokeMethod<void>('stopVpn');
     _pendingVpnPayloads.remove(instanceKey);
+  }
+
+  /// Tears the interface down as soon as the user leaves a network instead of
+  /// waiting for the control plane to confirm and push the delete event, which
+  /// would leave the tunnel up against a network that is already going away.
+  /// The resolved config is remembered so a failed exit can bring it back.
+  @override
+  Future<void> preemptActiveVpnForExit() async {
+    final activeName = _activeVpnInstanceName;
+    final activeConfig = _activeVpnFallbackConfig;
+    if (activeName == null ||
+        activeName.isEmpty ||
+        activeConfig == null ||
+        !_vpnPrepared) {
+      return;
+    }
+    _preemptedVpnName = activeName;
+    _preemptedVpnConfig = activeConfig;
+    _activeVpnInstanceName = null;
+    _activeVpnInstanceId = null;
+    _activeVpnConfigSignature = null;
+    _activeVpnFallbackConfig = null;
+    _cancelActiveVpnRefresh();
+    _pendingVpnPayloads.remove(activeName);
+    await _methodChannel.invokeMethod<void>('stopVpn');
+  }
+
+  /// Restores the interface a preempted exit took down when that exit failed.
+  @override
+  Future<void> restoreActiveVpnAfterFailedExit() async {
+    final name = _preemptedVpnName;
+    final config = _preemptedVpnConfig;
+    _preemptedVpnName = null;
+    _preemptedVpnConfig = null;
+    if (name == null || config == null || !_vpnPrepared) {
+      return;
+    }
+    await _methodChannel.invokeMethod<void>('startVpn', {
+      'instanceName': name,
+      'vpnConfig': config,
+    });
+    _activeVpnInstanceName = name;
+    _activeVpnConfigSignature = _vpnConfigSignature(config);
+    _activeVpnFallbackConfig = config;
+    _activeVpnRefreshCount = 0;
+    _scheduleActiveVpnRefresh();
   }
 
   String _instanceNameFromPayload(Map<String, Object?> payloadMap) {

@@ -234,6 +234,19 @@ class CoreLifecycleService {
     });
   }
 
+  /// Drops the VPN interface before the control plane confirms a network exit,
+  /// so leaving does not keep traffic pointed at a network that is going away.
+  Future<void> preemptActiveVpnForNetworkExit() {
+    _logger.info('core.vpn', 'Preempting active VPN interface for network exit');
+    return _runtime.preemptActiveVpnForExit();
+  }
+
+  /// Undoes [preemptActiveVpnForNetworkExit] when that exit failed.
+  Future<void> restoreActiveVpnAfterFailedExit() {
+    _logger.info('core.vpn', 'Restoring preempted VPN interface');
+    return _runtime.restoreActiveVpnAfterFailedExit();
+  }
+
   Future<void> _stopRuntimeAllowingElevation({
     required String elevatedStatusMessage,
     required String elevatedLogMessage,
