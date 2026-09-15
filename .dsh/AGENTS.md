@@ -151,7 +151,7 @@ VPN 使用排除列表语义：没有排除项时省略应用列表字段，不�
 
 宿主机行为回归命令为 `bun test test/ohos_vpn_runtime.test.ts`，执行实际 ArkTS 源码，控制系统与 N-API 边界，覆盖排除列表、保护失败、ACK 时序、TUN 单独停止和运行时重启。通过不代表设备 UID 路由或原生浏览器访问子网 NAS 已通过；仍需按第 7 节真机验收。
 
-VPN 配置变化会走 `destroy()` + `create()`（`create` 在 VPN 已存在时报 2203002）。Core 的 `create_dev_for_mobile` 直接使用传入的 fd 号（`config.raw_fd(tun_fd)`、`close_fd_on_drop(false)`），并且换 NIC 时不会取消上一张网卡的读任务，因此**新 TUN 拿到用过的 fd 号时，旧读任务会去读新隧道并吞掉它的包**：系统侧 VPN 正常建立、UID 范围与路由都正确，但隧道不载流。实测规律是「App 启动自动连入正常；启动后首次手动连入异常；退出网络后再次连入又正常」，对应 fd 号是否被复用。`EasyTierVpnAbility.createVpnInterface` 现在对 `create()` 返回的 fd 做 `fileIo.dup`，把副本（直到 ability 销毁前一直保留）交给 Core，被用过的号就不会再被复用；排障看 `[EasyTierProVpn] vpn started ... fd=.. previousFd=..`，两者相同即命中该问题。Core 侧更彻底的修法是对传入 fd 做 `dup` 并在替换 NIC 时取消旧读任务。
+VPN 的逐 socket 保护由 Core 驱动：`enableSocketProtection` → ArkTS 循环取 `nextSocketProtectionRequest()` → `protect(fd)` → `completeSocketProtection()`。Core 的 `complete_request` 在**请求的等待方已被丢弃**（socket 创建被取消）时返回 false，`protect()` 本身失败也会让该 socket 创建失败。这两种情况都只影响那一个 socket，**绝不能让 ArkTS 侧升级成致命错误**：早期版本把「ACK 被拒」当致命错误并触发 fail-stop，结果整个 VPN 运行时被停掉，表现为「VPN 已建立、UID 范围与路由都正确、但隧道完全不载流」，并伴随 `HarmonyOS socket protection failed: ... ACK rejected` 日志。现在 `NativeSocketProtectionService` 只对「保护流意外结束」保持致命处理，单 socket 失败 NACK 并继续。排障时看 `[EasyTierProVpn] socket protection request ... was already released`（正常）与 `socket protection failed for fd ...`（单 socket 失败）。
 
 ## 5. 签名安全与选择
 

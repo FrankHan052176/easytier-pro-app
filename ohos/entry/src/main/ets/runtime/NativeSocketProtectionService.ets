@@ -89,8 +89,7 @@ export class NativeSocketProtectionService {
         }
         return;
       }
-      let success = false;
-      let errorMessage = 'HarmonyOS socket protection stopped';
+      let failure = '';
       try {
         await this.runConnectionOperation(async () => {
           if (!this.active || this.generation !== generation) {
@@ -102,18 +101,27 @@ export class NativeSocketProtectionService {
           }
           await vpnConnection.protect(request.socketFd);
         });
-        success = this.active && this.generation === generation;
       } catch (error) {
-        errorMessage = (error as Error).message;
+        failure = (error as Error).message;
       }
+      const stopped = !this.active || this.generation !== generation;
+      const success = failure.length === 0 && !stopped;
+      // A rejected ACK only means Core already dropped the awaiting socket, and a
+      // failed protect() makes Core fail that socket creation. Neither is reason
+      // to tear the runtime down: the unprotectable socket is never used, so the
+      // pump stays fail-closed per socket instead of stopping the whole VPN.
       const acknowledged = easytier.completeSocketProtection(
-        request.requestId, success, success ? undefined : errorMessage,
+        request.requestId,
+        success,
+        success ? undefined : (failure.length > 0 ? failure : 'HarmonyOS socket protection stopped'),
       );
-      if (!this.active || this.generation !== generation) {
+      if (stopped) {
         return;
       }
-      if (!success || !acknowledged) {
-        throw new Error(success ? 'HarmonyOS socket protection ACK rejected' : errorMessage);
+      if (!success) {
+        console.warn(`[EasyTierProVpn] socket protection failed for fd ${request.socketFd}: ${failure}`);
+      } else if (!acknowledged) {
+        console.info(`[EasyTierProVpn] socket protection request ${request.requestId} was already released`);
       }
     }
   }

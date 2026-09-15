@@ -233,29 +233,43 @@ test('does not ACK until OS protection succeeds; serializes TUN operations', asy
   await f.service.stop();
 });
 
-test('OS protection failure NACKs and leaves Core fail-closed', async () => {
+test('OS protection failure NACKs that socket and keeps the pump alive', async () => {
   const f = fixture();
   f.setProtect(async () => { throw new Error('permission denied'); });
   await f.service.start();
   f.send();
   await drain();
   expect(f.acks).toEqual([{ requestId: '1', success: false }]);
-  expect(f.calls).toContain('fail-closed');
-  expect(f.errors[0].message).toBe('permission denied');
+  expect(f.errors).toHaveLength(0);
+  f.setProtect(async () => {});
+  f.send('2');
+  await drain();
+  expect(f.acks[1]).toEqual({ requestId: '2', success: true });
   await f.service.stop();
 });
 
-test('stream closure and rejected ACK trigger fail-stop', async () => {
-  for (const failure of ['stream', 'ack']) {
-    const f = fixture();
-    await f.service.start();
-    if (failure === 'stream') f.closeStream();
-    else { f.rejectAcknowledgements(); f.send(); }
-    await drain();
-    expect(f.errors).toHaveLength(1);
-    expect(f.calls).toContain('fail-closed');
-    await f.service.stop();
-  }
+test('stream closure alone triggers fail-stop', async () => {
+  const f = fixture();
+  await f.service.start();
+  f.closeStream();
+  await drain();
+  expect(f.errors).toHaveLength(1);
+  expect(f.calls).toContain('fail-closed');
+  await f.service.stop();
+});
+
+test('a released ACK is not fatal', async () => {
+  const f = fixture();
+  await f.service.start();
+  f.rejectAcknowledgements();
+  f.send();
+  await drain();
+  expect(f.acks).toEqual([{ requestId: '1', success: true }]);
+  expect(f.errors).toHaveLength(0);
+  f.send('2');
+  await drain();
+  expect(f.acks[1]).toEqual({ requestId: '2', success: true });
+  await f.service.stop();
 });
 
 test('stop retains in-flight FD until OS returns, NACKs it, then permits restart', async () => {
@@ -322,16 +336,17 @@ test('enabling failure does not start Core or create TUN', async () => {
   expect(f.calls).not.toContain('start-client');
 });
 
-test('a protection failure shuts down the actual VPN runtime', async () => {
+test('a per-socket protection failure keeps the runtime served', async () => {
   const f = fixture();
   f.setProtect(async () => { throw new Error('protect failed'); });
   await f.request('startVpn', vpnParams());
   f.send();
   await drain();
   await f.ability.runtimeOperationQueue;
-  expect(f.calls).toContain('stop-runtime');
-  expect(f.calls.at(-1)).toBe('destroy-tun');
-  expect(f.ability.lastError).toContain('protect failed');
+  expect(f.acks).toEqual([{ requestId: '1', success: false }]);
+  expect(f.ability.lastError).toBe('');
+  expect(f.calls).not.toContain('stop-runtime');
+  expect(f.calls.at(-1)).toBe('ack:1:false');
 });
 
 for (const method of ['stopConfigServerClient', 'stopNetworkInstances', 'startConfigServerClient']) {
