@@ -1,4 +1,5 @@
 import { Want } from '@kit.AbilityKit';
+import { fileIo } from '@kit.CoreFileKit';
 import { JSON } from '@kit.ArkTS';
 import { connection, vpnExtension, VpnExtensionAbility } from '@kit.NetworkKit';
 import easytier from 'easytier-ohrs';
@@ -90,6 +91,7 @@ export default class EasyTierVpnAbility extends VpnExtensionAbility {
   );
   private activeVpnInstanceId: string = '';
   private activeVpnInstanceName: string = '';
+  private lastTunFd: number = -1;
 
   onCreate(want: Want): void {
     let params = new RuntimeParams();
@@ -279,7 +281,7 @@ export default class EasyTierVpnAbility extends VpnExtensionAbility {
       .then(() => this.socketProtection.runConnectionOperation(async () => {
         const vpnConnection = await this.createVpnConnection();
         await vpnConnection.destroy();
-        return vpnConnection.create(config);
+        return this.createVpnInterface(vpnConnection, config);
       }))
       .then((fd: number) => {
         if (!easytier.setTunFd(instanceId, fd)) {
@@ -289,10 +291,54 @@ export default class EasyTierVpnAbility extends VpnExtensionAbility {
         }
         this.activeVpnInstanceId = instanceId;
         this.activeVpnInstanceName = instanceName;
-        console.info(`[EasyTierProVpn] vpn started instanceId=${instanceId} fd=${fd}`);
+        const previousFd = this.lastTunFd;
+        this.lastTunFd = fd;
+        console.info(`[EasyTierProVpn] vpn started instanceId=${instanceId} fd=${fd} previousFd=${previousFd}`);
         this.emitEvent('vpn_started', new VpnStartedPayload(instanceName, instanceId, fd));
         return null;
       });
+  }
+
+  /**
+   * OHRS builds its TUN device directly from the raw fd and keeps the previous
+   * interface's reader alive after a config change. A recycled fd number would
+   * let that stale reader consume packets from the live tunnel, so hold the
+   * number the teardown just freed until the replacement interface has its own.
+   */
+  private async createVpnInterface(
+    vpnConnection: vpnExtension.VpnConnection,
+    config: vpnExtension.VpnConfig,
+  ): Promise<number> {
+    const reservedFd = this.reserveFdNumber();
+    try {
+      return await vpnConnection.create(config);
+    } finally {
+      this.releaseFdNumber(reservedFd);
+    }
+  }
+
+  private reserveFdNumber(): number {
+    try {
+      const reservation = fileIo.openSync(
+        `${this.context.filesDir}/tun-fd-reservation`,
+        fileIo.OpenMode.READ_WRITE | fileIo.OpenMode.CREATE,
+      );
+      return reservation.fd;
+    } catch (error) {
+      console.warn(`[EasyTierProVpn] failed to reserve a descriptor: ${this.errorMessage(error)}`);
+      return -1;
+    }
+  }
+
+  private releaseFdNumber(reservedFd: number): void {
+    if (reservedFd < 0) {
+      return;
+    }
+    try {
+      fileIo.closeSync(reservedFd);
+    } catch (error) {
+      console.warn(`[EasyTierProVpn] failed to release a reserved descriptor: ${this.errorMessage(error)}`);
+    }
   }
 
   private stopVpn(): Promise<RuntimeValue> {
