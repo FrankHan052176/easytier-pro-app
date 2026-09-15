@@ -151,7 +151,7 @@ VPN 使用排除列表语义：没有排除项时省略应用列表字段，不�
 
 宿主机行为回归命令为 `bun test test/ohos_vpn_runtime.test.ts`，执行实际 ArkTS 源码，控制系统与 N-API 边界，覆盖排除列表、保护失败、ACK 时序、TUN 单独停止和运行时重启。通过不代表设备 UID 路由或原生浏览器访问子网 NAS 已通过；仍需按第 7 节真机验收。
 
-VPN 配置变化会走 `destroy()` + `create()`（`create` 在 VPN 已存在时报 2203002）。Core 的 `create_dev_for_mobile` 直接使用传入的原始 fd（`config.raw_fd(tun_fd)`、`close_fd_on_drop(false)`），并且上一张网卡的读任务在换 NIC 后不会取消，因此**新 TUN 拿到刚被释放的同一个 fd 号时，旧读任务会抢读新隧道**：系统里 VPN 正常建立、UID 范围与路由都正确，但双向都没有流量。表现为「App 启动自动连入正常，启动后手动连入/重建网络后连不上」。`EasyTierVpnAbility.createVpnInterface` 在 destroy 之后、create 之前用一个临时 fd 占住刚释放的号，保证新 TUN 一定拿到不同的 fd；Core 侧更彻底的修法是 `create_dev_for_mobile` 对传入 fd 做 `dup`。排障时看 `[EasyTierProVpn] vpn started ... fd=.. previousFd=..`：两个值相同即命中该问题。
+VPN 配置变化会走 `destroy()` + `create()`（`create` 在 VPN 已存在时报 2203002）。Core 的 `create_dev_for_mobile` 直接使用传入的 fd 号（`config.raw_fd(tun_fd)`、`close_fd_on_drop(false)`），并且换 NIC 时不会取消上一张网卡的读任务，因此**新 TUN 拿到用过的 fd 号时，旧读任务会去读新隧道并吞掉它的包**：系统侧 VPN 正常建立、UID 范围与路由都正确，但隧道不载流。实测规律是「App 启动自动连入正常；启动后首次手动连入异常；退出网络后再次连入又正常」，对应 fd 号是否被复用。`EasyTierVpnAbility.createVpnInterface` 现在对 `create()` 返回的 fd 做 `fileIo.dup`，把副本（直到 ability 销毁前一直保留）交给 Core，被用过的号就不会再被复用；排障看 `[EasyTierProVpn] vpn started ... fd=.. previousFd=..`，两者相同即命中该问题。Core 侧更彻底的修法是对传入 fd 做 `dup` 并在替换 NIC 时取消旧读任务。
 
 ## 5. 签名安全与选择
 

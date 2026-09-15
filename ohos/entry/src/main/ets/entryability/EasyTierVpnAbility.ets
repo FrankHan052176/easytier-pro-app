@@ -92,6 +92,7 @@ export default class EasyTierVpnAbility extends VpnExtensionAbility {
   private activeVpnInstanceId: string = '';
   private activeVpnInstanceName: string = '';
   private lastTunFd: number = -1;
+  private pinnedTunFds: fileIo.File[] = [];
 
   onCreate(want: Want): void {
     let params = new RuntimeParams();
@@ -138,9 +139,12 @@ export default class EasyTierVpnAbility extends VpnExtensionAbility {
 
   onDestroy(): void {
     this.shuttingDown = true;
-    this.runtimeOperationQueue.then(() => this.stopRuntime()).catch((error: Error) => {
-      console.error(`[EasyTierProVpn] runtime shutdown failed: ${this.errorMessage(error)}`);
-    });
+    this.runtimeOperationQueue
+      .then(() => this.stopRuntime())
+      .catch((error: Error) => {
+        console.error(`[EasyTierProVpn] runtime shutdown failed: ${this.errorMessage(error)}`);
+      })
+      .then(() => this.releasePinnedTunFds());
     const ipcServer = this.ipcServer;
     this.ipcServer = null;
     if (ipcServer !== null) {
@@ -300,45 +304,42 @@ export default class EasyTierVpnAbility extends VpnExtensionAbility {
   }
 
   /**
-   * OHRS builds its TUN device directly from the raw fd and keeps the previous
-   * interface's reader alive after a config change. A recycled fd number would
-   * let that stale reader consume packets from the live tunnel, so hold the
-   * number the teardown just freed until the replacement interface has its own.
+   * OHRS builds the TUN device straight from the fd number we pass
+   * (`raw_fd` + `close_fd_on_drop(false)`) and keeps the previous interface's
+   * reader alive after a config change. If a later interface were handed the
+   * same number, that stale reader would read the live tunnel and swallow its
+   * packets, which shows up as a VPN that is up with correct routes but carries
+   * nothing. Hand OHRS a duplicate that this ability keeps open until it is
+   * destroyed, so a number it once used can never be recycled.
    */
   private async createVpnInterface(
     vpnConnection: vpnExtension.VpnConnection,
     config: vpnExtension.VpnConfig,
   ): Promise<number> {
-    const reservedFd = this.reserveFdNumber();
+    const interfaceFd = await vpnConnection.create(config);
+    let owned: fileIo.File;
     try {
-      return await vpnConnection.create(config);
+      owned = fileIo.dup(interfaceFd);
     } finally {
-      this.releaseFdNumber(reservedFd);
+      try {
+        fileIo.closeSync(interfaceFd);
+      } catch (error) {
+        console.warn(`[EasyTierProVpn] failed to close the interface descriptor: ${this.errorMessage(error)}`);
+      }
     }
+    this.pinnedTunFds.push(owned);
+    return owned.fd;
   }
 
-  private reserveFdNumber(): number {
-    try {
-      const reservation = fileIo.openSync(
-        `${this.context.filesDir}/tun-fd-reservation`,
-        fileIo.OpenMode.READ_WRITE | fileIo.OpenMode.CREATE,
-      );
-      return reservation.fd;
-    } catch (error) {
-      console.warn(`[EasyTierProVpn] failed to reserve a descriptor: ${this.errorMessage(error)}`);
-      return -1;
+  private releasePinnedTunFds(): void {
+    for (const pinned of this.pinnedTunFds) {
+      try {
+        fileIo.closeSync(pinned);
+      } catch (error) {
+        console.warn(`[EasyTierProVpn] failed to close a pinned descriptor: ${this.errorMessage(error)}`);
+      }
     }
-  }
-
-  private releaseFdNumber(reservedFd: number): void {
-    if (reservedFd < 0) {
-      return;
-    }
-    try {
-      fileIo.closeSync(reservedFd);
-    } catch (error) {
-      console.warn(`[EasyTierProVpn] failed to release a reserved descriptor: ${this.errorMessage(error)}`);
-    }
+    this.pinnedTunFds = [];
   }
 
   private stopVpn(): Promise<RuntimeValue> {
