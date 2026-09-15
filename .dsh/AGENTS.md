@@ -8,7 +8,7 @@
 - Git 仓库：`git@github.com:FrankHan052176/easytier-pro-app.git`
 - 技术栈：Flutter / Dart；HarmonyOS 壳与系统集成位于 `ohos/`
 - Bundle name：`net.easytier.pro`
-- HarmonyOS 主入口：`BootstrapAbility`
+- HarmonyOS 主入口：`EntryAbility`（Flutter 壳，无自定义控制台地址启动页）
 - 目标与兼容 API：`6.1.0(23)`
 - 本地 `default` Debug 版本固定为 `0.0.1`，`versionCode=99999999`
 
@@ -299,8 +299,10 @@ $HDC -t "$TARGET" install -g "$HAP"
 
 ```bash
 $HDC -t "$TARGET" shell aa start \
-  -a BootstrapAbility -b net.easytier.pro
+  -a EntryAbility -b net.easytier.pro
 ```
+
+控制台地址不使用运行时输入，只来自构建期 `--dart-define=EASYTIER_CONSOLE_URL`；不要恢复 BootstrapAbility、控制台地址选择页或控制台地址偏好存储。
 
 安装后验证：
 
