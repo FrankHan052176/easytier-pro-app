@@ -19,8 +19,20 @@ EasyTier Pro 是商用跨平台客户端，不要与原生 ArkTS 开源版混淆
 AppGallery 与 UX 基础质量测试都会校验软件包内的图标资源：**单层图必须 1024×1024、方角（不自行裁剪圆角）、不能有透明像素，也不能留内间距**；分层图标的前景图必须是透明 PNG，背景图必须是纯色且不含透明像素。
 
 - `ohos/AppScope/resources/base/media/` 与 `ohos/entry/src/main/resources/base/media/` 各自保存一份：`app_icon.png`／`icon.png`（单层图，1024、无 alpha）、`foreground.png`（透明前景）、`background.png`（纯色背景）、`layered_image.json`（`layered-image.background/foreground`）。
-- `ohos/AppScope/app.json5` 与 `ohos/entry/src/main/module.json5` 的 `icon` 都指向 `$media:layered_image`；`startWindowIcon` 仍用 `$media:icon`。
+- `ohos/AppScope/app.json5` 与 `ohos/entry/src/main/module.json5` 的 `icon` 都指向 `$media:layered_image`。
 - 原 192×192 圆角带透明的图标正是被驳回的形态（尺寸不足、圆角、透明像素、含内间距），不要改回去。换图标时要按同样几何规则重新生成（铺满画布、补角、去 alpha），或用 DevEco Studio 5.0.5.315+ 的 Image Asset 生成后替换。
+
+### 1.1.1 开屏（启动页）
+
+简易启动页的 `startWindowIcon` **按实际像素居中显示、不随窗口缩放**，所以绝不能指向 1024 的应用图标，否则会铺出一整块色块；官方也明确建议不要为全屏尺寸设计 `startWindowIcon`。
+
+本项目使用 API 19+ 的**增强启动页**：`module.json5` 里 EntryAbility 配 `"startWindow": "$profile:start_window"`，由 `ohos/entry/src/main/resources/base/profile/start_window.json` 提供 `startWindowAppIcon`（系统按 128/192/256 vp 自适应缩放）与 `startWindowBackgroundColor`（必填，缺省会导致整份增强配置被忽略）。增强配置生效时 `startWindowIcon` 失效，但仍保留为兜底。
+
+- 启动页专用图是 `ohos/entry/src/main/resources/base/media/start_icon.png`：1024×1024 画布，中间是一枚**圆角应用图标瓦片**，四周留透明外边距。它不是应用图标，不受上架图标规则约束，可以带 alpha 与留白。
+- 尺寸控制方式：系统会把整张画布缩放进图标展示区（本机实测 ≈ 192 vp ≈ 679 px），因此**瓦片在画布里的占比决定了屏幕上的大小**。当前瓦片 = 672/1024 ≈ 66%，本机约 420 px ≈ 屏宽 32%，即一枚正常大小的图标；要调大小就改这个占比，不要改画布尺寸。
+- 瓦片取自 `ios/Runner/Assets.xcassets/AppIcon.appiconset/Icon-App-1024x1024@1x.png`（原生 1024、自带抗锯齿圆角、真正的母版），不要用 `ohos/.../icon.png`：那张为满足上架规则补过角，边缘留有一圈补色接缝，放大后会看出来。
+- `startWindowBackgroundColor` 指向 `$color:start_window_background`（`#F6F7F9`），与应用首屏底色接近以避免过渡跳变。
+- 要加下部品牌字或启动插画时，用同文件里的 `startWindowBrandingImage`／`startWindowIllustration`，不要回去放大 `startWindowIcon`。
 
 ## 2. 已验证工具链基线
 
