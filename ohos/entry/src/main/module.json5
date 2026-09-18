@@ -20,7 +20,8 @@
         "description": "$string:EntryAbility_desc",
         "icon": "$media:layered_image",
         "label": "$string:EntryAbility_label",
-        "startWindowIcon": "$media:icon",
+        "startWindowIcon": "$media:start_icon",
+        "startWindow": "$profile:start_window",
         "backgroundModes": [
           "dataTransfer"
         ],
