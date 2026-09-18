@@ -5494,6 +5494,76 @@ void main() {
     );
   });
 
+  test('console service reports quota failures in Chinese', () async {
+    SharedPreferences.setMockInitialValues({});
+    final preferences = await SharedPreferences.getInstance();
+    final service = await _authenticatedConsoleService(
+      tokenStore: OAuthTokenStore(preferences),
+      consoleBaseUrl: 'https://console.test',
+      handler: (request) async {
+        if (request.url.path == '/api/v1/tenants/tenant-1/networks') {
+          return _jsonResponse({
+            'code': 'bad request',
+            'error': 'network quota exceeded (max 2)',
+          }, 400);
+        }
+        return http.Response('{}', 404);
+      },
+    );
+
+    await expectLater(
+      service.createNetwork(
+        accessToken: 'token',
+        workspaceId: 'tenant-1',
+        name: 'network-a',
+        regions: const ['ap-east'],
+        ipv4Cidr: '10.200.0.0/16',
+      ),
+      throwsA(
+        isA<AuthException>().having(
+          (error) => error.message,
+          'message',
+          '创建网络失败：当前套餐最多可创建 2 个网络，请先在控制台删除不再使用的网络。',
+        ),
+      ),
+    );
+  });
+
+  test('console service falls back to Chinese for unknown failures', () async {
+    SharedPreferences.setMockInitialValues({});
+    final preferences = await SharedPreferences.getInstance();
+    final service = await _authenticatedConsoleService(
+      tokenStore: OAuthTokenStore(preferences),
+      consoleBaseUrl: 'https://console.test',
+      handler: (request) async {
+        if (request.url.path == '/api/v1/tenants/tenant-1/networks') {
+          return _jsonResponse({
+            'code': 'teapot',
+            'error': 'totally unexpected failure',
+          }, 418);
+        }
+        return http.Response('{}', 404);
+      },
+    );
+
+    await expectLater(
+      service.createNetwork(
+        accessToken: 'token',
+        workspaceId: 'tenant-1',
+        name: 'network-a',
+        regions: const ['ap-east'],
+        ipv4Cidr: '10.200.0.0/16',
+      ),
+      throwsA(
+        isA<AuthException>().having(
+          (error) => error.message,
+          'message',
+          '创建网络失败：操作失败，请稍后重试。',
+        ),
+      ),
+    );
+  });
+
   test('network lifecycle operations use tenant scoped console API', () async {
     SharedPreferences.setMockInitialValues({});
     final preferences = await SharedPreferences.getInstance();

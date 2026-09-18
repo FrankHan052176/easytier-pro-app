@@ -14,6 +14,14 @@
 
 EasyTier Pro 是商用跨平台客户端，不要与原生 ArkTS 开源版混淆。普通业务和 UI 由 Flutter 层负责；HarmonyOS 系统能力、Ability、VPN 生命周期和 OHRS 集成由 `ohos/` 负责。网络、隧道及 OHRS 接口的事实来源属于 EasyTier Core，客户端不要重复实现内核逻辑。
 
+## 1.1 应用图标（上架合规）
+
+AppGallery 与 UX 基础质量测试都会校验软件包内的图标资源：**单层图必须 1024×1024、方角（不自行裁剪圆角）、不能有透明像素，也不能留内间距**；分层图标的前景图必须是透明 PNG，背景图必须是纯色且不含透明像素。
+
+- `ohos/AppScope/resources/base/media/` 与 `ohos/entry/src/main/resources/base/media/` 各自保存一份：`app_icon.png`／`icon.png`（单层图，1024、无 alpha）、`foreground.png`（透明前景）、`background.png`（纯色背景）、`layered_image.json`（`layered-image.background/foreground`）。
+- `ohos/AppScope/app.json5` 与 `ohos/entry/src/main/module.json5` 的 `icon` 都指向 `$media:layered_image`；`startWindowIcon` 仍用 `$media:icon`。
+- 原 192×192 圆角带透明的图标正是被驳回的形态（尺寸不足、圆角、透明像素、含内间距），不要改回去。换图标时要按同样几何规则重新生成（铺满画布、补角、去 alpha），或用 DevEco Studio 5.0.5.315+ 的 Image Asset 生成后替换。
+
 ## 2. 已验证工具链基线
 
 | 组件 | 版本或基线 |

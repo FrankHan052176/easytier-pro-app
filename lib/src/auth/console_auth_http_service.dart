@@ -1374,10 +1374,107 @@ class ConsoleAuthService implements AuthService, RefreshableAuthService {
 
   static String _extractErrorMessage(String source) {
     final body = _tryDecodeObject(source);
-    return body?['message']?.toString() ??
+    final raw =
+        body?['error']?.toString() ??
+        body?['message']?.toString() ??
         body?['error_description']?.toString() ??
         body?['description']?.toString() ??
         source;
+    return _localizeConsoleError(
+      raw,
+      code: body?['code']?.toString() ?? '',
+      source: source,
+    );
+  }
+
+  /// The control plane reports failures as `{"code": ..., "error": ...}` in
+  /// English. Users get Chinese wording for the cases we know, and the raw text
+  /// goes to the log instead of the interface.
+  static String _localizeConsoleError(
+    String raw, {
+    String code = '',
+    String source = '',
+  }) {
+    final text = raw.trim();
+    if (text.isEmpty) {
+      return _unmappedConsoleError(code, source);
+    }
+    if (_containsCjk(text)) {
+      return text;
+    }
+    final lower = text.toLowerCase();
+
+    final quota = RegExp(
+      r'(network|node|device|user|member|key)\s+quota\s+exceeded'
+      r'(?:\s*\(\s*max\s*(\d+)\s*\))?',
+    ).firstMatch(lower);
+    if (quota != null) {
+      final limit = quota.group(2) ?? '';
+      final subject = switch (quota.group(1)) {
+        'network' => '网络',
+        'node' || 'device' => '设备',
+        'user' || 'member' => '成员',
+        'key' => '密钥',
+        _ => '资源',
+      };
+      if (limit.isEmpty) {
+        return '$subject数量已达当前套餐上限，请先在控制台清理不再使用的$subject。';
+      }
+      return '当前套餐最多可创建 $limit 个$subject，请先在控制台删除不再使用的$subject。';
+    }
+
+    const translations = <(String, String)>[
+      ('already exists', '同名资源已存在，请更换名称后重试。'),
+      ('duplicate', '同名资源已存在，请更换名称后重试。'),
+      ('conflict', '资源状态冲突，请刷新后重试。'),
+      ('invalid_grant', '登录状态已失效，请重新登录。'),
+      ('invalid_token', '登录状态已失效，请重新登录。'),
+      ('token expired', '登录状态已失效，请重新登录。'),
+      ('unauthorized', '登录状态已失效，请重新登录。'),
+      ('forbidden', '当前账号没有执行该操作的权限。'),
+      ('permission', '当前账号没有执行该操作的权限。'),
+      ('not found', '目标资源不存在或已被删除。'),
+      ('does not exist', '目标资源不存在或已被删除。'),
+      ('too many requests', '请求过于频繁，请稍后重试。'),
+      ('rate limit', '请求过于频繁，请稍后重试。'),
+      ('timeout', '服务端响应超时，请稍后重试。'),
+      ('bad gateway', '服务暂时不可用，请稍后重试。'),
+      ('service unavailable', '服务暂时不可用，请稍后重试。'),
+      ('internal server error', '服务端内部错误，请稍后重试。'),
+      ('internal error', '服务端内部错误，请稍后重试。'),
+      ('bad request', '请求参数有误，请检查后重试。'),
+      ('validation', '请求参数有误，请检查后重试。'),
+      ('invalid', '请求参数有误，请检查后重试。'),
+    ];
+    for (final (pattern, message) in translations) {
+      if (lower.contains(pattern)) {
+        AppLogger.instance.info(
+          'auth.http',
+          'Translated console error',
+          context: {'pattern': pattern, 'code': code, 'error': text},
+        );
+        return message;
+      }
+    }
+    return _unmappedConsoleError(code, source.isEmpty ? text : source);
+  }
+
+  static String _unmappedConsoleError(String code, String source) {
+    AppLogger.instance.warn(
+      'auth.http',
+      'Unmapped console error',
+      context: {'code': code, 'body': source},
+    );
+    return '操作失败，请稍后重试。';
+  }
+
+  static bool _containsCjk(String value) {
+    for (final rune in value.runes) {
+      if (rune >= 0x4E00 && rune <= 0x9FFF) {
+        return true;
+      }
+    }
+    return false;
   }
 
   static AuthException _authAwareException(

@@ -4,7 +4,7 @@
     "vendor": "EasyTier",
     "versionCode": 99999999,
     "versionName": "0.0.1",
-    "icon": "$media:app_icon",
+    "icon": "$media:layered_image",
     "label": "$string:app_name"
   }
 }
