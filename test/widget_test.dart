@@ -35,6 +35,66 @@ void main() {
     );
   });
 
+  testWidgets('authenticated session refreshes before access token expires', (
+    WidgetTester tester,
+  ) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+    try {
+      final authService = _RefreshableLoginFlowAuthService();
+      await tester.pumpWidget(
+        MyApp(
+          authService: authService,
+          traySupport: createTraySupport(),
+          coreLifecycleService: _NoopCoreLifecycleService(
+            authService: authService,
+            machineId: 'machine-1',
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(authService.refreshCount, 0);
+      await tester.pump(const Duration(seconds: 62));
+      await tester.pump();
+
+      expect(authService.refreshCount, 1);
+    } finally {
+      debugDefaultTargetPlatformOverride = null;
+    }
+  });
+
+  testWidgets('API session expiration returns the app to login', (
+    WidgetTester tester,
+  ) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+    final authService = _RefreshableLoginFlowAuthService();
+    final coreLifecycleService = _NoopCoreLifecycleService(
+      authService: authService,
+      machineId: 'machine-1',
+    );
+    try {
+      await tester.pumpWidget(
+        MyApp(
+          authService: authService,
+          traySupport: createTraySupport(),
+          coreLifecycleService: coreLifecycleService,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      authService.expireSession();
+      await tester.pumpAndSettle();
+
+      expect(coreLifecycleService.sessionExpiredCount, 1);
+      expect(find.text('开始登录'), findsOneWidget);
+    } finally {
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump();
+      await authService.dispose();
+      debugDefaultTargetPlatformOverride = null;
+    }
+  });
+
   testWidgets('android login waits until app resumes before polling token', (
     WidgetTester tester,
   ) async {
@@ -489,6 +549,53 @@ void main() {
     expect(find.text('EasyTier Pro'), findsOneWidget);
     expect(find.text('设备令牌连接'), findsOneWidget);
     expect(find.text('设备令牌连接 · 设备令牌连接'), findsNothing);
+  });
+
+  testWidgets('token overview offers administrator authorization repair', (
+    WidgetTester tester,
+  ) async {
+    _useDesktopViewport(tester);
+    final authService = _LoginFlowAuthService();
+    final tokenStore = TokenConnectionProfileStore.memory();
+    await tokenStore.save(
+      TokenConnectionProfile.fromInput(
+        input: 'device-token',
+        defaultConfigServer: 'tcp://et-web.console.easytier.net:22020',
+      ),
+    );
+    final coreLifecycleService = _NoopCoreLifecycleService(
+      authService: authService,
+      machineId: 'machine-token',
+    );
+
+    await tester.pumpWidget(
+      MyApp(
+        authService: authService,
+        tokenConnectionProfileStore: tokenStore,
+        traySupport: createTraySupport(),
+        coreLifecycleService: coreLifecycleService,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    coreLifecycleService.status.value = const CoreRunStatus(
+      phase: CoreRunPhase.needsElevation,
+      message: '需要管理员权限以安装连接引擎',
+      lastError: '无法写入 /usr/local/easytier：权限不足',
+    );
+    await tester.pump();
+
+    final authorizeButton = find.byKey(
+      const ValueKey<String>('token-core-action-button'),
+    );
+    expect(authorizeButton, findsOneWidget);
+    expect(find.widgetWithText(FButton, '管理员权限修复/重试'), findsOneWidget);
+
+    await tester.tap(authorizeButton);
+    await tester.pumpAndSettle();
+
+    expect(coreLifecycleService.elevationRepairCount, 1);
+    expect(coreLifecycleService.status.value.phase, CoreRunPhase.running);
   });
 
   testWidgets('token network list uses compact tile metrics on mobile', (
@@ -3529,11 +3636,11 @@ void main() {
 
     coreLifecycleService.status.value = const CoreRunStatus(
       phase: CoreRunPhase.needsElevation,
-      message: '需要管理员权限以安装连接引擎',
+      message: '管理员权限修复/重试',
     );
     await tester.pump();
 
-    expect(traySupport.engineAction?.label, '授权修复连接引擎');
+    expect(traySupport.engineAction?.label, '管理员权限修复/重试');
     expect(traySupport.engineAction?.enabled, isTrue);
     expect(traySupport.engineAction?.onSelected, isNotNull);
   });
@@ -4609,10 +4716,10 @@ void main() {
   test('console service decodes regions and managed devices', () async {
     SharedPreferences.setMockInitialValues({});
     final preferences = await SharedPreferences.getInstance();
-    final service = ConsoleAuthService(
+    final service = await _authenticatedConsoleService(
       tokenStore: OAuthTokenStore(preferences),
       consoleBaseUrl: 'https://console.test',
-      httpClient: MockClient((request) async {
+      handler: (request) async {
         if (request.url.path == '/api/v1/regions') {
           return _jsonResponse({
             'regions': [
@@ -4661,7 +4768,7 @@ void main() {
           ]);
         }
         return http.Response('{}', 404);
-      }),
+      },
     );
 
     final regions = await service.fetchRegions(accessToken: 'token');
@@ -4907,10 +5014,10 @@ void main() {
   test('console service preserves node operating system metadata', () async {
     SharedPreferences.setMockInitialValues({});
     final preferences = await SharedPreferences.getInstance();
-    final service = ConsoleAuthService(
+    final service = await _authenticatedConsoleService(
       tokenStore: OAuthTokenStore(preferences),
       consoleBaseUrl: 'https://console.test',
-      httpClient: MockClient((request) async {
+      handler: (request) async {
         if (request.url.path ==
             '/api/v1/tenants/tenant-1/networks/net-1/nodes') {
           return _jsonResponse([
@@ -4931,7 +5038,7 @@ void main() {
           ]);
         }
         return http.Response('{}', 404);
-      }),
+      },
     );
 
     final nodes = await service.fetchNetworkDevices(
@@ -4951,10 +5058,10 @@ void main() {
     SharedPreferences.setMockInitialValues({});
     final preferences = await SharedPreferences.getInstance();
     final requests = <http.Request>[];
-    final service = ConsoleAuthService(
+    final service = await _authenticatedConsoleService(
       tokenStore: OAuthTokenStore(preferences),
       consoleBaseUrl: 'https://console.test',
-      httpClient: MockClient((request) async {
+      handler: (request) async {
         requests.add(request);
         if (request.url.path ==
             '/api/v1/tenants/tenant-1/networks/net-1/subnet-routes') {
@@ -5026,7 +5133,7 @@ void main() {
           });
         }
         return http.Response('{}', 404);
-      }),
+      },
     );
 
     final routes = await service.fetchNetworkSubnetRoutes(
@@ -5075,10 +5182,10 @@ void main() {
     () async {
       SharedPreferences.setMockInitialValues({});
       final preferences = await SharedPreferences.getInstance();
-      final service = ConsoleAuthService(
+      final service = await _authenticatedConsoleService(
         tokenStore: OAuthTokenStore(preferences),
         consoleBaseUrl: 'https://console.test',
-        httpClient: MockClient((request) async {
+        handler: (request) async {
           if (request.url.path ==
               '/api/v1/tenants/tenant-1/networks/net-1/nodes') {
             return _jsonResponse([
@@ -5095,7 +5202,7 @@ void main() {
             ]);
           }
           return http.Response('{}', 404);
-        }),
+        },
       );
 
       final nodes = await service.fetchNetworkDevices(
@@ -5121,10 +5228,10 @@ void main() {
       Future<String> createKeyNameFor(TargetPlatform platform) async {
         debugDefaultTargetPlatformOverride = platform;
         final requests = <http.Request>[];
-        final service = ConsoleAuthService(
+        final service = await _authenticatedConsoleService(
           tokenStore: OAuthTokenStore(preferences),
           consoleBaseUrl: 'https://console.test',
-          httpClient: MockClient((request) async {
+          handler: (request) async {
             requests.add(request);
             if (request.url.path == '/api/v1/releases/latest') {
               return _jsonResponse({
@@ -5140,7 +5247,7 @@ void main() {
               return _jsonResponse({'bootstrap_token': 'bootstrap-token'}, 201);
             }
             return http.Response('{}', 404);
-          }),
+          },
         );
 
         await service.prepareCoreBootstrap(
@@ -5179,10 +5286,10 @@ void main() {
     });
 
     final requests = <http.Request>[];
-    final service = ConsoleAuthService(
+    final service = await _authenticatedConsoleService(
       tokenStore: OAuthTokenStore(preferences),
       consoleBaseUrl: 'https://console.test',
-      httpClient: MockClient((request) async {
+      handler: (request) async {
         requests.add(request);
         if (request.url.path == '/api/v1/releases/latest') {
           return _jsonResponse({
@@ -5212,7 +5319,7 @@ void main() {
           return _jsonResponse({'bootstrap_token': 'desktop-token'});
         }
         return http.Response('{}', 404);
-      }),
+      },
     );
 
     final bootstrap = await service.prepareCoreBootstrap(
@@ -5241,10 +5348,10 @@ void main() {
       });
 
       final requests = <http.Request>[];
-      final service = ConsoleAuthService(
+      final service = await _authenticatedConsoleService(
         tokenStore: OAuthTokenStore(preferences),
         consoleBaseUrl: 'https://console.test',
-        httpClient: MockClient((request) async {
+        handler: (request) async {
           requests.add(request);
           if (request.url.path == '/api/v1/releases/latest') {
             return _jsonResponse({
@@ -5277,7 +5384,7 @@ void main() {
             return _jsonResponse({'bootstrap_token': 'desktop-token'});
           }
           return http.Response('{}', 404);
-        }),
+        },
       );
 
       final bootstrap = await service.prepareCoreBootstrap(
@@ -5312,10 +5419,10 @@ void main() {
       final preferences = await SharedPreferences.getInstance();
 
       Future<String> prepareConfigServer(String consoleBaseUrl) async {
-        final service = ConsoleAuthService(
+        final service = await _authenticatedConsoleService(
           tokenStore: OAuthTokenStore(preferences),
           consoleBaseUrl: consoleBaseUrl,
-          httpClient: MockClient((request) async {
+          handler: (request) async {
             if (request.url.path == '/api/v1/releases/latest') {
               return _jsonResponse({
                 'stable': {'version': 'v2.6.4'},
@@ -5330,7 +5437,7 @@ void main() {
               return _jsonResponse({'bootstrap_token': 'bootstrap-token'}, 201);
             }
             return http.Response('{}', 404);
-          }),
+          },
         );
 
         final bootstrap = await service.prepareCoreBootstrap(
@@ -5391,10 +5498,10 @@ void main() {
     SharedPreferences.setMockInitialValues({});
     final preferences = await SharedPreferences.getInstance();
     final requests = <http.Request>[];
-    final service = ConsoleAuthService(
+    final service = await _authenticatedConsoleService(
       tokenStore: OAuthTokenStore(preferences),
       consoleBaseUrl: 'https://console.test',
-      httpClient: MockClient((request) async {
+      handler: (request) async {
         requests.add(request);
         if (request.url.path == '/api/v1/tenants/tenant-1/networks') {
           return _jsonResponse({
@@ -5426,7 +5533,7 @@ void main() {
           });
         }
         return http.Response('{}', 404);
-      }),
+      },
     );
 
     final network = await service.createNetwork(
@@ -5679,6 +5786,41 @@ Future<void> _pumpAppMotionFrames(WidgetTester tester) async {
   await tester.pump();
 }
 
+Future<ConsoleAuthService> _authenticatedConsoleService({
+  required OAuthTokenStore tokenStore,
+  required Future<http.Response> Function(http.Request request) handler,
+  required String consoleBaseUrl,
+}) async {
+  await tokenStore.save(
+    TokenSet(
+      accessToken: 'token',
+      refreshToken: 'refresh-token',
+      tokenType: 'Bearer',
+      expiresIn: 3600,
+      obtainedAt: DateTime.now().toUtc(),
+    ),
+  );
+  final service = ConsoleAuthService(
+    tokenStore: tokenStore,
+    consoleBaseUrl: consoleBaseUrl,
+    httpClient: MockClient((request) async {
+      if (request.url.path == '/api/v1/auth/me') {
+        return _jsonResponse({
+          'user': {'email': 'tester@example.com', 'display_name': 'Tester'},
+          'tenants': [
+            {'id': 'tenant-1', 'name': 'Test Workspace'},
+          ],
+        });
+      }
+      return handler(request);
+    }),
+  );
+
+  final session = await service.restoreSession();
+  expect(session?.tokenSet.accessToken, 'token');
+  return service;
+}
+
 http.Response _jsonResponse(Object body, [int statusCode = 200]) {
   return http.Response.bytes(
     utf8.encode(jsonEncode(body)),
@@ -5885,6 +6027,61 @@ class _LoginFlowAuthService implements AuthService {
       bootstrapToken: 'bootstrap-token',
       version: 'v1.0.0',
       configServer: 'tcp://et-web.console.easytier.net:22020',
+    );
+  }
+}
+
+class _RefreshableLoginFlowAuthService extends _LoginFlowAuthService
+    implements RefreshableAuthService {
+  final StreamController<SessionExpiredException> _sessionExpirations =
+      StreamController<SessionExpiredException>.broadcast();
+  int refreshCount = 0;
+
+  @override
+  Stream<SessionExpiredException> get sessionExpirations =>
+      _sessionExpirations.stream;
+
+  void expireSession() {
+    _sessionExpirations.add(const SessionExpiredException());
+  }
+
+  Future<void> dispose() => _sessionExpirations.close();
+
+  @override
+  Future<AuthSession?> restoreSession() async {
+    return AuthSession(
+      user: const ConsoleUser(
+        email: 'tester@example.com',
+        displayName: 'Test User',
+        workspaces: <ConsoleWorkspace>[
+          ConsoleWorkspace(id: 'tenant-1', name: '个人空间'),
+        ],
+      ),
+      tokenSet: TokenSet(
+        accessToken: 'access-old',
+        refreshToken: 'refresh-old',
+        tokenType: 'Bearer',
+        expiresIn: 121,
+        obtainedAt: DateTime.now().toUtc(),
+      ),
+    );
+  }
+
+  @override
+  Future<AuthSession> refreshSession(
+    AuthSession session, {
+    bool force = false,
+  }) async {
+    refreshCount++;
+    return AuthSession(
+      user: session.user,
+      tokenSet: TokenSet(
+        accessToken: 'access-new',
+        refreshToken: 'refresh-new',
+        tokenType: 'Bearer',
+        expiresIn: 3600,
+        obtainedAt: DateTime.now().toUtc(),
+      ),
     );
   }
 }
@@ -6183,9 +6380,11 @@ class _NoopCoreLifecycleService extends CoreLifecycleService {
   TokenConnectionProfile? tokenProfile;
   int _trafficReadCount = 0;
   int repairCount = 0;
+  int elevationRepairCount = 0;
   int peerReadCount = 0;
   int userExitStopCount = 0;
   int resumeRecoveryCount = 0;
+  int sessionExpiredCount = 0;
 
   @override
   Future<void> bindSession(AuthSession session) async {
@@ -6217,6 +6416,12 @@ class _NoopCoreLifecycleService extends CoreLifecycleService {
   }
 
   @override
+  Future<void> onSessionExpired(Object error) async {
+    sessionExpiredCount++;
+    status.value = CoreRunStatus.signedOut;
+  }
+
+  @override
   Future<void> stopRuntimeForUserExit() async {
     userExitStopCount++;
     final error = userExitStopError;
@@ -6240,8 +6445,19 @@ class _NoopCoreLifecycleService extends CoreLifecycleService {
   }
 
   @override
+  @override
   Future<void> recoverAfterAppResume() async {
     resumeRecoveryCount++;
+  }
+
+  @override
+  Future<void> repairWithElevation() async {
+    elevationRepairCount++;
+    status.value = CoreRunStatus(
+      phase: CoreRunPhase.running,
+      message: '令牌连接已建立',
+      machineId: machineId,
+    );
   }
 
   @override

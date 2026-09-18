@@ -27,8 +27,18 @@ jobs:
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
+          flutter-version: "3.47.2"
           channel: stable
           cache: true
+
+      # Remove after a stable Flutter release includes flutter/flutter#191587.
+      - name: Apply Flutter semantics regression fix
+        shell: bash
+        run: |
+          semantics_patch="$GITHUB_WORKSPACE/.github/patches/flutter-3.47-merge-semantics.patch"
+          if ! git -C "$FLUTTER_ROOT" apply --reverse --check "$semantics_patch"; then
+            git -C "$FLUTTER_ROOT" apply "$semantics_patch"
+          fi
 
       - name: Set up Java
         uses: actions/setup-java@v4
@@ -38,6 +48,8 @@ jobs:
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
 
       - name: Install Android NDK
         run: sdkmanager "ndk;${ANDROID_NDK_VERSION}"

@@ -954,6 +954,54 @@ void main() {
       );
     });
 
+    test('treats desktop install and uninstall failures as elevation', () {
+      bool treatsAsElevation(
+        String command, {
+        required bool isWindows,
+        required bool isMacOS,
+      }) {
+        return CoreLifecycleService
+            .shouldTreatDesktopCommandFailureAsElevationForTesting(
+              command,
+              isWindows: isWindows,
+              isMacOS: isMacOS,
+            );
+      }
+
+      expect(
+        treatsAsElevation(
+          'install',
+          isWindows: true,
+          isMacOS: false,
+        ),
+        isTrue,
+      );
+      expect(
+        treatsAsElevation(
+          'uninstall',
+          isWindows: false,
+          isMacOS: true,
+        ),
+        isTrue,
+      );
+      expect(
+        treatsAsElevation(
+          'status',
+          isWindows: true,
+          isMacOS: false,
+        ),
+        isFalse,
+      );
+      expect(
+        treatsAsElevation(
+          'install',
+          isWindows: false,
+          isMacOS: false,
+        ),
+        isFalse,
+      );
+    });
+
     test('detects real desktop install artifacts from status event', () {
       expect(
         CoreLifecycleService.desktopStatusHasInstallArtifactsForTesting(
@@ -1039,6 +1087,59 @@ void main() {
       expect(runtime.ensureRunningCount, 2);
       expect(runtime.forceReinstallValues, [false, true]);
       expect(service.status.value.phase, CoreRunPhase.running);
+    });
+
+    test('elevated repair installs an active token connection', () async {
+      final elevatedCommands = <String>[];
+      final elevatedRequests = <Map<String, Object?>>[];
+      final authService = _LifecycleAuthService();
+      final runtime = _LifecycleRuntime()
+        ..supportsElevationRepairValue = true
+        ..ensureRunningError = CoreLifecycleService.elevationRequiredForTesting(
+          'Permission denied: /usr/local/easytier',
+        );
+      final service = CoreLifecycleService(
+        authService: authService,
+        runtime: runtime,
+        elevatedDesktopCommandRunner: (command, request) async {
+          elevatedCommands.add(command);
+          elevatedRequests.add(request);
+          return const <String, dynamic>{
+            'event': 'finished',
+            'data': <String, dynamic>{
+              'machine_id': 'machine-token',
+              'cli_path': '/usr/local/bin/easytier-cli',
+            },
+          };
+        },
+      );
+      addTearDown(service.dispose);
+
+      await service.bindTokenConnection(
+        TokenConnectionProfile(
+          bootstrapToken: 'device-token',
+          configServer: 'tcp://127.0.0.1:22020',
+          displayName: 'token profile',
+          updatedAt: DateTime.utc(2026, 1, 1),
+        ),
+      );
+      expect(service.status.value.phase, CoreRunPhase.needsElevation);
+
+      await service.repairWithElevation();
+
+      expect(runtime.ensureRunningCount, 1);
+      expect(runtime.preElevatedInstallCheckCount, 1);
+      expect(elevatedCommands, ['install']);
+      expect(elevatedRequests, [
+        {
+          'bootstrap_token': 'device-token',
+          'version': '2.6.4',
+          'config_server': 'tcp://127.0.0.1:22020',
+        },
+      ]);
+      expect(service.status.value.phase, CoreRunPhase.running);
+      expect(service.status.value.message, '令牌连接已建立');
+      expect(service.status.value.machineId, 'machine-token');
     });
 
     test(
@@ -1180,8 +1281,8 @@ void main() {
       await service.repairWithElevation();
 
       expect(elevatedCommands, ['uninstall']);
-      expect(service.status.value.phase, CoreRunPhase.error);
-      expect(service.status.value.message, '旧连接引擎停止失败');
+      expect(service.status.value.phase, CoreRunPhase.needsElevation);
+      expect(service.status.value.message, '管理员权限修复/重试');
       expect(service.status.value.lastError, contains('uninstall failed'));
     });
 
@@ -1213,14 +1314,36 @@ void main() {
         await service.repairWithElevation();
 
         expect(elevatedCommands, ['uninstall']);
-        expect(service.status.value.phase, CoreRunPhase.error);
-        expect(service.status.value.message, '旧连接引擎停止失败');
+        expect(service.status.value.phase, CoreRunPhase.needsElevation);
+        expect(service.status.value.message, '管理员权限修复/重试');
         expect(service.status.value.lastError, contains('uninstall failed'));
       },
     );
   });
 
   group('CoreLifecycleService auth invalidation', () {
+    test(
+      'uses refreshed session credentials without restarting runtime',
+      () async {
+        final authService = _LifecycleAuthService();
+        final runtime = _LifecycleRuntime();
+        final service = CoreLifecycleService(
+          authService: authService,
+          runtime: runtime,
+        );
+        addTearDown(service.dispose);
+
+        await service.bindSession(_session('tenant-1'));
+        await service.updateSession(
+          _session('tenant-1', accessToken: 'refreshed-token'),
+        );
+        await service.repair();
+
+        expect(runtime.ensureRunningCount, 2);
+        expect(authService.accessTokens, ['access-token', 'refreshed-token']);
+      },
+    );
+
     test('stops runtime when local token has expired', () async {
       final authService = _LifecycleAuthService();
       final runtime = _LifecycleRuntime();
@@ -1783,7 +1906,10 @@ void main() {
   });
 }
 
-AuthSession _session(String workspaceId) {
+AuthSession _session(
+  String workspaceId, {
+  String accessToken = 'access-token',
+}) {
   return AuthSession(
     user: ConsoleUser(
       email: 'tester@example.com',
@@ -1793,7 +1919,7 @@ AuthSession _session(String workspaceId) {
       ],
     ),
     tokenSet: TokenSet(
-      accessToken: 'access-token',
+      accessToken: accessToken,
       tokenType: 'Bearer',
       expiresIn: 3600,
       obtainedAt: DateTime.now().toUtc(),
@@ -2042,6 +2168,7 @@ class _LifecycleAuthService implements AuthService {
   Completer<String>? versionCompleter;
   Object? bootstrapError;
   final workspaceIds = <String>[];
+  final accessTokens = <String>[];
 
   @override
   Future<AuthSession?> restoreSession() async => null;
@@ -2216,6 +2343,7 @@ class _LifecycleAuthService implements AuthService {
   }) async {
     prepareBootstrapCount++;
     workspaceIds.add(workspaceId);
+    accessTokens.add(accessToken);
     final error = bootstrapError;
     if (error != null) {
       throw error;
