@@ -42,6 +42,7 @@ HarmonyOS 上所谓“子进程”指系统 **VPN Extension**（`EasyTierVpnAbil
 - **UI 进程负责**：登录与控制面地址、`startConfigServerClient` / `stopVpn` / `resumeVpn` / `stopRuntime` 等显式命令与界面状态展示。它不再保留任何 TUN 定时器或 `retainNetworkInstance` 决策（`OhosCoreRuntime.drivesVpnInterfaceFromUi = false`）。
 - **保活方式**：不再申请 UIAbility 的 `dataTransfer` 长时任务，也不再发布随机下载进度的“保活”实况通知；`OhosBackgroundTaskService`、`OhosLiveViewNotificationService` 与 `ohos.permission.KEEP_BACKGROUND_RUNNING` 已删除。UI 进程冻结（后台/挂起）不等同于 VPN 停止：Extension 独立存活并继续协调。
 - **状态恢复**：UI 恢复时先断开旧 socket，再只读重连并取 `getRuntimeSnapshot`（Extension 也会在状态变化时推送同内容的 `runtime_snapshot`）。读不到就是**状态未知**，不伪造空列表、不据此销毁子进程；相同启动参数的重复 `startConfigServerClient` 不会重建已有控制面会话。
+- **错误态收敛**：UI 冻结期间 Extension 可能自行恢复（重建 TUN），而那条 `vpn_started` 随冻结进程一起丢了。恢复读取快照后，只有「控制面已连接 **且** 快照给出已挂载 TUN 的实例身份」（`activeVpnInstanceName` + `activeVpnInstanceId`，仅由 Extension 在真实挂载/拆载时设置/清除，且**只在 `activeTunSignature` 有效期间导出**：Core 覆盖同 UUID 代际后签名被清空，重新挂载前导出为空）才发 `vpn_recovered_from_snapshot`，由 `_restoreRunningStatusAfterVpnRecovery` 把 `error` / `needsVpnPermission` 收敛为 `running`。不伪造 `vpn_started`、不无条件清错、不触发重启；未知、控制面断开或没有已挂载 TUN 时原状态保持不变（控制面断开仍走重连）。
 - **断开语义**：用户退出网络走 `stopVpn`，Extension 先撤销 TUN，并对该实例暂停自动重建（同 uuid 实例消失或运行时显式停止才解除），避免协调循环把退出操作撤销；退出失败走 `resumeVpn`，由 Extension 重新读取 Core 当前地址与路由，不重放 UI 的旧配置。
 - **IPC 约束**：本机 socket 按换行分帧、单帧上限 4 MiB（按字符计数）；服务端对每个客户端限制待发送队列（64 帧 / 8 MiB）并设置 5s 写超时，冻结的读端只丢自己的连接，绝不阻塞内核协调；超时的修改类请求不自动重放；`clientId` 复用时会先废弃旧连接状态。
 - **能力边界**：不承诺在系统强制结束应用、撤销 VPN 授权或销毁 Extension 之后继续运行；系统的 VPN 生命周期以官方文档为准。

@@ -95,7 +95,11 @@ class OhosCoreRuntime extends AndroidCoreRuntime {
       return false;
     }
     _applySnapshot(snapshot);
-    return !snapshot.configServerConnected;
+    if (!snapshot.configServerConnected) {
+      return true;
+    }
+    _emitSnapshotRecoveredTunnel(snapshot);
+    return false;
   }
 
   @override
@@ -245,6 +249,40 @@ class OhosCoreRuntime extends AndroidCoreRuntime {
         type: CoreRuntimeEventTypes.runtimeUnknown,
         data: {
           'error': 'HarmonyOS 运行状态未知：$error',
+          'source': 'getRuntimeSnapshot',
+        },
+      ),
+    );
+  }
+
+  /// Reports the tunnel the snapshot proves is attached right now.
+  ///
+  /// A connected control client on its own says nothing about the interface, so
+  /// this needs the Extension's authoritative identity for the instance whose
+  /// TUN is attached. The Extension can bring the interface back after a
+  /// failure whose `vpn_started` was lost with the frozen process; without this
+  /// event the UI would keep that stale failure forever. A disconnected
+  /// control plane still belongs to the reconnect path of
+  /// [shouldRecoverAfterAppResume], and a snapshot without an attached tunnel
+  /// leaves the reported failure in place.
+  void _emitSnapshotRecoveredTunnel(OhosRuntimeSnapshot snapshot) {
+    if (_disposed) {
+      return;
+    }
+    final instanceName = snapshot.activeVpnInstanceName;
+    final instanceId = snapshot.activeVpnInstanceId;
+    if (instanceName.isEmpty || instanceId.isEmpty) {
+      return;
+    }
+    _events.add(
+      CoreRuntimeEvent(
+        type: CoreRuntimeEventTypes.vpnRecoveredFromSnapshot,
+        data: {
+          'instance_name': instanceName,
+          'instance_id': instanceId,
+          // The lifecycle helper owns the status text of a recovered runtime,
+          // and this runtime owns its platform wording.
+          'message': 'HarmonyOS 连接引擎运行中',
           'source': 'getRuntimeSnapshot',
         },
       ),

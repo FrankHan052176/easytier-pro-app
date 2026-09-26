@@ -1014,6 +1014,34 @@ test('Core overwrite of the active UUID reattaches even when its routes are unch
   await f.request('stopRuntime');
 });
 
+test('an invalidated attachment is not exported while the reconcile replacing it fails', async () => {
+  const f = fixture();
+  f.setInstances([officeInstance()]);
+  f.setAggregatedRoutes(['10.144.144.0/24']);
+  await f.startConfigClient();
+  await f.tick();
+  expect((await f.snapshot()).activeVpnInstanceId).toBe('inst-a');
+
+  // Core overwrote the same instance UUID, so the old attachment is invalid,
+  // and the tick that would replace it failed before attaching. The snapshot
+  // must not keep advertising the generation that is no longer attached: a UI
+  // process reading it would take a broken runtime for a recovered one.
+  f.publishRunEvent('inst-a', 'office-net');
+  f.setCorruptedAggregate('{}');
+  await f.tick(2);
+  const invalidated = await f.snapshot();
+  expect(invalidated.activeVpnInstanceId).toBe('');
+  expect(invalidated.activeVpnInstanceName).toBe('');
+  expect(f.eventPayloads('error').length).toBeGreaterThan(0);
+
+  f.setCorruptedAggregate(null);
+  await f.tick();
+  const reattached = await f.snapshot();
+  expect(reattached.activeVpnInstanceId).toBe('inst-a');
+  expect(reattached.activeVpnInstanceName).toBe('office-net');
+  await f.request('stopRuntime');
+});
+
 test('a removed owner detaches while its replacement waits for an address', async () => {
   const f = fixture();
   f.setInstances([officeInstance()]);

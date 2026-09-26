@@ -2454,6 +2454,24 @@ exit 3
       );
       _restoreRunningStatusAfterVpnRecovery();
     }
+    if (event.type == CoreRuntimeEventTypes.vpnRecoveredFromSnapshot) {
+      final payload = _runtimeEventPayload(event);
+      _logger.info(
+        'core.runtime',
+        'Runtime snapshot reported an attached tunnel; reconciling status',
+        context: {
+          'instance_name': payload['instance_name'] ?? '',
+          'instance_id': payload['instance_id'] ?? '',
+          'source': payload['source'] ?? '',
+        },
+      );
+      // The snapshot describes the runtime as it is now, so the tunnel it
+      // reports attached releases a failure state whose recovery report this
+      // process never received.
+      _restoreRunningStatusAfterVpnRecovery(
+        message: payload['message']?.toString(),
+      );
+    }
     if (event.type == CoreRuntimeEventTypes.vpnConfigRefreshed) {
       final payload = _runtimeEventPayload(event);
       _logger.info(
@@ -2628,7 +2646,11 @@ exit 3
     return value == null ? 0 : 1;
   }
 
-  void _restoreRunningStatusAfterVpnRecovery() {
+  /// Restores a running status from a runtime report that the tunnel is up
+  /// again. [message] is the phase text of the runtime that recovered; a
+  /// platform whose runtime reports its own wording passes it, so the UI never
+  /// shows another platform's status text.
+  void _restoreRunningStatusAfterVpnRecovery({String? message}) {
     if (!_hasActiveConnection) {
       return;
     }
@@ -2639,7 +2661,7 @@ exit 3
     }
     status.value = CoreRunStatus(
       phase: CoreRunPhase.running,
-      message: 'Android 连接引擎运行中',
+      message: message ?? 'Android 连接引擎运行中',
       machineId: current.machineId,
       details: current.details,
     );

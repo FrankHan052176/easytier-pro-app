@@ -6,9 +6,12 @@ import 'package:easytier_pro_app/src/auth/console_auth_service.dart';
 import 'package:easytier_pro_app/src/core/core_peer_status.dart';
 import 'package:easytier_pro_app/src/core/core_lifecycle_service.dart';
 import 'package:easytier_pro_app/src/logging/app_logger.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   group('CoreLifecycleService workspace binding', () {
     test('forces runtime reinstall when workspace changes', () async {
       final authService = _LifecycleAuthService();
@@ -1904,6 +1907,153 @@ void main() {
       },
     );
   });
+
+  group('CoreLifecycleService OHOS runtime recovery', () {
+    late _LifecycleAuthService authService;
+    late _OhosLifecycleHarness harness;
+    late CoreLifecycleService service;
+
+    setUp(() {
+      authService = _LifecycleAuthService();
+      harness = _OhosLifecycleHarness();
+      service = CoreLifecycleService(
+        authService: authService,
+        runtime: harness.runtime,
+      );
+    });
+
+    tearDown(() async {
+      // The service owns the runtime, so it is disposed before the mocked
+      // channels are torn down.
+      await service.dispose();
+      harness.dispose();
+    });
+
+    /// Connects the session while the Extension is still starting, then fails
+    /// the tunnel the way the native runtime reports an attach failure.
+    Future<void> bindAndFailTunnel() async {
+      await service.bindSession(_session('tenant-1'));
+      expect(service.status.value.phase, CoreRunPhase.running);
+      harness.emitNative({
+        'type': CoreRuntimeEventTypes.error,
+        'payload': <String, Object?>{'error': _ohosTunnelFailure},
+      });
+      await _waitUntil(() => service.status.value.phase == CoreRunPhase.error);
+      expect(service.status.value.lastError, _ohosTunnelFailure);
+    }
+
+    test(
+      'reconciles a tunnel the resumed snapshot proves is attached',
+      () async {
+        await bindAndFailTunnel();
+        final snapshotReads = harness.countOf('getRuntimeSnapshot');
+        final controlStarts = harness.countOf('startConfigServerClient');
+        expect(controlStarts, 1);
+
+        // The Extension brought the interface back while this process was
+        // frozen, so the `vpn_started` that reported it never arrived: only the
+        // authoritative snapshot carries the recovery.
+        harness.snapshot = _ohosSnapshotJson(
+          configServerConnected: true,
+          activeVpnInstanceName: _ohosInstanceName,
+          activeVpnInstanceId: _ohosInstanceId,
+          instances: <String, String>{
+            _ohosRuntimeNetworkLabel: _ohosInstanceId,
+          },
+        );
+
+        await service.recoverAfterAppResume();
+        await _waitUntil(
+          () => service.status.value.phase == CoreRunPhase.running,
+        );
+
+        final recovered = service.status.value;
+        expect(recovered.lastError, isNull);
+        expect(recovered.message, 'HarmonyOS 连接引擎运行中');
+        // The recovery keeps the identity the failure state already carried,
+        // which is also what the join gate requires: a running phase plus a
+        // machine id.
+        expect(recovered.machineId, _ohosMachineId);
+        expect(recovered.details, 'EasyTier 2.6.4');
+
+        // Reading the snapshot is all the resume needed: the control session,
+        // the tunnel and the bootstrap are left exactly as they were.
+        expect(harness.countOf('getRuntimeSnapshot'), snapshotReads + 1);
+        expect(harness.countOf('startConfigServerClient'), controlStarts);
+        expect(authService.prepareBootstrapCount, 1);
+        expect(harness.methodNames, isNot(contains('stopRuntime')));
+        expect(harness.vpnControlMethods, isEmpty);
+      },
+    );
+
+    test(
+      'keeps the failure when the resumed snapshot cannot be read',
+      () async {
+        await bindAndFailTunnel();
+        final snapshotReads = harness.countOf('getRuntimeSnapshot');
+        final controlStarts = harness.countOf('startConfigServerClient');
+
+        harness.snapshot = null;
+        await service.recoverAfterAppResume();
+        await Future<void>.delayed(const Duration(milliseconds: 30));
+
+        // Unknown state is not a recovery: the real failure stays observable
+        // and the native runtime is not restarted to repair it.
+        expect(service.status.value.phase, CoreRunPhase.error);
+        expect(service.status.value.lastError, _ohosTunnelFailure);
+        expect(service.status.value.machineId, _ohosMachineId);
+        expect(harness.countOf('getRuntimeSnapshot'), snapshotReads + 1);
+        expect(harness.countOf('startConfigServerClient'), controlStarts);
+        expect(authService.prepareBootstrapCount, 1);
+        expect(harness.vpnControlMethods, isEmpty);
+      },
+    );
+
+    test(
+      'keeps the failure when the resumed snapshot has no attached tunnel',
+      () async {
+        await bindAndFailTunnel();
+        final controlStarts = harness.countOf('startConfigServerClient');
+
+        // The control client is connected while the interface the failure was
+        // about is still missing.
+        harness.snapshot = _ohosSnapshotJson(
+          configServerConnected: true,
+          instances: <String, String>{
+            _ohosRuntimeNetworkLabel: _ohosInstanceId,
+          },
+        );
+        await service.recoverAfterAppResume();
+        await Future<void>.delayed(const Duration(milliseconds: 30));
+
+        expect(service.status.value.phase, CoreRunPhase.error);
+        expect(service.status.value.lastError, _ohosTunnelFailure);
+        expect(harness.countOf('startConfigServerClient'), controlStarts);
+        expect(authService.prepareBootstrapCount, 1);
+        expect(harness.vpnControlMethods, isEmpty);
+      },
+    );
+
+    test(
+      'reconnects when the resumed snapshot reports no control plane',
+      () async {
+        await bindAndFailTunnel();
+        final controlStarts = harness.countOf('startConfigServerClient');
+
+        harness.snapshot = _ohosSnapshotJson();
+        await service.recoverAfterAppResume();
+        await _waitUntil(
+          () => service.status.value.phase == CoreRunPhase.running,
+        );
+
+        // A disconnected snapshot is the reconnect path, not a snapshot
+        // recovery: the control session is started again for it.
+        expect(authService.prepareBootstrapCount, 2);
+        expect(harness.countOf('startConfigServerClient'), controlStarts + 1);
+        expect(harness.vpnControlMethods, isEmpty);
+      },
+    );
+  });
 }
 
 AuthSession _session(
@@ -2357,4 +2507,129 @@ class _LifecycleAuthService implements AuthService {
 
   @override
   Future<void> logout() async {}
+}
+
+/// Identity the mocked HarmonyOS runtime answers with.
+const String _ohosMachineId = '6f1f5c3a-6d24-4a4b-9f0c-2c9a5e1d7b30';
+const String _ohosInstanceId = 'bce27f42-5c4c-41ff-9a49-2db5fd2560ca';
+const String _ohosInstanceName = 'demo-instance';
+const String _ohosRuntimeNetworkLabel = 'et_demo';
+const String _ohosTunnelFailure =
+    'HarmonyOS VPN attach failed: setTunFd failed';
+
+/// Drives the real [OhosCoreRuntime] over a mocked method channel and a fake
+/// event channel, so the lifecycle reconciles a status out of the runtime's own
+/// snapshot handling instead of a canned recovery answer.
+class _OhosLifecycleHarness {
+  _OhosLifecycleHarness() {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(_methodChannel, _handleCall);
+    runtime = OhosCoreRuntime(
+      methodChannel: _methodChannel,
+      eventChannel: _OhosEventChannel(nativeEvents.stream),
+    );
+  }
+
+  static const MethodChannel _methodChannel = MethodChannel(
+    'test.easytier/ohos_core_lifecycle',
+  );
+
+  final List<MethodCall> calls = <MethodCall>[];
+  final StreamController<Object?> nativeEvents =
+      StreamController<Object?>.broadcast();
+  late final OhosCoreRuntime runtime;
+
+  /// Snapshot JSON answered by `getRuntimeSnapshot`; `null` fails the request
+  /// the way an unreachable runtime does.
+  String? snapshot = _ohosSnapshotJson();
+
+  List<String> get methodNames =>
+      calls.map((call) => call.method).toList(growable: false);
+
+  /// Calls that hand the tunnel to this process; the OHOS Extension owns them.
+  List<String> get vpnControlMethods => calls
+      .map((call) => call.method)
+      .where(
+        (method) => const <String>{
+          'startVpn',
+          'stopVpn',
+          'resumeVpn',
+          'retainNetworkInstance',
+        }.contains(method),
+      )
+      .toList(growable: false);
+
+  int countOf(String method) =>
+      calls.where((call) => call.method == method).length;
+
+  /// Delivers a native event the way the Extension broadcasts it.
+  void emitNative(Object? event) {
+    nativeEvents.add(event);
+  }
+
+  /// The runtime belongs to the lifecycle service under test, so this only
+  /// releases the mocked channels.
+  void dispose() {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(_methodChannel, null);
+    unawaited(nativeEvents.close());
+  }
+
+  Future<Object?> _handleCall(MethodCall call) async {
+    calls.add(call);
+    switch (call.method) {
+      case 'getRuntimeSnapshot':
+        final value = snapshot;
+        if (value == null) {
+          throw PlatformException(
+            code: 'OHOS_RUNTIME_IPC_FAILED',
+            message: 'runtime unavailable',
+          );
+        }
+        return value;
+      case 'getMachineId':
+        return _ohosMachineId;
+      case 'getHostname':
+        return 'harmony-host';
+      case 'prepareNotifications':
+        return true;
+      case 'prepareVpn':
+        return true;
+      case 'startConfigServerClient':
+      case 'stopRuntime':
+      case 'stopVpn':
+      case 'resumeVpn':
+        return null;
+      default:
+        throw PlatformException(
+          code: 'UNEXPECTED_METHOD',
+          message: call.method,
+        );
+    }
+  }
+}
+
+String _ohosSnapshotJson({
+  bool configServerConnected = false,
+  String activeVpnInstanceName = '',
+  String activeVpnInstanceId = '',
+  Map<String, String> instances = const <String, String>{},
+}) {
+  return jsonEncode(<String, Object?>{
+    'configServerConnected': configServerConnected,
+    'activeVpnInstanceName': activeVpnInstanceName,
+    'activeVpnInstanceId': activeVpnInstanceId,
+    'instances': instances,
+    'lastError': '',
+  });
+}
+
+class _OhosEventChannel extends EventChannel {
+  _OhosEventChannel(this._events)
+    : super('test.easytier/ohos_core_lifecycle_events');
+
+  final Stream<Object?> _events;
+
+  @override
+  Stream<dynamic> receiveBroadcastStream([dynamic arguments]) => _events;
 }

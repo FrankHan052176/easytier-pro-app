@@ -99,6 +99,7 @@ CI=true flutter build hap --debug --no-codesign --no-pub
 - `EasyTierVpnAbility`（系统 VPN Extension 进程）独立持有 Core、控制面连接、逐 socket 保护和 TUN。它从现有 HAR 的 Core 状态读取虚拟地址与聚合路由，并在子进程内协调接口建立、更新和撤销，不依赖 Flutter 定时器或 UI 是否消费事件。
 - `EntryAbility` 不再申请 `dataTransfer` 长时任务，也不再发布随机下载进度的“保活”实况通知。这里的子进程是 VPN Extension，不是 `childProcessManager`。
 - UI 冻结、IPC 断开或 Flutter 重建不等于 VPN 已停止。恢复时重新连接并读取 `getRuntimeSnapshot` 全量快照；读取失败报告状态未知，不伪造空实例列表，也不据此销毁子进程。相同启动参数重复到达不会重建已有控制面会话。
+- 冻结期间 Extension 自行恢复 TUN 时，UI 进程收不到那条 `vpn_started`：恢复流程只在快照**控制面已连接且报告了已挂载 TUN 的实例身份**时，把残留的失败状态收敛回运行中；未知、控制面断开或没有已挂载 TUN 时保持原状态，不伪造事件、不无条件清错、不重启运行时。
 - IPC 对每个客户端限制待发送队列并设置写超时；冻结的 UI 读端只会失去自己的连接，不阻塞内核协调和其他客户端。重连不自动重放超时的修改命令。
 - 用户退出网络时，子进程先撤销 TUN 并暂停该实例的自动建立；退出失败时 `resumeVpn` 从 Core 重新读取当前路由，而不是重放 UI 的旧配置。实例消失或运行时显式停止会清除暂停状态。
 

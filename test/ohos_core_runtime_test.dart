@@ -130,6 +130,66 @@ void main() {
           isEmpty,
         );
       });
+
+      test(
+        'reports the tunnel the resumed snapshot proves is attached',
+        () async {
+          harness.snapshot = _snapshotJson(
+            configServerConnected: true,
+            activeVpnInstanceName: _instanceName,
+            activeVpnInstanceId: _instanceId,
+            vpnConfig: _vpnConfig(),
+            instances: {_runtimeNetworkLabel: _instanceId},
+          );
+          final events = harness.collectEvents();
+
+          expect(await harness.runtime.shouldRecoverAfterAppResume(), isFalse);
+          await events.waitFor(
+            CoreRuntimeEventTypes.vpnRecoveredFromSnapshot,
+          );
+
+          final recovered = events.events.lastWhere(
+            (event) =>
+                event.type == CoreRuntimeEventTypes.vpnRecoveredFromSnapshot,
+          );
+          expect(recovered.data['instance_name'], _instanceName);
+          expect(recovered.data['instance_id'], _instanceId);
+          // The snapshot carries the recovery this process never observed; the
+          // historical start event is never replayed for it.
+          expect(
+            events.types,
+            isNot(contains(CoreRuntimeEventTypes.vpnStarted)),
+          );
+          expect(
+            harness.methodNames,
+            isNot(contains('startConfigServerClient')),
+          );
+          expect(harness.vpnControlMethods, isEmpty);
+        },
+      );
+
+      test('keeps a connected snapshot without a tunnel to recovery', () async {
+        harness.snapshot = _snapshotJson(
+          configServerConnected: true,
+          instances: {_runtimeNetworkLabel: _instanceId},
+        );
+        final events = harness.collectEvents();
+
+        expect(await harness.runtime.shouldRecoverAfterAppResume(), isFalse);
+        await _settle();
+
+        // A connected control client without an attached interface is not
+        // evidence that a failed tunnel came back.
+        expect(
+          events.types,
+          isNot(contains(CoreRuntimeEventTypes.vpnRecoveredFromSnapshot)),
+        );
+        expect(
+          harness.methodNames,
+          isNot(contains('startConfigServerClient')),
+        );
+        expect(harness.vpnControlMethods, isEmpty);
+      });
     });
 
     group('status', () {

@@ -114,6 +114,12 @@ class CoreRuntimeEventTypes {
   static const String configServerStarted = 'config_server_started';
   static const String configServerStopped = 'config_server_stopped';
   static const String error = 'error';
+  /// An authoritative runtime snapshot reported an attached tunnel that this
+  /// process never observed starting: the native side recovered on its own
+  /// while the UI was frozen, so the lifecycle reconciles its failure state
+  /// from that snapshot instead of replaying the `vpn_started` event the
+  /// frozen process never received.
+  static const String vpnRecoveredFromSnapshot = 'vpn_recovered_from_snapshot';
   /// The runtime could not be read: its state is unknown. That is not a failure,
   /// so it must not move the UI into an error phase.
   static const String runtimeUnknown = 'runtime_unknown';

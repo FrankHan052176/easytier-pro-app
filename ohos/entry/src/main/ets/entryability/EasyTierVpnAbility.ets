@@ -862,8 +862,13 @@ export default class EasyTierVpnAbility extends VpnExtensionAbility {
     const snapshot = new RuntimeSnapshot();
     // A probe failure must not be reported as an authoritative connection state.
     snapshot.configServerConnected = easytier.isConfigServerClientConnected();
-    snapshot.activeVpnInstanceName = this.activeVpnInstanceName;
-    snapshot.activeVpnInstanceId = this.activeVpnInstanceId;
+    // A signature is cleared the moment Core replaces the active instance
+    // generation and only set again by a successful attach, so exporting the
+    // identity through it keeps the snapshot from advertising a tunnel that the
+    // Extension no longer vouches for.
+    const attached = this.activeTunSignature.length > 0;
+    snapshot.activeVpnInstanceName = attached ? this.activeVpnInstanceName : '';
+    snapshot.activeVpnInstanceId = attached ? this.activeVpnInstanceId : '';
     snapshot.vpnConfig = this.activeTunConfig;
     snapshot.instances = entries === null ? this.readProInstances() : entries;
     snapshot.lastError = this.lastError;
