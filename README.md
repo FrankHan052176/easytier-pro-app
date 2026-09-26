@@ -102,7 +102,7 @@ CI=true flutter build hap --debug --no-codesign --no-pub
 - IPC 对每个客户端限制待发送队列并设置写超时；冻结的 UI 读端只会失去自己的连接，不阻塞内核协调和其他客户端。重连不自动重放超时的修改命令。
 - 用户退出网络时，子进程先撤销 TUN 并暂停该实例的自动建立；退出失败时 `resumeVpn` 从 Core 重新读取当前路由，而不是重放 UI 的旧配置。实例消失或运行时显式停止会清除暂停状态。
 
-宿主机行为回归（测试真实 ETS 实现，仅系统/N-API 边界受控）：
+宿主机行为回归（跑真实 ETS 实现；系统/N-API 与 IPC 客户端边界受控，因此不构成真机证据）：
 
 ```bash
 bun test test/ohos_vpn_runtime.test.ts test/ohos_core_runtime_ipc.test.ts test/ohos_runtime_bridge.test.ts

@@ -404,8 +404,11 @@ export default class EasyTierVpnAbility extends VpnExtensionAbility {
     try {
       return Promise.resolve(this.buildSnapshotJson(null));
     } catch (error) {
+      // An unreadable snapshot is unknown state, not a runtime failure: the
+      // rejected request already tells the client that, so this must not also
+      // publish the error event that moves the UI into its restart flow.
       const message = this.errorMessage(error);
-      this.recordError(message);
+      this.recordObservationProblem(message);
       return Promise.reject(new Error(message));
     }
   }
@@ -827,6 +830,14 @@ export default class EasyTierVpnAbility extends VpnExtensionAbility {
     console.error(`[EasyTierProVpn] ${message}`);
   }
 
+  // A snapshot that cannot be read only means the runtime state is unknown. It
+  // is kept for diagnostics, but it must never be published as the error event
+  // that makes a UI process treat a healthy runtime as failed.
+  private recordObservationProblem(message: string): void {
+    this.lastError = message;
+    console.error(`[EasyTierProVpn] ${message}`);
+  }
+
   // `entries` is the Pro instance list already read during this tick; null makes
   // the snapshot read Core itself (explicit snapshot reads and non-tick callers).
   private refreshRuntimeSnapshot(entries: Record<string, string> | null): void {
@@ -834,7 +845,7 @@ export default class EasyTierVpnAbility extends VpnExtensionAbility {
     try {
       snapshotJson = this.buildSnapshotJson(entries);
     } catch (error) {
-      this.recordError(this.errorMessage(error));
+      this.recordObservationProblem(this.errorMessage(error));
       return;
     }
     if (snapshotJson === this.lastSnapshotJson) {

@@ -728,7 +728,9 @@ test('an unusable Core snapshot neither fabricates a detached state nor tears th
   expect(f.ability.lastError).toContain('not valid JSON');
   await f.tick(2);
   expect(count(f.calls, 'destroy-tun')).toBe(destroysAfterAttach);
-  expect(f.eventPayloads('error').length).toBeGreaterThan(0);
+  // An unreadable snapshot is unknown state, not a runtime failure: it must not
+  // publish the error event that asks a UI process to restart the runtime.
+  expect(f.eventPayloads('error')).toHaveLength(0);
 
   f.setCorruptedProInstances(null);
   f.setCorruptedAggregate('{}');
@@ -757,6 +759,8 @@ test('a failed native connection probe cannot become a cached authoritative snap
   await f.tick();
   expect(count(f.calls, 'create-tun')).toBe(1);
   expect(count(f.calls, 'stop-runtime')).toBe(0);
+  // Unknown state must not be published as a runtime failure.
+  expect(f.eventPayloads('error')).toHaveLength(0);
   await f.request('stopRuntime');
 });
 

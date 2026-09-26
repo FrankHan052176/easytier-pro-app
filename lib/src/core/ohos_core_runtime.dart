@@ -80,11 +80,6 @@ class OhosCoreRuntime extends AndroidCoreRuntime {
   @override
   bool get drivesVpnInterfaceFromUi => false;
 
-  /// Whether the native runtime already answered this process. After that an
-  /// unreachable snapshot means unknown state, never a missing runtime, so it
-  /// must not be turned into a fresh start of a possibly healthy child.
-  bool _sawNativeRuntime = false;
-
   /// A resume never restarts the native control session: the Extension keeps
   /// running while this process is frozen. The snapshot reconnects the
   /// transport; only an authoritative disconnected snapshot asks for a
@@ -107,18 +102,16 @@ class OhosCoreRuntime extends AndroidCoreRuntime {
   Future<CoreRuntimeStartResult?> readStatus(
     CoreBootstrapConfig bootstrap,
   ) async {
-    final OhosRuntimeSnapshot? snapshot;
+    final OhosRuntimeSnapshot snapshot;
     try {
       snapshot = await _readSnapshot();
-    } on Object {
-      if (!_sawNativeRuntime) {
-        // Nothing was running in this process yet: the caller may still start
-        // explicitly (first launch, permission flow).
-        return null;
-      }
-      // A runtime this process already talked to cannot be probed anymore:
-      // report it instead of letting a start replace a healthy child.
-      rethrow;
+    } on Object catch (error) {
+      // Unreadable means unknown: neither stopped nor failed. Ensuring the
+      // runtime again cannot tear down a healthy child, because the Extension
+      // ignores a repeated start of the same bootstrap, so nothing is at risk
+      // by letting the caller continue with an unknown runtime.
+      _emitUnknownStateError(error);
+      return null;
     }
     _applySnapshot(snapshot);
     if (!snapshot.configServerConnected) {
@@ -171,10 +164,13 @@ class OhosCoreRuntime extends AndroidCoreRuntime {
 
     // Starting the control session is all this process owes the runtime: the
     // Extension brings TUN up for whatever that session owns, so no instance
-    // VPN is started from here. The snapshot then restores the identity this
-    // session must know about; a snapshot that cannot be read is reported as a
-    // failure instead of a fabricated running runtime.
-    _applySnapshot(await _readSnapshot());
+    // VPN is started from here. A snapshot that cannot be read yet leaves the
+    // identity unknown, which is not a failed start.
+    try {
+      _applySnapshot(await _readSnapshot());
+    } on Object catch (error) {
+      _emitUnknownStateError(error);
+    }
 
     return CoreRuntimeStartResult(
       phase: CoreRunPhase.running,
@@ -183,14 +179,6 @@ class OhosCoreRuntime extends AndroidCoreRuntime {
       details: 'EasyTier ${bootstrap.version}',
       coreVersion: bootstrap.version,
     );
-  }
-
-  /// An explicit stop tears the native runtime down, so a later failed probe
-  /// means "nothing running yet" again instead of unknown state.
-  @override
-  Future<void> stop() async {
-    _sawNativeRuntime = false;
-    await super.stop();
   }
 
   /// Suspends the native tunnel while the user leaves a network. The Extension
@@ -217,10 +205,8 @@ class OhosCoreRuntime extends AndroidCoreRuntime {
   void _handlePlatformRuntimeEvent(CoreRuntimeEvent event) {
     if (event.type == CoreRuntimeEventTypes.vpnPermissionDenied ||
         event.type == CoreRuntimeEventTypes.configServerStopped) {
-      // The native runtime is gone or unusable, so the next probe decides
-      // afresh instead of reporting unknown state for a runtime that is no
-      // longer there to protect.
-      _sawNativeRuntime = false;
+      // The native runtime is gone: this process resolves its identity from the
+      // next snapshot instead of trusting pre-freeze events.
       return;
     }
     if (event.type != _runtimeSnapshotEvent) {
@@ -266,7 +252,6 @@ class OhosCoreRuntime extends AndroidCoreRuntime {
   }
 
   void _applySnapshot(OhosRuntimeSnapshot snapshot) {
-    _sawNativeRuntime = true;
     _activeVpnInstanceName = snapshot.activeVpnInstanceName.isEmpty
         ? null
         : snapshot.activeVpnInstanceName;

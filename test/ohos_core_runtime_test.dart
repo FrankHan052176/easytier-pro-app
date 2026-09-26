@@ -171,7 +171,7 @@ void main() {
       });
 
       test(
-        'reports a known runtime that cannot be probed as an error',
+        'reports a known runtime that cannot be probed as unknown',
         () async {
           harness.snapshot = _snapshotJson(
             configServerConnected: true,
@@ -180,11 +180,19 @@ void main() {
             vpnConfig: _vpnConfig(),
           );
           expect(await harness.runtime.readStatus(_bootstrap()), isNotNull);
+          final events = harness.collectEvents();
           harness.snapshot = null;
 
-          await expectLater(
-            harness.runtime.readStatus(_bootstrap()),
-            throwsA(isA<PlatformException>()),
+          // An unreadable runtime is unknown, not stopped and not failed: the
+          // caller may ensure the runtime again, and a repeated start of the
+          // same bootstrap cannot tear the native child down.
+          expect(await harness.runtime.readStatus(_bootstrap()), isNull);
+          await events.waitFor(CoreRuntimeEventTypes.runtimeUnknown);
+          expect(
+            events.events.where(
+              (event) => event.type == CoreRuntimeEventTypes.error,
+            ),
+            isEmpty,
           );
           expect(harness.vpnControlMethods, isEmpty);
         },
@@ -332,17 +340,32 @@ void main() {
         },
       );
 
-      test('reports a failure when the snapshot cannot be read', () async {
-        harness.snapshot = null;
+      test(
+        'reports an unreadable runtime as unknown, not a failed start',
+        () async {
+          harness.snapshot = null;
+          final events = harness.collectEvents();
 
-        await expectLater(
-          harness.runtime.ensureRunning(_bootstrap(), forceReinstall: false),
-          throwsA(isA<PlatformException>()),
-        );
+          final result = await harness.runtime.ensureRunning(
+            _bootstrap(),
+            forceReinstall: false,
+          );
 
-        expect(harness.methodNames, contains('startConfigServerClient'));
-        expect(harness.vpnControlMethods, isEmpty);
-      });
+          // The control session was started; only its observed state is
+          // unknown, which must never be presented as a failed start or ask
+          // for a restart of the native runtime.
+          expect(result.phase, CoreRunPhase.running);
+          expect(harness.methodNames, contains('startConfigServerClient'));
+          await events.waitFor(CoreRuntimeEventTypes.runtimeUnknown);
+          expect(
+            events.events.where(
+              (event) => event.type == CoreRuntimeEventTypes.error,
+            ),
+            isEmpty,
+          );
+          expect(harness.vpnControlMethods, isEmpty);
+        },
+      );
     });
 
     group('user exit', () {
@@ -419,10 +442,7 @@ void main() {
         // A transport-only event neither stops the native runtime nor turns its
         // known state into a stopped runtime.
         expect(await harness.runtime.shouldRecoverAfterAppResume(), isFalse);
-        await expectLater(
-          harness.runtime.readStatus(_bootstrap()),
-          throwsA(isA<PlatformException>()),
-        );
+        expect(await harness.runtime.readStatus(_bootstrap()), isNull);
         expect(harness.methodNames, isNot(contains('startConfigServerClient')));
         expect(harness.vpnControlMethods, isEmpty);
       });
