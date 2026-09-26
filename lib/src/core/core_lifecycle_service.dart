@@ -340,8 +340,14 @@ class CoreLifecycleService {
           phase == CoreRunPhase.stopped ||
           phase == CoreRunPhase.checking ||
           phase == CoreRunPhase.repairing ||
-          phase == CoreRunPhase.needsVpnPermission ||
           phase == CoreRunPhase.needsElevation) {
+        return;
+      }
+      if (phase == CoreRunPhase.needsVpnPermission &&
+          !_runtime.supportsVpnPermissionResumeRecovery) {
+        // Only a runtime that owns the authorization outside this process can
+        // tell a grant that has not landed yet from a refused one, so the
+        // permission phase stays terminal everywhere else.
         return;
       }
       if (!await _runtime.shouldRecoverAfterAppResume()) {
@@ -350,7 +356,10 @@ class CoreLifecycleService {
       _logger.warn(
         'core.runtime',
         'Runtime health check failed after app resume; reconnecting',
-        context: {'runtime': _runtime.runtimeType.toString()},
+        context: {
+          'runtime': _runtime.runtimeType.toString(),
+          'phase': phase.name,
+        },
       );
       await _ensureActiveConnection(forceReinstall: false);
     });

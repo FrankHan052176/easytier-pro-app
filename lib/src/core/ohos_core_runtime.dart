@@ -80,6 +80,15 @@ class OhosCoreRuntime extends AndroidCoreRuntime {
   @override
   bool get drivesVpnInterfaceFromUi => false;
 
+  /// The OS starts the Extension in its own process as the result of the
+  /// grant, so the permission phase can be reported before the Extension's IPC
+  /// is reachable and before the control session it owns exists: a resume must
+  /// re-check the snapshot instead of treating that phase as terminal. An
+  /// unreachable snapshot keeps the reported phase unchanged, which is also the
+  /// outcome a refused authorization produces.
+  @override
+  bool get supportsVpnPermissionResumeRecovery => true;
+
   /// A resume never restarts the native control session: the Extension keeps
   /// running while this process is frozen. The snapshot reconnects the
   /// transport; only an authoritative disconnected snapshot asks for a

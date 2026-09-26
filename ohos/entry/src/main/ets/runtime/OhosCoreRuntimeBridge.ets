@@ -112,6 +112,10 @@ export default class OhosCoreRuntimeBridge implements FlutterPlugin, MethodCallH
   private snapshotGeneration: number = 0;
   private runtimeReadyInFlight: Promise<void> | null = null;
   private runtimeReadyGeneration: number = 0;
+  // Start operations whose mutating request has not settled yet. A foreground
+  // transport reset under one of them would close the socket that the child
+  // may already be executing the start on.
+  private coreStartsInFlight: number = 0;
   private runtimeClient: RuntimeIpcClient = new RuntimeIpcClient(
     (type: string, payload: RuntimeValue) => {
       this.emitEvent(type, payload);
@@ -292,17 +296,34 @@ export default class OhosCoreRuntimeBridge implements FlutterPlugin, MethodCallH
     startParams.machineId = machineId;
     startParams.secureMode = secureMode;
     startParams.socketFilesDir = filesDir;
+    // Readiness and the mutating start request are one operation: the
+    // readiness check clears runtimeReadyInFlight before the start is sent, so
+    // without this fence a foreground arriving in that gap would reset the
+    // transport and reject a start the child may already be executing. The
+    // resume refresh is not replayed here; the post-start snapshot read below
+    // and Dart's own post-start read report the state instead.
+    this.coreStartsInFlight += 1;
+    let startSettled = false;
+    const settleStart = (): void => {
+      if (startSettled) {
+        return;
+      }
+      startSettled = true;
+      this.coreStartsInFlight -= 1;
+    };
     this.ensureRuntimeExtensionConnected(filesDir)
       .then(() => this.runtimeClient.request('startConfigServerClient', startParams)
         .catch((error: Error) => {
           throw this.runtimeRequestStageError('core_start', error);
         }))
       .then(() => {
+        settleStart();
         this.refreshRuntimeSnapshot();
         this.emitEvent('config_server_started', new ConfigServerStartedPayload(url, hostname, machineId));
         result.success(null);
       })
       .catch((error: Error) => {
+        settleStart();
         this.lastError = `HarmonyOS EasyTier runtime start failed: ${this.errorMessage(error)}`;
         result.error('OHOS_CORE_START_FAILED', this.lastError, null);
       });
@@ -521,7 +542,10 @@ export default class OhosCoreRuntimeBridge implements FlutterPlugin, MethodCallH
   onForeground(): void {
     // Resume may deliver expired timers before buffered socket messages. Fence
     // the old transport, then read truth instead of replaying missed events.
-    if (this.runtimeReadyInFlight === null) {
+    // While a start is in flight the transport is not idle: closing it would
+    // reject a mutating request the child may already be executing, so the
+    // resume refresh is left to the post-start snapshot read instead.
+    if (this.runtimeReadyInFlight === null && this.coreStartsInFlight === 0) {
       this.refreshRuntimeSnapshot(true);
     }
   }

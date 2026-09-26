@@ -28,6 +28,17 @@ abstract class CorePlatformRuntime {
     required bool forceReinstall,
   });
 
+  /// Whether a resume may still recover a runtime whose reported phase is
+  /// [CoreRunPhase.needsVpnPermission].
+  ///
+  /// A platform whose authorization is applied outside this process can report
+  /// the permission phase before its runtime becomes reachable, so that phase
+  /// must not stay terminal: the resume re-checks the runtime and re-drives the
+  /// connection once the runtime itself vouches for the authorization.
+  /// Platforms whose authorization is delivered through an in-app grant keep
+  /// `false`, so only a new grant may leave the permission phase.
+  bool get supportsVpnPermissionResumeRecovery => false;
+
   Future<bool> shouldRecoverAfterAppResume() async => false;
 
   Future<String?> readInstalledVersion() async => null;

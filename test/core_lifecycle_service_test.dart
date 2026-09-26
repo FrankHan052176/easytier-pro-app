@@ -2053,6 +2053,68 @@ void main() {
         expect(harness.vpnControlMethods, isEmpty);
       },
     );
+
+    test(
+      'starts the control session after resume once the Extension is reachable',
+      () async {
+        // The first authorization is still pending: the Extension's IPC is not
+        // ready, so the lifecycle can only report the permission phase.
+        harness.prepareVpnPermission = false;
+        await service.bindSession(_session('tenant-1'));
+
+        expect(service.status.value.phase, CoreRunPhase.needsVpnPermission);
+        expect(harness.countOf('prepareVpn'), 1);
+        expect(harness.countOf('startConfigServerClient'), 0);
+
+        // The OS started the Extension after the grant: the permission probe
+        // succeeds now, while the control session it will own is still
+        // disconnected.
+        harness.prepareVpnPermission = true;
+        harness.snapshot = _ohosSnapshotJson();
+
+        await service.recoverAfterAppResume();
+        await _waitUntil(
+          () => service.status.value.phase == CoreRunPhase.running,
+        );
+
+        final status = service.status.value;
+        expect(status.message, 'HarmonyOS 连接引擎运行中');
+        expect(status.lastError, isNull);
+        expect(status.machineId, _ohosMachineId);
+        // The resume probed the Extension once more and started the control
+        // session exactly once: the recovery needed neither a manual repair
+        // nor a reinstall.
+        expect(harness.countOf('prepareVpn'), 2);
+        expect(harness.countOf('startConfigServerClient'), 1);
+        expect(harness.methodNames, isNot(contains('stopRuntime')));
+        expect(authService.prepareBootstrapCount, 2);
+        expect(harness.vpnControlMethods, isEmpty);
+      },
+    );
+
+    test(
+      'keeps the permission pending on resume while the Extension is unreachable',
+      () async {
+        harness.prepareVpnPermission = false;
+        await service.bindSession(_session('tenant-1'));
+        expect(service.status.value.phase, CoreRunPhase.needsVpnPermission);
+
+        // The authorization was never delivered: the Extension's IPC is still
+        // unreachable, so a resume must not re-run the permission probe (which
+        // asks for the authorization again) nor reinstall the engine, and the
+        // pending permission state stays observable.
+        harness.snapshot = null;
+        await service.recoverAfterAppResume();
+        await Future<void>.delayed(const Duration(milliseconds: 30));
+
+        expect(service.status.value.phase, CoreRunPhase.needsVpnPermission);
+        expect(harness.countOf('prepareVpn'), 1);
+        expect(harness.countOf('startConfigServerClient'), 0);
+        expect(harness.methodNames, isNot(contains('stopRuntime')));
+        expect(authService.prepareBootstrapCount, 1);
+        expect(harness.vpnControlMethods, isEmpty);
+      },
+    );
   });
 }
 
@@ -2543,6 +2605,11 @@ class _OhosLifecycleHarness {
   /// the way an unreachable runtime does.
   String? snapshot = _ohosSnapshotJson();
 
+  /// What the native `prepareVpn` probe answers: `false` while the first
+  /// authorization has not started the Extension's IPC yet, `true` once the
+  /// Extension is reachable and the control session may be started.
+  bool prepareVpnPermission = true;
+
   List<String> get methodNames =>
       calls.map((call) => call.method).toList(growable: false);
 
@@ -2594,7 +2661,7 @@ class _OhosLifecycleHarness {
       case 'prepareNotifications':
         return true;
       case 'prepareVpn':
-        return true;
+        return prepareVpnPermission;
       case 'startConfigServerClient':
       case 'stopRuntime':
       case 'stopVpn':
