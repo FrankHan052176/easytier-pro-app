@@ -54,6 +54,16 @@ bun test test/ohos_vpn_runtime.test.ts test/ohos_core_runtime_ipc.test.ts test/o
 flutter test --no-pub
 ```
 
+## 1.3 真机安装约束（实测，2026-09-26）
+
+在装有 AppGallery 版 EasyTier Pro 的 HarmonyOS 6.1.1 手机上实测的安装规则，直接影响“保留数据重装”这类操作：
+
+- **发布证书包不能本地安装**：用 `PublishRelease.p7b`（app_gallery release）签名的 HAP，`bm install`/`hdc install` 一律返回 `9568322 signature verification failed due to not trusted app source`；官方 FAQ 9568322 场景一即此，处理方式是改用调试 profile。因此“用与商店版相同的签名就地覆盖/重装”这条路走不通。
+- **模拟器结果不能当证据**：同一台 release 签名包在模拟器上能装能跑，是因为模拟器把它规范化成 `appProvisionType=debug`、`appDistributionType=none`、`appId`/`appIdentifier` 为空，从未校验 release 身份。判断签名可行性别用模拟器。
+- **保留数据会强制签名一致**：`bm uninstall -n <bundle> -k` 保留数据后，再装同包名应用时系统会校验签名（密钥或 APP ID 至少一项相同，9568332）与 profile 类型（9568286）。实现签名包与商店版 release 记录不一致，因此**“保留数据”与“安装自签名构建”在装有商店版的设备上不可兼得**。
+- **保留数据只能靠同签名应用回收或清除**：未安装状态下 `bm clean -d`/`-c` 会失败（bundle 不存在）；官方路径是先重装同签名应用，再不带 `-k` 卸载（清除数据），之后才能装自签名包。
+- Debug 实现签名包的安装前提与 `R_EasyTier-ArkTS` 一致：debug profile 覆盖目标设备 UDID、设备同 bundle 无其他签名残留。
+
 ## 2. 已验证工具链基线
 
 | 组件 | 版本或基线 |
