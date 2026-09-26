@@ -24,10 +24,8 @@ import {
   RuntimeIpcClient,
   RuntimeParams,
   RuntimeValue,
-  RuntimeVpnConfig,
   runtimeSocketPath,
 } from './OhosCoreRuntimeIpc';
-import { getOhosBackgroundTaskService } from './OhosBackgroundTaskService';
 
 const METHOD_CHANNEL_NAME = 'net.easytier.pro/core_runtime';
 const EVENT_CHANNEL_NAME = 'net.easytier.pro/core_runtime_events';
@@ -37,11 +35,7 @@ const PREFERENCES_NAME = 'EasyTierProCoreRuntime';
 const MACHINE_ID_KEY = 'machine_id';
 const MACHINE_ID_UUID_PATTERN =
   /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
-const RUNTIME_ACTIVITY_POLL_INTERVAL_MS: number = 5000;
 const RUNTIME_READY_PROBE_TIMEOUT_MS: number = 2000;
-
-let nextRuntimeBridgeGeneration: number = 0;
-let activeRuntimeBridgeGeneration: number = 0;
 
 class RuntimeEvent {
   type: string;
@@ -108,7 +102,6 @@ class DetachedStreamHandler implements StreamHandler {
 }
 
 export default class OhosCoreRuntimeBridge implements FlutterPlugin, MethodCallHandler, StreamHandler, AbilityAware {
-  private bridgeGeneration: number = ++nextRuntimeBridgeGeneration;
   private channel: MethodChannel | null = null;
   private eventChannel: EventChannel | null = null;
   private eventSink: EventSink | null = null;
@@ -116,22 +109,16 @@ export default class OhosCoreRuntimeBridge implements FlutterPlugin, MethodCallH
   private abilityContext: common.UIAbilityContext | null = null;
   private diagnosticsExportDirectory: string = '';
   private lastError: string = '';
-  private runtimeActivityRefreshInFlight: boolean = false;
-  private runtimeActivityRefreshRequested: boolean = false;
-  private runtimeActivitySession: number = 0;
-  private runtimeActivityRefreshSession: number = 0;
-  private runtimeActivityMonitoring: boolean = false;
-  private runtimeActivityPollTimer: number = -1;
-  private runtimeActivityActive: boolean | null = null;
+  private snapshotGeneration: number = 0;
   private runtimeReadyInFlight: Promise<void> | null = null;
   private runtimeReadyGeneration: number = 0;
   private runtimeClient: RuntimeIpcClient = new RuntimeIpcClient(
     (type: string, payload: RuntimeValue) => {
-      this.handleRuntimeEvent(type, payload);
       this.emitEvent(type, payload);
     },
     () => {
-      this.handleRuntimeSocketClosed();
+      // Losing the UI transport says nothing about the child runtime's health.
+      this.emitEvent('runtime_disconnected', new EmptyPayload());
     },
   );
 
@@ -148,7 +135,7 @@ export default class OhosCoreRuntimeBridge implements FlutterPlugin, MethodCallH
   }
 
   onDetachedFromEngine(binding: FlutterPluginBinding): void {
-    this.stopRuntimeActivityPolling(true);
+    this.snapshotGeneration++;
     this.cancelRuntimeReadyCheck().then(() => {
     });
     this.runtimeClient.close().catch((error: Error): void => {
@@ -167,12 +154,13 @@ export default class OhosCoreRuntimeBridge implements FlutterPlugin, MethodCallH
   }
 
   onDetachedFromAbility(): void {
-    this.stopRuntimeActivityPolling(true);
+    this.snapshotGeneration++;
     this.abilityContext = null;
   }
 
   onListen(args: Object, events: EventSink): void {
     this.eventSink = events;
+    this.refreshRuntimeSnapshot();
   }
 
   onCancel(args: Object): void {
@@ -206,17 +194,17 @@ export default class OhosCoreRuntimeBridge implements FlutterPlugin, MethodCallH
         case 'stopRuntime':
           this.stopRuntime(result);
           return;
+        case 'getRuntimeSnapshot':
+          this.forwardRuntimeCall('getRuntimeSnapshot', new RuntimeParams(), result);
+          return;
         case 'isConfigServerClientConnected':
-          this.forwardRuntimeCall('isConfigServerClientConnected', new RuntimeParams(), result, false);
+          this.forwardRuntimeCall('isConfigServerClientConnected', new RuntimeParams(), result);
           return;
         case 'listInstances':
-          this.forwardRuntimeCall('listInstances', new RuntimeParams(), result, '{}');
+          this.forwardRuntimeCall('listInstances', new RuntimeParams(), result);
           return;
         case 'callJsonRpc':
-          this.forwardRuntimeCall('callJsonRpc', this.readJsonRpcParams(call), result, '{}');
-          return;
-        case 'retainNetworkInstance':
-          result.success(null);
+          this.forwardRuntimeCall('callJsonRpc', this.readJsonRpcParams(call), result);
           return;
         case 'stopNetworkInstances':
           this.forwardRuntimeCall('stopNetworkInstances', this.readStopNetworkInstancesParams(call), result);
@@ -230,8 +218,8 @@ export default class OhosCoreRuntimeBridge implements FlutterPlugin, MethodCallH
         case 'prepareVpn':
           this.prepareVpn(result);
           return;
-        case 'startVpn':
-          this.forwardRuntimeCall('startVpn', this.readStartVpnParams(call), result);
+        case 'resumeVpn':
+          this.forwardRuntimeCall('resumeVpn', new RuntimeParams(), result);
           return;
         case 'shareFile':
           result.success(false);
@@ -304,14 +292,13 @@ export default class OhosCoreRuntimeBridge implements FlutterPlugin, MethodCallH
     startParams.machineId = machineId;
     startParams.secureMode = secureMode;
     startParams.socketFilesDir = filesDir;
-    this.stopRuntimeActivityPolling(true);
     this.ensureRuntimeExtensionConnected(filesDir)
       .then(() => this.runtimeClient.request('startConfigServerClient', startParams)
         .catch((error: Error) => {
           throw this.runtimeRequestStageError('core_start', error);
         }))
       .then(() => {
-        this.startRuntimeActivityPolling();
+        this.refreshRuntimeSnapshot();
         this.emitEvent('config_server_started', new ConfigServerStartedPayload(url, hostname, machineId));
         result.success(null);
       })
@@ -324,16 +311,15 @@ export default class OhosCoreRuntimeBridge implements FlutterPlugin, MethodCallH
   private stopConfigServerClient(result: MethodResult): void {
     this.runtimeClient.request('stopConfigServerClient', new RuntimeParams())
       .then((value: RuntimeValue): void => {
-        this.stopRuntimeActivityPolling(true);
         result.success(value);
       })
       .catch((error: Error): void => {
-        this.stopRuntimeActivityPolling(true);
         this.completeRuntimeFailure('stopConfigServerClient', error, result);
       });
   }
 
   private stopRuntime(result: MethodResult): void {
+    this.snapshotGeneration++;
     const readyCheck = this.cancelRuntimeReadyCheck();
     const want: Want = {
       bundleName: BUNDLE_NAME,
@@ -348,12 +334,10 @@ export default class OhosCoreRuntimeBridge implements FlutterPlugin, MethodCallH
       .then(() => vpnExtension.stopVpnExtensionAbility(want))
       .then(() => this.runtimeClient.close())
       .then(() => {
-        this.stopRuntimeActivityPolling(true);
         this.emitEvent('config_server_stopped', new EmptyPayload());
         result.success(null);
       })
       .catch((error: Error) => {
-        this.stopRuntimeActivityPolling(true);
         this.runtimeClient.close().catch((closeError: Error): void => {
           console.error(`HarmonyOS core runtime socket close failed: ${this.errorMessage(closeError)}`);
         });
@@ -511,14 +495,13 @@ export default class OhosCoreRuntimeBridge implements FlutterPlugin, MethodCallH
     method: string,
     params: RuntimeParams,
     result: MethodResult,
-    fallback?: RuntimeValue,
   ): void {
     if (!this.runtimeClient.isConnected()) {
       const filesDir = this.filesDir();
       if (filesDir.length > 0) {
         this.runtimeClient.connect(runtimeSocketPath(filesDir))
-          .then(() => this.forwardRuntimeCall(method, params, result, fallback))
-          .catch((error: Error) => this.completeRuntimeFailure(method, error, result, fallback));
+          .then(() => this.forwardRuntimeCall(method, params, result))
+          .catch((error: Error) => this.completeRuntimeFailure(method, error, result));
         return;
       }
     }
@@ -526,138 +509,51 @@ export default class OhosCoreRuntimeBridge implements FlutterPlugin, MethodCallH
       .then((value: RuntimeValue) => {
         result.success(value);
       })
-      .catch((error: Error) => this.completeRuntimeFailure(method, error, result, fallback));
+      .catch((error: Error) => this.completeRuntimeFailure(method, error, result));
   }
 
-  private completeRuntimeFailure(method: string, error: Error, result: MethodResult, fallback?: RuntimeValue): void {
+  private completeRuntimeFailure(method: string, error: Error, result: MethodResult): void {
     const stage = this.isRemoteRuntimeError(error) ? 'core_request' : 'ipc_request';
     this.lastError = this.errorMessage(this.runtimeStageError(stage, error));
-    if (fallback !== undefined) {
-      result.success(fallback);
-      return;
-    }
     result.error('OHOS_RUNTIME_IPC_FAILED', `HarmonyOS core runtime ${method} failed: ${this.lastError}`, null);
   }
 
-  private handleRuntimeEvent(type: string, payload: RuntimeValue): void {
-    if (this.abilityContext === null) {
+  onForeground(): void {
+    // Resume may deliver expired timers before buffered socket messages. Fence
+    // the old transport, then read truth instead of replaying missed events.
+    if (this.runtimeReadyInFlight === null) {
+      this.refreshRuntimeSnapshot(true);
+    }
+  }
+
+  private refreshRuntimeSnapshot(resetTransport: boolean = false): void {
+    const filesDir = this.filesDir();
+    if (this.abilityContext === null || filesDir.length === 0) {
       return;
     }
-    if (type === 'config_server_stopped') {
-      if (this.isCurrentRuntimeBridge()) {
-        this.stopRuntimeActivityPolling(true);
+    const generation = ++this.snapshotGeneration;
+    const ready = resetTransport ? this.runtimeClient.close() : Promise.resolve();
+    ready.then((): Promise<void> => {
+      if (generation !== this.snapshotGeneration || this.abilityContext === null) {
+        throw new Error('HarmonyOS runtime snapshot request was superseded');
       }
-      return;
-    }
-    if (type === 'vpn_started' || type === 'vpn_stopped' || type === 'config_server' || type === 'runtime_instances_changed') {
-      this.refreshRuntimeActivity();
-    }
-  }
-
-  private handleRuntimeSocketClosed(): void {
-    if (!this.runtimeActivityMonitoring) {
-      return;
-    }
-    this.stopRuntimeActivityPolling(true);
-  }
-
-  private startRuntimeActivityPolling(): void {
-    this.runtimeActivitySession++;
-    this.runtimeActivityMonitoring = true;
-    activeRuntimeBridgeGeneration = this.bridgeGeneration;
-    this.runtimeActivityRefreshInFlight = false;
-    this.runtimeActivityRefreshRequested = false;
-    this.refreshRuntimeActivity();
-    if (this.runtimeActivityPollTimer !== -1) {
-      return;
-    }
-    this.runtimeActivityPollTimer = setInterval((): void => {
-      this.refreshRuntimeActivity();
-    }, RUNTIME_ACTIVITY_POLL_INTERVAL_MS);
-  }
-
-  private stopRuntimeActivityPolling(forceInactive: boolean): void {
-    this.runtimeActivitySession++;
-    this.runtimeActivityMonitoring = false;
-    if (this.runtimeActivityPollTimer !== -1) {
-      clearInterval(this.runtimeActivityPollTimer);
-    }
-    this.runtimeActivityPollTimer = -1;
-    this.runtimeActivityRefreshRequested = false;
-    this.runtimeActivityRefreshInFlight = false;
-    if (!forceInactive || this.abilityContext === null || !this.isCurrentRuntimeBridge()) {
-      return;
-    }
-    this.runtimeActivityActive = false;
-    getOhosBackgroundTaskService(this.abilityContext).setRuntimeActive(false);
-    activeRuntimeBridgeGeneration = 0;
-  }
-
-  private refreshRuntimeActivity(): void {
-    if (!this.runtimeActivityMonitoring || this.abilityContext === null || this.filesDir().length === 0) {
-      return;
-    }
-    if (this.runtimeActivityRefreshInFlight) {
-      this.runtimeActivityRefreshRequested = true;
-      return;
-    }
-    const session = this.runtimeActivitySession;
-    this.runtimeActivityRefreshSession = session;
-    this.runtimeActivityRefreshInFlight = true;
-    this.runtimeClient.request('listInstances', new RuntimeParams())
+      // Reattach only; opening/resuming a view must never start a VPN Extension.
+      return this.runtimeClient.connect(runtimeSocketPath(filesDir), 3);
+    }).then((): Promise<RuntimeValue> => {
+      if (generation !== this.snapshotGeneration || this.abilityContext === null) {
+        throw new Error('HarmonyOS runtime snapshot request was superseded');
+      }
+      return this.runtimeClient.request('getRuntimeSnapshot', new RuntimeParams());
+    })
       .then((value: RuntimeValue): void => {
-        if (session !== this.runtimeActivitySession || !this.runtimeActivityMonitoring) {
-          return;
+        if (generation === this.snapshotGeneration) {
+          this.emitEvent('runtime_snapshot', value);
         }
-        const anyRunning = this.hasRunningInstances(value);
-        if (!this.isCurrentRuntimeBridge() || this.abilityContext === null) {
-          return;
+      }).catch((error: Error): void => {
+        if (generation === this.snapshotGeneration) {
+          this.emitEvent('runtime_disconnected', new ErrorPayload(this.errorMessage(error)));
         }
-        if (this.runtimeActivityActive !== anyRunning) {
-          this.runtimeActivityActive = anyRunning;
-          getOhosBackgroundTaskService(this.abilityContext).setRuntimeActive(anyRunning);
-        }
-      })
-      .catch((_error: Error): void => {
-        if (session !== this.runtimeActivitySession || !this.runtimeActivityMonitoring) {
-          return;
-        }
-        // Retain the prior aggregate activity state until a later event or poll succeeds.
-      })
-      .then((): void => {
-        if (session !== this.runtimeActivitySession || !this.runtimeActivityMonitoring) {
-          return;
-        }
-        this.finishRuntimeActivityRefresh(session);
       });
-  }
-
-  private finishRuntimeActivityRefresh(session: number): void {
-    if (session !== this.runtimeActivitySession || session !== this.runtimeActivityRefreshSession
-      || !this.runtimeActivityMonitoring) {
-      return;
-    }
-    this.runtimeActivityRefreshInFlight = false;
-    if (this.runtimeActivityRefreshRequested) {
-      this.runtimeActivityRefreshRequested = false;
-      this.refreshRuntimeActivity();
-    }
-  }
-
-  private hasRunningInstances(value: RuntimeValue): boolean {
-    if (typeof value !== 'string') {
-      throw new Error('HarmonyOS runtime listInstances response is not a JSON string');
-    }
-    const trimmed = value.trim();
-    if (trimmed.length === 0 || trimmed.charAt(0) !== '{' || trimmed.charAt(trimmed.length - 1) !== '}') {
-      throw new Error('HarmonyOS runtime listInstances response is not a JSON object');
-    }
-    const instances = JSON.parse(trimmed) as Record<string, string>;
-    return Object.keys(instances).length > 0;
-  }
-
-  private isCurrentRuntimeBridge(): boolean {
-    return this.bridgeGeneration === activeRuntimeBridgeGeneration;
   }
 
   private emitEvent(type: string, payload: RuntimeValue): void {
@@ -735,39 +631,6 @@ export default class OhosCoreRuntimeBridge implements FlutterPlugin, MethodCallH
     return params;
   }
 
-  private readStartVpnParams(call: MethodCall): RuntimeParams {
-    const params = new RuntimeParams();
-    params.instanceName = this.readStringArgument(call, 'instanceName');
-    params.vpnConfig = this.readVpnConfigArgument(call, 'vpnConfig');
-    return params;
-  }
-
-  private readVpnConfigArgument(call: MethodCall, key: string): RuntimeVpnConfig {
-    const configCall = new MethodCall(key, call.argument(key));
-    const config = new RuntimeVpnConfig();
-    config.addresses = this.readStringArrayArgument(configCall, 'addresses');
-    config.address = this.readStringArgument(configCall, 'address');
-    config.routes = this.readStringArrayArgument(configCall, 'routes');
-    config.route = this.readStringArgument(configCall, 'route');
-    config.dns = this.readStringArrayArgument(configCall, 'dns');
-    config.dns_servers = this.readStringArrayArgument(configCall, 'dns_servers');
-    config.dnsServers = this.readStringArrayArgument(configCall, 'dnsServers');
-    config.disallowedApplications = this.readStringArrayArgument(configCall, 'disallowedApplications');
-    config.disallowed_applications = this.readStringArrayArgument(configCall, 'disallowed_applications');
-    config.disallowedPackages = this.readStringArrayArgument(configCall, 'disallowedPackages');
-    config.disallowed_packages = this.readStringArrayArgument(configCall, 'disallowed_packages');
-    config.mtu = this.readNumberArgument(configCall, 'mtu');
-    return config;
-  }
-
-  private readNumberArgument(call: MethodCall, key: string): number {
-    const value = call.argument(key) as Object | null;
-    if (typeof value === 'number') {
-      return value;
-    }
-    const parsed = Number.parseInt(`${value ?? ''}`, 10);
-    return Number.isNaN(parsed) ? 0 : parsed;
-  }
 
   private errorMessage(error: Object): string {
     const businessError = error as BusinessError;

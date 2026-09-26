@@ -114,4 +114,7 @@ class CoreRuntimeEventTypes {
   static const String configServerStarted = 'config_server_started';
   static const String configServerStopped = 'config_server_stopped';
   static const String error = 'error';
+  /// The runtime could not be read: its state is unknown. That is not a failure,
+  /// so it must not move the UI into an error phase.
+  static const String runtimeUnknown = 'runtime_unknown';
 }

@@ -85,6 +85,13 @@ class AndroidCoreRuntime extends CorePlatformRuntime {
   bool _vpnPrepared = false;
   bool _disposed = false;
 
+  /// Whether this process drives the native VPN interface: starting it for a
+  /// joined instance, retaining that instance and re-routing it on refresh.
+  /// A platform whose VPN service owns the tunnel in its own process overrides
+  /// this with `false`, so config-server events only refresh identity
+  /// bookkeeping and never start, retain or re-route an interface.
+  bool get drivesVpnInterfaceFromUi => true;
+
   @override
   Stream<CoreRuntimeEvent> get events => _events.stream;
 
@@ -421,7 +428,9 @@ class AndroidCoreRuntime extends CorePlatformRuntime {
     _events.add(runtimeEvent);
     if (runtimeEvent.type == CoreRuntimeEventTypes.vpnPermissionGranted) {
       _vpnPrepared = true;
-      unawaited(_startPendingVpns());
+      if (drivesVpnInterfaceFromUi) {
+        unawaited(_startPendingVpns());
+      }
     }
     if (runtimeEvent.type == CoreRuntimeEventTypes.vpnPermissionDenied) {
       _vpnPrepared = false;
@@ -464,7 +473,12 @@ class AndroidCoreRuntime extends CorePlatformRuntime {
     if (runtimeEvent.type == CoreRuntimeEventTypes.configServer) {
       _handleConfigServerEvent(runtimeEvent.data);
     }
+    _handlePlatformRuntimeEvent(runtimeEvent);
   }
+
+  /// Extension point for runtime events whose state lives outside the shared
+  /// Android VPN state machine, applied after the shared handling.
+  void _handlePlatformRuntimeEvent(CoreRuntimeEvent event) {}
 
   CoreRuntimeEvent _runtimeEventFromNative(Object? event) {
     if (event is Map) {
@@ -533,6 +547,9 @@ class AndroidCoreRuntime extends CorePlatformRuntime {
         instanceName: instanceName,
         runtimeNetworkName: runtimeNetworkName,
       );
+      if (!drivesVpnInterfaceFromUi) {
+        return;
+      }
       _pendingVpnPayloads.remove(instanceKey);
       unawaited(_queueVpnStop(instanceKey));
       return;
@@ -543,6 +560,9 @@ class AndroidCoreRuntime extends CorePlatformRuntime {
       instanceName: instanceName,
       runtimeNetworkName: runtimeNetworkName,
     );
+    if (!drivesVpnInterfaceFromUi) {
+      return;
+    }
     _pendingVpnPayloads
       ..clear()
       ..[instanceKey] = payloadMap;
@@ -847,7 +867,9 @@ class AndroidCoreRuntime extends CorePlatformRuntime {
 
   void _scheduleActiveVpnRefresh() {
     _activeVpnRefreshTimer?.cancel();
-    if (_disposed || _activeVpnInstanceName == null) {
+    if (_disposed ||
+        !drivesVpnInterfaceFromUi ||
+        _activeVpnInstanceName == null) {
       return;
     }
     final delay = _activeVpnRefreshCount < _vpnRouteRefreshFastLimit

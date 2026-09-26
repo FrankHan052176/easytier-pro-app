@@ -34,6 +34,25 @@ AppGallery 与 UX 基础质量测试都会校验软件包内的图标资源：**
 - `startWindowBackgroundColor` 指向 `$color:start_window_background`（`#F6F7F9`），与应用首屏底色接近以避免过渡跳变。
 - 要加下部品牌字或启动插画时，用同文件里的 `startWindowBrandingImage`／`startWindowIllustration`，不要回去放大 `startWindowIcon`。
 
+## 1.2 HarmonyOS 运行态归属（VPN Extension 子进程）
+
+HarmonyOS 上所谓“子进程”指系统 **VPN Extension**（`EasyTierVpnAbility`，`module.json5` 中 `type: "vpn"`），不是 `childProcessManager`（其子进程随父进程退出，且仅平板/PC 可用）。运行态的归属必须保持下面这条边界，否则会出现“VPN 已建立但完全不载流”或“退出后被自动拉起”：
+
+- **Extension 进程负责**：Core 实例与 config server 客户端、逐 socket 保护、TUN 的建立/更新/撤销，以及 500ms 协调循环。它以 `collectRuntimeStateJson()` 的 `myNodeInfo.virtualIpv4Cidr` 作为接口地址、`tun.aggregatedRoutes` 作为平台路由（字段为 camelCase，来自 Core `#[serde(rename_all = "camelCase")]`），实例身份只取 `listProInstancesJson()`（Pro 网络名→实例 uuid），不把 Core 内部控制面实例当候选。
+- **UI 进程负责**：登录与控制面地址、`startConfigServerClient` / `stopVpn` / `resumeVpn` / `stopRuntime` 等显式命令与界面状态展示。它不再保留任何 TUN 定时器或 `retainNetworkInstance` 决策（`OhosCoreRuntime.drivesVpnInterfaceFromUi = false`）。
+- **保活方式**：不再申请 UIAbility 的 `dataTransfer` 长时任务，也不再发布随机下载进度的“保活”实况通知；`OhosBackgroundTaskService`、`OhosLiveViewNotificationService` 与 `ohos.permission.KEEP_BACKGROUND_RUNNING` 已删除。UI 进程冻结（后台/挂起）不等同于 VPN 停止：Extension 独立存活并继续协调。
+- **状态恢复**：UI 恢复时先断开旧 socket，再只读重连并取 `getRuntimeSnapshot`（Extension 也会在状态变化时推送同内容的 `runtime_snapshot`）。读不到就是**状态未知**，不伪造空列表、不据此销毁子进程；相同启动参数的重复 `startConfigServerClient` 不会重建已有控制面会话。
+- **断开语义**：用户退出网络走 `stopVpn`，Extension 先撤销 TUN，并对该实例暂停自动重建（同 uuid 实例消失或运行时显式停止才解除），避免协调循环把退出操作撤销；退出失败走 `resumeVpn`，由 Extension 重新读取 Core 当前地址与路由，不重放 UI 的旧配置。
+- **IPC 约束**：本机 socket 按换行分帧、单帧上限 4 MiB；服务端对每个客户端限制待发送队列（64 帧 / 8 MiB）并设置 5s 写超时，冻结的读端只丢自己的连接，绝不阻塞内核协调；超时的修改类请求不自动重放；`clientId` 复用时会先废弃旧连接状态。
+- **能力边界**：不承诺在系统强制结束应用、撤销 VPN 授权或销毁 Extension 之后继续运行；系统的 VPN 生命周期以官方文档为准。
+
+行为回归（宿主侧，系统/N-API 边界受控，不能替代真机验收）：
+
+```bash
+bun test test/ohos_vpn_runtime.test.ts test/ohos_core_runtime_ipc.test.ts test/ohos_runtime_bridge.test.ts
+flutter test --no-pub
+```
+
 ## 2. 已验证工具链基线
 
 | 组件 | 版本或基线 |
@@ -359,6 +378,15 @@ flutter config --list
 ### Publish 构建缺少版本变量
 
 为 `publish` product 设置真实的 `CORE_HAR_VERSION` 和 `EASYTIER_PRO_BUILD_NUMBER=1..99`。Core 版本必须与实际 HAR 对应。
+
+### `flutter test` 报 shader 版本不匹配或 `Asset 'shaders/ink_sparkle.frag' not found`
+
+`build/unit_test_assets` 里的 shader 由生成它的那套 Flutter 工具链编译；如果用别的 Flutter（例如官方 stable）跑过一次 `flutter test`，缓存会留下该版本的 runtime stages 格式（报错形如 `Unsupported runtime stages format version. Expected 1, got 2.`）。`flutter test` 只在 `AssetManifest.bin` 缺失或资源比清单更新时才重建资产包，单独删 shader 文件不会触发重建。用 Flutter-OH 重跑并强制重建：
+
+```bash
+rm -rf build/unit_test_assets build/test_cache
+/Users/frankhan/flutter-ohos/bin/flutter test --no-pub
+```
 
 ### WSL2 看不到 USB 设备
 

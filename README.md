@@ -85,6 +85,32 @@ flutter build apk --release --target-platform android-arm64,android-x64 --split-
 
 更完整的自动更新和发布说明见 [docs/auto-update-desktop.md](docs/auto-update-desktop.md) 与 [docs/android-release.md](docs/android-release.md)。
 
+### HarmonyOS：VPN Extension 子进程运行
+
+HarmonyOS 使用 Flutter-OH `3.41.10-ohos-0.0.2-beta`，不能用普通 Flutter SDK 替代其构建链。配置好 Command Line Tools、Node、JDK 17 和 API 23 兼容 SDK 后，可构建不依赖私有签名的 Debug 包：
+
+```bash
+flutter pub get
+CI=true flutter build hap --debug --no-codesign --no-pub
+```
+
+产物为 `build/ohos/hap/entry-default-unsigned.hap`。此包未签名，不能直接当作真机可安装包。
+
+- `EasyTierVpnAbility`（系统 VPN Extension 进程）独立持有 Core、控制面连接、逐 socket 保护和 TUN。它从现有 HAR 的 Core 状态读取虚拟地址与聚合路由，并在子进程内协调接口建立、更新和撤销，不依赖 Flutter 定时器或 UI 是否消费事件。
+- `EntryAbility` 不再申请 `dataTransfer` 长时任务，也不再发布随机下载进度的“保活”实况通知。这里的子进程是 VPN Extension，不是 `childProcessManager`。
+- UI 冻结、IPC 断开或 Flutter 重建不等于 VPN 已停止。恢复时重新连接并读取 `getRuntimeSnapshot` 全量快照；读取失败报告状态未知，不伪造空实例列表，也不据此销毁子进程。相同启动参数重复到达不会重建已有控制面会话。
+- IPC 对每个客户端限制待发送队列并设置写超时；冻结的 UI 读端只会失去自己的连接，不阻塞内核协调和其他客户端。重连不自动重放超时的修改命令。
+- 用户退出网络时，子进程先撤销 TUN 并暂停该实例的自动建立；退出失败时 `resumeVpn` 从 Core 重新读取当前路由，而不是重放 UI 的旧配置。实例消失或运行时显式停止会清除暂停状态。
+
+宿主机行为回归（测试真实 ETS 实现，仅系统/N-API 边界受控）：
+
+```bash
+bun test test/ohos_vpn_runtime.test.ts test/ohos_core_runtime_ipc.test.ts test/ohos_runtime_bridge.test.ts
+flutter test --no-pub
+```
+
+这些检查不能替代真机 VPN 授权、后台/息屏调度、逐 socket 保护和实际载流验收。子进程模式不承诺在系统强制终止应用、撤销 VPN 授权或销毁 Extension 后继续运行；系统生命周期边界见 [HarmonyOS VPN 开发指南](https://developer.huawei.com/consumer/cn/doc/harmonyos-guides/net-vpnextension)。
+
 ## 自动更新
 
 桌面端内置 appcast feed 优先级：
