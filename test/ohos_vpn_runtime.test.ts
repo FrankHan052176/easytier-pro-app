@@ -93,8 +93,16 @@ function deferred<T>(): Deferred<T> {
 
 const drain = () => new Promise<void>((resolve) => setImmediate(resolve));
 type Request = { requestId: string; socketFd: number; purpose: string };
-type CoreInstanceSpec = { id: string; label: string; address: string | null; running?: boolean };
+type CoreInstanceSpec = {
+  id: string; label: string; address: string | null; running?: boolean; learned?: number;
+};
 type RecordedEvent = { type: string; payload: unknown };
+// The extension's supervision interval; every fixture tick advances the uptime
+// clock by it.
+const POLL_MS = 500;
+// A first interface or a changed route set is applied once it stayed unchanged
+// for 1000 ms: the tick that first sees it plus two more.
+const SETTLE_TICKS = 3;
 
 // Core serializes aggregate state with #[serde(rename_all = "camelCase")] and the
 // Pro instance map as {"<network name>": "<instance uuid>"} (packaged commit
@@ -117,7 +125,10 @@ function aggregateJson(specs: CoreInstanceSpec[], routes: string[], dns: string[
         listeners: [],
       },
       events: [],
-      routes: [],
+      // What the instance learned from the network; the extension only counts it.
+      routes: Array.from({ length: spec.learned ?? 1 }, (_, index) => ({
+        peerId: 100 + index, proxyCidrs: [], nextHopPeerId: 100 + index, cost: 1,
+      })),
       peers: [],
     })),
     tun: {
@@ -157,6 +168,8 @@ interface Fixture {
   eventPayloads(type: string): unknown[];
   setInstances(next: CoreInstanceSpec[]): void;
   setInstanceAddress(id: string, address: string): void;
+  setLearnedRoutes(id: string, count: number): void;
+  advance(ms: number): void;
   removeInstance(id: string): void;
   setAggregatedRoutes(routes: string[]): void;
   setTunDnsServers(values: string[]): void;
@@ -201,6 +214,7 @@ function fixture(): Fixture {
   let aggregatedRoutes: string[] = [];
   let tunDnsServers: string[] = [];
   const coreEvents: unknown[] = [];
+  let now = 0;
 
   const core = {
     enableSocketProtection() {
@@ -285,7 +299,10 @@ function fixture(): Fixture {
     '@kit.ArkTS': { JSON },
     '@kit.CoreFileKit': {},
     '@kit.AbilityKit': {},
-    '@kit.BasicServicesKit': {},
+    // The extension measures its settle and hold windows with this uptime clock.
+    '@kit.BasicServicesKit': {
+      systemDateTime: { TimeType: { STARTUP: 0, ACTIVE: 1 }, getUptime: () => now },
+    },
   };
   function load<T>(code: string): T {
     const module = { exports: {} };
@@ -346,12 +363,14 @@ function fixture(): Fixture {
     // Fires the extension's own interval callbacks without waiting for the
     // queued reconcile work, for cases where that work is deliberately blocked.
     async fireTick() {
+      now += POLL_MS;
       for (const callback of [...intervals.values()]) callback();
       await drain();
       await drain();
     },
     async tick(times = 1) {
       for (let index = 0; index < times; index++) {
+        now += POLL_MS;
         for (const callback of [...intervals.values()]) callback();
         await drain();
         await ability.runtimeOperationQueue;
@@ -368,6 +387,10 @@ function fixture(): Fixture {
     setInstanceAddress(id: string, address: string) {
       for (const spec of specs) { if (spec.id === id) spec.address = address; }
     },
+    setLearnedRoutes(id: string, count: number) {
+      for (const spec of specs) { if (spec.id === id) spec.learned = count; }
+    },
+    advance(ms: number) { now += ms; },
     removeInstance(id: string) {
       const index = specs.findIndex((spec) => spec.id === id);
       if (index >= 0) specs.splice(index, 1);
@@ -407,7 +430,7 @@ test('stopping the runtime stops polling so a stale tick cannot re-attach the TU
   f.setInstances([officeInstance()]);
   f.setAggregatedRoutes(['10.144.144.0/24']);
   await f.startConfigClient();
-  await f.tick();
+  await f.tick(SETTLE_TICKS);
   expect(f.calls).toContain('set-tun:inst-a:42');
   expect(f.hasPolling()).toBe(true);
 
@@ -433,7 +456,7 @@ test('a tick already queued behind stopRuntime cannot resurrect the stopped chil
   f.setInstances([officeInstance()]);
   f.setAggregatedRoutes(['10.144.144.0/24']);
   await f.startConfigClient();
-  await f.tick();
+  await f.tick(SETTLE_TICKS);
   const protect = deferred<void>();
   f.setProtect(() => protect.promise);
   f.send();
@@ -455,7 +478,7 @@ test('a repeated start with the same bootstrap keeps the owned client and the TU
   f.setInstances([officeInstance()]);
   f.setAggregatedRoutes(['10.144.144.0/24']);
   await f.startConfigClient();
-  await f.tick();
+  await f.tick(SETTLE_TICKS);
   expect(count(f.calls, 'create-tun')).toBe(1);
   const enablesAfterStart = count(f.calls, 'enable');
 
@@ -503,7 +526,7 @@ test('without any UI client the loop attaches the TUN from Core state', async ()
   f.setInstances([officeInstance()]);
   f.setAggregatedRoutes(['10.144.144.0/24', '192.168.9.0/24']);
   await f.startConfigClient();
-  await f.tick();
+  await f.tick(SETTLE_TICKS);
 
   expect(f.calls).toContain('set-tun:inst-a:42');
   expect(f.calls.indexOf('enable')).toBeLessThan(f.calls.indexOf('create-tun'));
@@ -524,7 +547,7 @@ test('without any UI client the loop attaches the TUN from Core state', async ()
   expect(snapshot.vpnConfig.routes).toEqual(['10.144.144.0/24', '192.168.9.0/24']);
   expect(snapshot.configServerConnected).toBe(true);
   expect(snapshot.lastError).toBe('');
-  const published = JSON.parse(f.eventPayloads('runtime_snapshot')[0] as string);
+  const published = JSON.parse(f.eventPayloads('runtime_snapshot').at(-1) as string);
   expect(published.activeVpnInstanceId).toBe('inst-a');
   expect(published.vpnConfig.addresses).toEqual(['10.144.144.1/24']);
 });
@@ -535,7 +558,7 @@ test('Core DNS servers are installed into the TUN config', async () => {
   f.setAggregatedRoutes(['10.144.144.0/24']);
   f.setTunDnsServers(['10.144.144.3']);
   await f.startConfigClient();
-  await f.tick();
+  await f.tick(SETTLE_TICKS);
   expect(f.configs[0].dnsAddresses).toEqual(['10.144.144.3']);
   await f.request('stopRuntime');
 });
@@ -551,18 +574,18 @@ test('the TUN waits for a usable instance address and drops unusable routes', as
 
   f.setInstanceAddress('inst-a', '10.144.144.7/24');
   f.setAggregatedRoutes(['10.144.144.0/24', '2001:db8::/64']);
-  await f.tick();
+  await f.tick(SETTLE_TICKS);
   expect(f.configs[f.configs.length - 1].addresses[0].address.address).toBe('10.144.144.7');
   expect(routeCidrs(f.configs[f.configs.length - 1])).toEqual(['10.144.144.0/24']);
   await f.request('stopRuntime');
 });
 
-test('a Core route change rebuilds the TUN once and an unchanged config stays', async () => {
+test('a Core route addition rebuilds the TUN once it settles and an unchanged config stays', async () => {
   const f = fixture();
   f.setInstances([officeInstance()]);
   f.setAggregatedRoutes(['10.144.144.0/24']);
   await f.startConfigClient();
-  await f.tick();
+  await f.tick(SETTLE_TICKS);
   expect(count(f.calls, 'create-tun')).toBe(1);
 
   const destroysAfterAttach = count(f.calls, 'destroy-tun');
@@ -571,14 +594,122 @@ test('a Core route change rebuilds the TUN once and an unchanged config stays', 
   expect(count(f.calls, 'destroy-tun')).toBe(destroysAfterAttach);
   expect(f.eventPayloads('vpn_started')).toHaveLength(1);
 
+  // Every rebuild flashes the system VPN icon: an addition waits until Core
+  // stops changing the routes, so a burst of additions is a single rebuild.
   f.setAggregatedRoutes(['10.144.144.0/24', '10.20.0.0/16']);
+  await f.tick();
+  f.setAggregatedRoutes(['10.144.144.0/24', '10.20.0.0/16', '10.21.0.0/16']);
+  await f.tick(SETTLE_TICKS - 1);
+  expect(count(f.calls, 'create-tun')).toBe(1);
   await f.tick();
   expect(count(f.calls, 'create-tun')).toBe(2);
   expect(count(f.calls, 'destroy-tun')).toBe(destroysAfterAttach + 1);
-  expect(routeCidrs(f.configs[f.configs.length - 1])).toEqual(['10.144.144.0/24', '10.20.0.0/16']);
+  expect(routeCidrs(f.configs[f.configs.length - 1])).toEqual(['10.144.144.0/24', '10.20.0.0/16', '10.21.0.0/16']);
   expect(f.eventPayloads('vpn_started')).toHaveLength(2);
 
   await f.tick(2);
+  expect(count(f.calls, 'create-tun')).toBe(2);
+  await f.request('stopRuntime');
+});
+
+test('the first interface waits until the instance learned its routes, then attaches once', async () => {
+  const f = fixture();
+  // Core publishes the own address before any peer. An interface created now
+  // would be rebuilt, flashing the VPN icon, as soon as peer subnets arrive.
+  f.setInstances([{ ...officeInstance(), learned: 0 }]);
+  f.setAggregatedRoutes(['10.144.144.0/24']);
+  await f.startConfigClient();
+  await f.tick(SETTLE_TICKS + 2);
+  expect(count(f.calls, 'create-tun')).toBe(0);
+
+  f.setLearnedRoutes('inst-a', 1); // the relay
+  await f.tick();
+  f.setLearnedRoutes('inst-a', 2); // a peer, with its subnet
+  f.setAggregatedRoutes(['10.144.144.0/24', '192.168.9.0/24']);
+  await f.tick(SETTLE_TICKS - 1);
+  expect(count(f.calls, 'create-tun')).toBe(0);
+  await f.tick();
+  expect(count(f.calls, 'create-tun')).toBe(1);
+  expect(routeCidrs(f.configs[0])).toEqual(['10.144.144.0/24', '192.168.9.0/24']);
+  await f.tick(4);
+  expect(f.eventPayloads('vpn_started')).toHaveLength(1);
+  await f.request('stopRuntime');
+});
+
+test('an instance that learns no routes still attaches after the maximum wait', async () => {
+  const f = fixture();
+  f.setInstances([{ ...officeInstance(), learned: 0 }]);
+  f.setAggregatedRoutes(['10.144.144.0/24']);
+  await f.startConfigClient();
+  // First seen on tick 1; the 6 s maximum wait ends on tick 13.
+  await f.tick(12);
+  expect(count(f.calls, 'create-tun')).toBe(0);
+  await f.tick();
+  expect(count(f.calls, 'create-tun')).toBe(1);
+  expect((await f.snapshot()).activeVpnInstanceId).toBe('inst-a');
+  await f.request('stopRuntime');
+});
+
+test('routes withdrawn during a network handover are held, so their return does not rebuild', async () => {
+  const f = fixture();
+  f.setInstances([officeInstance()]);
+  // Core lists the peer subnet first, so a held route is out of Core's order.
+  f.setAggregatedRoutes(['10.100.0.0/24', '10.144.144.0/24']);
+  await f.startConfigClient();
+  await f.tick(SETTLE_TICKS);
+  expect(count(f.calls, 'create-tun')).toBe(1);
+
+  // Wi-Fi to cellular: the peer reconnects over the new network and Core
+  // withdraws its subnet meanwhile (about 6 s on the reporting device).
+  f.setAggregatedRoutes(['10.144.144.0/24']);
+  await f.tick(12);
+  expect(count(f.calls, 'create-tun')).toBe(1);
+  expect((await f.snapshot()).vpnConfig.routes).toEqual(['10.100.0.0/24', '10.144.144.0/24']);
+
+  f.setAggregatedRoutes(['10.100.0.0/24', '10.144.144.0/24']);
+  await f.tick(SETTLE_TICKS);
+  expect(count(f.calls, 'create-tun')).toBe(1);
+  expect(count(f.calls, 'destroy-tun')).toBe(1);
+  expect(f.eventPayloads('vpn_started')).toHaveLength(1);
+  await f.request('stopRuntime');
+});
+
+test('a withdrawn route that does not return is dropped once the hold expires', async () => {
+  const f = fixture();
+  f.setInstances([officeInstance()]);
+  f.setAggregatedRoutes(['10.144.144.0/24', '192.168.9.0/24']);
+  await f.startConfigClient();
+  await f.tick(SETTLE_TICKS);
+
+  f.setAggregatedRoutes(['10.144.144.0/24']);
+  await f.tick();
+  f.advance(29_000);
+  await f.tick();
+  expect(count(f.calls, 'create-tun')).toBe(1);
+  await f.tick(SETTLE_TICKS);
+  expect(count(f.calls, 'create-tun')).toBe(2);
+  expect(routeCidrs(f.configs[1])).toEqual(['10.144.144.0/24']);
+  await f.tick(2);
+  expect(count(f.calls, 'create-tun')).toBe(2);
+  await f.request('stopRuntime');
+});
+
+test('a gone owner is detached at once while its replacement settles', async () => {
+  const f = fixture();
+  f.setInstances([officeInstance()]);
+  f.setAggregatedRoutes(['10.144.144.0/24']);
+  await f.startConfigClient();
+  await f.tick(SETTLE_TICKS);
+
+  f.setInstances([{ id: 'inst-b', label: 'lab-net', address: '10.144.145.1/24' }]);
+  f.setAggregatedRoutes(['10.144.145.0/24']);
+  await f.tick();
+  expect(f.eventPayloads('vpn_stopped')[0]).toMatchObject({ instanceId: 'inst-a' });
+  expect((await f.snapshot()).activeVpnInstanceId).toBe('');
+  expect(count(f.calls, 'create-tun')).toBe(1);
+
+  await f.tick(SETTLE_TICKS - 1);
+  expect((await f.snapshot()).activeVpnInstanceId).toBe('inst-b');
   expect(count(f.calls, 'create-tun')).toBe(2);
   await f.request('stopRuntime');
 });
@@ -588,7 +719,7 @@ test('a disappearing Pro instance stops the TUN', async () => {
   f.setInstances([officeInstance()]);
   f.setAggregatedRoutes(['10.144.144.0/24']);
   await f.startConfigClient();
-  await f.tick();
+  await f.tick(SETTLE_TICKS);
   const destroysAfterAttach = count(f.calls, 'destroy-tun');
 
   f.removeInstance('inst-a');
@@ -610,7 +741,7 @@ test('stopVpn stays stopped across ticks and resumeVpn applies the latest Core r
   f.setInstances([officeInstance()]);
   f.setAggregatedRoutes(['10.144.144.0/24']);
   await f.startConfigClient();
-  await f.tick();
+  await f.tick(SETTLE_TICKS);
   const destroysAfterAttach = count(f.calls, 'destroy-tun');
 
   await f.request('stopVpn');
@@ -634,11 +765,11 @@ test('stopVpn does not block a different instance that joins later', async () =>
   f.setInstances([officeInstance()]);
   f.setAggregatedRoutes(['10.144.144.0/24']);
   await f.startConfigClient();
-  await f.tick();
+  await f.tick(SETTLE_TICKS);
   await f.request('stopVpn');
 
   f.setInstances([{ id: 'inst-b', label: 'lab-net', address: '10.144.145.1/24' }]);
-  await f.tick();
+  await f.tick(SETTLE_TICKS);
   expect(f.calls).toContain('set-tun:inst-b:42');
   expect(f.configs[f.configs.length - 1].addresses[0].address.address).toBe('10.144.145.1');
   await f.request('stopRuntime');
@@ -657,7 +788,7 @@ test('stop before the first address suppresses attachment until the instance dis
   f.setInstances([]);
   await f.tick();
   f.setInstances([officeInstance()]);
-  await f.tick();
+  await f.tick(SETTLE_TICKS);
   expect((await f.snapshot()).activeVpnInstanceId).toBe('inst-a');
   expect(count(f.calls, 'create-tun')).toBe(1);
   await f.request('stopRuntime');
@@ -668,13 +799,13 @@ test('failed explicit resume rejects and leaves no reported TUN attachment', asy
   f.setInstances([officeInstance()]);
   f.setAggregatedRoutes(['10.144.144.0/24']);
   await f.startConfigClient();
-  await f.tick();
+  await f.tick(SETTLE_TICKS);
   await f.request('stopVpn');
   f.rejectNextTunCreate();
   await expect(f.request('resumeVpn')).rejects.toThrow();
   expect((await f.snapshot()).activeVpnInstanceId).toBe('');
   expect((await f.snapshot()).vpnConfig).toBe(null);
-  await f.tick();
+  await f.tick(SETTLE_TICKS);
   expect((await f.snapshot()).activeVpnInstanceId).toBe('inst-a');
   await f.request('stopRuntime');
 });
@@ -688,7 +819,7 @@ test('the loop prefers the instance Core reported as started last', async () => 
   f.setAggregatedRoutes(['10.144.144.0/24', '10.144.145.0/24']);
   await f.startConfigClient();
   f.publishRunEvent('inst-b', 'lab-net');
-  await f.tick();
+  await f.tick(SETTLE_TICKS);
   expect(f.calls).toContain('set-tun:inst-b:42');
   expect(f.eventPayloads('config_server')).toHaveLength(1);
   await f.request('stopRuntime');
@@ -699,7 +830,7 @@ test('an unchanged state publishes no further snapshots but a late reader still 
   f.setInstances([officeInstance()]);
   f.setAggregatedRoutes(['10.144.144.0/24']);
   await f.startConfigClient();
-  await f.tick();
+  await f.tick(SETTLE_TICKS);
   const published = f.eventPayloads('runtime_snapshot').length;
   await f.tick(4);
   expect(f.eventPayloads('runtime_snapshot')).toHaveLength(published);
@@ -720,7 +851,7 @@ test('an unusable Core snapshot neither fabricates a detached state nor tears th
   f.setInstances([officeInstance()]);
   f.setAggregatedRoutes(['10.144.144.0/24']);
   await f.startConfigClient();
-  await f.tick();
+  await f.tick(SETTLE_TICKS);
   const destroysAfterAttach = count(f.calls, 'destroy-tun');
 
   f.setCorruptedProInstances('{"broken"');
@@ -752,7 +883,7 @@ test('a failed native connection probe cannot become a cached authoritative snap
   f.setInstances([officeInstance()]);
   f.setAggregatedRoutes(['10.144.144.0/24']);
   await f.startConfigClient();
-  await f.tick();
+  await f.tick(SETTLE_TICKS);
   expect((await f.snapshot()).configServerConnected).toBe(true);
   f.rejectConnectionProbe();
   await expect(f.snapshot()).rejects.toThrow();
@@ -770,7 +901,7 @@ test('a rejected setTunFd never reports a fake attachment', async () => {
   f.setAggregatedRoutes(['10.144.144.0/24']);
   f.rejectSetTunFd();
   await f.startConfigClient();
-  await f.tick();
+  await f.tick(SETTLE_TICKS);
   expect(f.ability.lastError).toContain('setTunFd failed');
   const snapshot = await f.snapshot();
   expect(snapshot.activeVpnInstanceId).toBe('');
@@ -784,8 +915,10 @@ test('a delayed TUN create cannot survive extension shutdown', async () => {
   f.setInstances([officeInstance()]);
   f.setAggregatedRoutes(['10.144.144.0/24']);
   await f.startConfigClient();
+  await f.tick(SETTLE_TICKS - 1);
   const pendingCreate = f.deferTunCreate();
   await f.fireTick();
+  expect(f.calls).toContain('create-tun');
   expect(f.calls).not.toContain('set-tun:inst-a:42');
 
   f.ability.onDestroy();
@@ -806,7 +939,7 @@ test('a failing TUN create never reports an attach and is retried by the next ti
   f.setAggregatedRoutes(['10.144.144.0/24']);
   f.rejectNextTunCreate();
   await f.startConfigClient();
-  await f.tick();
+  await f.tick(SETTLE_TICKS);
   expect(count(f.calls, 'create-tun')).toBe(1);
   expect(f.calls).not.toContain('set-tun:inst-a:42');
   expect(f.ability.lastError).toContain('platform refused');
@@ -935,7 +1068,7 @@ test('a per-socket protection failure keeps the autonomous runtime served', asyn
   f.setAggregatedRoutes(['10.144.144.0/24']);
   f.setProtect(async () => { throw new Error('protect failed'); });
   await f.startConfigClient();
-  await f.tick();
+  await f.tick(SETTLE_TICKS);
   f.send();
   await drain();
   expect(f.acks).toEqual([{ requestId: '1', success: false }]);
@@ -951,7 +1084,7 @@ test('TUN-only stop keeps config client protection working; runtime restart is s
     f.setInstances([officeInstance()]);
     f.setAggregatedRoutes(['10.144.144.0/24']);
     await f.startConfigClient();
-    await f.tick();
+    await f.tick(SETTLE_TICKS);
     await f.request('stopVpn');
     f.send();
     await drain();
@@ -1004,7 +1137,7 @@ test('Core overwrite of the active UUID reattaches even when its routes are unch
   f.setInstances([officeInstance()]);
   f.setAggregatedRoutes(['10.144.144.0/24']);
   await f.startConfigClient();
-  await f.tick();
+  await f.tick(SETTLE_TICKS);
   f.publishRunEvent('inst-a', 'office-net');
   await f.tick();
   expect(count(f.calls, 'set-tun:inst-a:42')).toBe(2);
@@ -1019,7 +1152,7 @@ test('an invalidated attachment is not exported while the reconcile replacing it
   f.setInstances([officeInstance()]);
   f.setAggregatedRoutes(['10.144.144.0/24']);
   await f.startConfigClient();
-  await f.tick();
+  await f.tick(SETTLE_TICKS);
   expect((await f.snapshot()).activeVpnInstanceId).toBe('inst-a');
 
   // Core overwrote the same instance UUID, so the old attachment is invalid,
@@ -1047,14 +1180,14 @@ test('a removed owner detaches while its replacement waits for an address', asyn
   f.setInstances([officeInstance()]);
   f.setAggregatedRoutes(['10.144.144.0/24']);
   await f.startConfigClient();
-  await f.tick();
+  await f.tick(SETTLE_TICKS);
   f.setInstances([{ id: 'inst-b', label: 'lab-net', address: null }]);
   await f.tick();
   expect((await f.snapshot()).activeVpnInstanceId).toBe('');
   expect((await f.snapshot()).vpnConfig).toBe(null);
   expect(count(f.calls, 'destroy-tun')).toBe(2);
   f.setInstanceAddress('inst-b', '10.144.145.1/24');
-  await f.tick();
+  await f.tick(SETTLE_TICKS);
   expect((await f.snapshot()).activeVpnInstanceId).toBe('inst-b');
   await f.request('stopRuntime');
 });
@@ -1065,7 +1198,7 @@ test('snapshot reads and events preserve a legal __proto__ network label', async
   f.setCorruptedProInstances('{"__proto__":"inst-a"}');
   f.setAggregatedRoutes(['10.144.144.0/24']);
   await f.startConfigClient();
-  await f.tick();
+  await f.tick(SETTLE_TICKS);
   const snapshot = await f.snapshot();
   expect(Object.hasOwn(snapshot.instances, '__proto__')).toBe(true);
   expect(snapshot.instances['__proto__']).toBe('inst-a');

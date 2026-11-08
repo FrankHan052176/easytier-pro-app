@@ -1,5 +1,6 @@
 import { Want } from '@kit.AbilityKit';
 import { JSON } from '@kit.ArkTS';
+import { systemDateTime } from '@kit.BasicServicesKit';
 import { connection, vpnExtension, VpnExtensionAbility } from '@kit.NetworkKit';
 import easytier from 'easytier-ohrs';
 import { NativeSocketProtectionService } from '../runtime/NativeSocketProtectionService';
@@ -21,6 +22,16 @@ const DEFAULT_ROUTE_PREFIX = 32;
 // The extension owns the TUN lifecycle, so its supervision loop keeps polling
 // Core state even when no UI client is connected. UI clients only observe.
 const RUNTIME_POLL_INTERVAL_MS = 500;
+// HarmonyOS cannot update a VPN in place: every applied route change is a
+// destroy + create, which the status bar shows as a flashing VPN icon. A changed
+// config is therefore applied only once Core stopped changing it.
+const ROUTE_SETTLE_MS = 1000;
+// Peer subnets arrive after the instance's own address, so the first interface
+// waits for the instance to learn routes, but no longer than this.
+const INITIAL_ATTACH_MAX_WAIT_MS = 6000;
+// Routes withdrawn while peers reconnect (a Wi-Fi to cellular handover) stay
+// installed this long, so their return needs no rebuild.
+const ROUTE_HOLD_MS = 30000;
 
 interface CidrParts {
   address: string;
@@ -36,6 +47,11 @@ interface CoreMyNodeInfo {
   hostname?: string;
 }
 
+// One route the instance learned from the network; only their count is used.
+interface CoreRouteView {
+  peerId: number;
+}
+
 interface CoreRuntimeInstanceState {
   configId: string;
   instanceId: string;
@@ -44,6 +60,7 @@ interface CoreRuntimeInstanceState {
   tunRequired: boolean;
   tunAttached: boolean;
   myNodeInfo?: CoreMyNodeInfo;
+  routes?: Array<CoreRouteView>;
 }
 
 interface CoreTunAggregateState {
@@ -142,6 +159,8 @@ class VpnRuntimeTarget {
   routes: Array<string> = [];
   dns: Array<string> = [];
   mtu: number = DEFAULT_MTU;
+  // Routes the instance learned from the network (peers and relays).
+  learnedRoutes: number = 0;
 }
 
 export default class EasyTierVpnAbility extends VpnExtensionAbility {
@@ -181,6 +200,12 @@ export default class EasyTierVpnAbility extends VpnExtensionAbility {
   // Bumped on every supervision start/stop so a reconcile that was queued before
   // an explicit stop cannot run against the stopped runtime.
   private supervisionGeneration: number = 0;
+  // TUN rebuild throttling, see holdWithdrawnRoutes and tunChangeReady.
+  private withdrawnRoutes: Map<string, number> = new Map<string, number>();
+  private pendingTunKey: string = '';
+  private pendingTunSince: number = 0;
+  private attachWaitInstanceId: string = '';
+  private attachWaitSince: number = 0;
 
   onCreate(want: Want): void {
     let params = new RuntimeParams();
@@ -381,6 +406,7 @@ export default class EasyTierVpnAbility extends VpnExtensionAbility {
     } finally {
       await this.destroyVpnConnection();
       this.clearActiveTun();
+      this.resetTunSettling();
     }
     this.emitEvent('config_server_stopped', new EmptyPayload());
     this.refreshRuntimeSnapshot(null);
@@ -441,14 +467,15 @@ export default class EasyTierVpnAbility extends VpnExtensionAbility {
     return entry === null ? '' : entry.instanceId;
   }
 
-  // Clears the stopVpn suppression and reconciles the current Core state, so a
-  // failed exit restores the latest routes without any UI-supplied config. A
-  // runtime that was explicitly stopped is not resurrected: only a new
-  // startConfigServerClient starts supervision again.
+  // Clears the stopVpn suppression and reconciles the current Core state right
+  // away (an explicit restore skips the settle wait), so a failed exit restores
+  // the latest routes without any UI-supplied config. A runtime that was
+  // explicitly stopped is not resurrected: only a new startConfigServerClient
+  // starts supervision again.
   private async resumeVpn(): Promise<RuntimeValue> {
     this.suspendedInstanceId = '';
     try {
-      await this.performReconcile(this.supervisionGeneration);
+      await this.performReconcile(this.supervisionGeneration, true);
     } catch (error) {
       const message = this.errorMessage(error);
       this.recordError(message);
@@ -509,7 +536,7 @@ export default class EasyTierVpnAbility extends VpnExtensionAbility {
     }
   }
 
-  private async performReconcile(generation: number): Promise<void> {
+  private async performReconcile(generation: number, immediate: boolean = false): Promise<void> {
     if (!this.isSupervisionActive(generation)) {
       return;
     }
@@ -523,6 +550,7 @@ export default class EasyTierVpnAbility extends VpnExtensionAbility {
         if (this.activeVpnInstanceId.length > 0) {
           await this.detachTun();
         }
+        this.resetTunSettling();
         return;
       }
       const target = this.buildRuntimeTarget(entry, state);
@@ -533,13 +561,27 @@ export default class EasyTierVpnAbility extends VpnExtensionAbility {
           (this.activeVpnInstanceId !== entry.instanceId || this.activeTunSignature.length === 0)) {
           await this.detachTun();
         }
+        if (this.activeVpnInstanceId.length === 0) {
+          this.resetTunSettling();
+        }
         return;
       }
-      const appliedConfig = this.coreTunConfig(target);
+      if (this.activeVpnInstanceId.length > 0 && this.activeVpnInstanceId !== target.instanceId) {
+        // selectRuntimeEntry keeps a still-valid owner, so another target means
+        // the attached instance is gone: drop its interface now instead of
+        // keeping it while the replacement settles.
+        await this.detachTun();
+      }
+      const now = this.uptimeMs();
+      const appliedConfig = this.coreTunConfig(target, this.holdWithdrawnRoutes(target, now));
       const signature = this.tunSignature(target.instanceId, appliedConfig);
       if (signature === this.activeTunSignature) {
         // Unchanged config for the attached instance: strictly no-op.
         this.activeVpnInstanceName = target.instanceLabel;
+        this.pendingTunKey = '';
+        return;
+      }
+      if (!immediate && !this.tunChangeReady(target, signature, now)) {
         return;
       }
       await this.attachTun(target, appliedConfig, signature);
@@ -703,9 +745,8 @@ export default class EasyTierVpnAbility extends VpnExtensionAbility {
     }
     const address = this.instanceTunAddress(instance);
     if (address.length === 0) {
-      // Core publishes the virtual address and the requested routes from the same
-      // running info, so waiting for the address also keeps the first interface
-      // from coming up without its routes.
+      // No interface without an address. Peer subnets arrive only once the
+      // instance has learned routes; tunChangeReady waits for those.
       if (this.waitingAddressInstanceId !== entry.instanceId) {
         this.waitingAddressInstanceId = entry.instanceId;
         console.info(`[EasyTierProVpn] waiting for instance address instanceId=${entry.instanceId}`);
@@ -726,6 +767,7 @@ export default class EasyTierVpnAbility extends VpnExtensionAbility {
     target.routes = this.readCidrList(state.tun.aggregatedRoutes);
     target.dns = this.readAddressList(state.tun.dnsServers);
     target.mtu = DEFAULT_MTU;
+    target.learnedRoutes = Array.isArray(instance.routes) ? instance.routes.length : 0;
     this.waitingAddressInstanceId = '';
     return target;
   }
@@ -747,10 +789,87 @@ export default class EasyTierVpnAbility extends VpnExtensionAbility {
   }
 
   // The fingerprint of what is actually installed: instance id plus the exact
-  // addresses/routes/dns/mtu that were handed to the platform.
+  // addresses/routes/dns/mtu that were handed to the platform. Route order is not
+  // part of it: a held route that Core reports again, in Core's order, is the
+  // same installed set.
   private tunSignature(instanceId: string, appliedConfig: RuntimeVpnConfig): string {
-    return `${instanceId}|${appliedConfig.addresses.join(',')}|${appliedConfig.routes.join(',')}` +
+    const routes = appliedConfig.routes.slice().sort();
+    return `${instanceId}|${appliedConfig.addresses.join(',')}|${routes.join(',')}` +
       `|${appliedConfig.dns.join(',')}|${appliedConfig.mtu}`;
+  }
+
+  // Core's routes plus the routes the attached interface still carries although
+  // Core withdrew them, for ROUTE_HOLD_MS after the withdrawal: a peer that
+  // reconnects after a network handover brings them back without a rebuild. Only
+  // routes of the same instance and address are held.
+  private holdWithdrawnRoutes(target: VpnRuntimeTarget, now: number): Array<string> {
+    const routes = target.routes.slice();
+    const attached = this.activeTunConfig;
+    if (attached === null || this.activeVpnInstanceId !== target.instanceId ||
+      attached.address !== target.address) {
+      this.withdrawnRoutes.clear();
+      return routes;
+    }
+    const withdrawn = new Map<string, number>();
+    for (const route of attached.routes) {
+      if (target.routes.includes(route)) {
+        continue;
+      }
+      const since = this.withdrawnRoutes.get(route);
+      if (since === undefined) {
+        console.info(`[EasyTierProVpn] holding withdrawn route ${route} instanceId=${target.instanceId}`);
+      }
+      const withdrawnAt = since === undefined ? now : since;
+      // An expired route keeps its timestamp until the rebuild drops it, so it
+      // is not held again on the next tick.
+      withdrawn.set(route, withdrawnAt);
+      if (now - withdrawnAt < ROUTE_HOLD_MS) {
+        routes.push(route);
+      }
+    }
+    this.withdrawnRoutes = withdrawn;
+    return routes;
+  }
+
+  // A changed config is applied once it stayed unchanged for ROUTE_SETTLE_MS.
+  // Before the first interface the instance must also have learned routes and
+  // stopped learning new ones, because peer subnets arrive after its own
+  // address; an instance that learns none (offline) still attaches after
+  // INITIAL_ATTACH_MAX_WAIT_MS.
+  private tunChangeReady(target: VpnRuntimeTarget, signature: string, now: number): boolean {
+    if (this.activeVpnInstanceId === target.instanceId && this.activeTunConfig !== null &&
+      this.activeTunSignature.length === 0) {
+      // Core replaced the attached generation: the old fd no longer carries
+      // traffic, so its replacement cannot wait.
+      return true;
+    }
+    const attached = this.activeTunSignature.length > 0;
+    const key = attached ? signature : `${signature}#${target.learnedRoutes}`;
+    if (key !== this.pendingTunKey) {
+      this.pendingTunKey = key;
+      this.pendingTunSince = now;
+    }
+    const settled = now - this.pendingTunSince >= ROUTE_SETTLE_MS;
+    if (attached) {
+      return settled;
+    }
+    if (this.attachWaitInstanceId !== target.instanceId) {
+      this.attachWaitInstanceId = target.instanceId;
+      this.attachWaitSince = now;
+    }
+    return (settled && target.learnedRoutes > 0) || now - this.attachWaitSince >= INITIAL_ATTACH_MAX_WAIT_MS;
+  }
+
+  private resetTunSettling(): void {
+    this.withdrawnRoutes.clear();
+    this.pendingTunKey = '';
+    this.attachWaitInstanceId = '';
+  }
+
+  // Excludes deep sleep: the settle and hold windows measure time in which Core
+  // could actually sync or reconnect.
+  private uptimeMs(): number {
+    return systemDateTime.getUptime(systemDateTime.TimeType.ACTIVE);
   }
 
   private async attachTun(
@@ -758,8 +877,6 @@ export default class EasyTierVpnAbility extends VpnExtensionAbility {
     appliedConfig: RuntimeVpnConfig,
     signature: string,
   ): Promise<void> {
-    const replacedInstanceId = this.activeVpnInstanceId;
-    const replacedInstanceName = this.activeVpnInstanceName;
     try {
       await this.prepareSocketProtection();
       if (this.shuttingDown) {
@@ -769,11 +886,9 @@ export default class EasyTierVpnAbility extends VpnExtensionAbility {
       const fd = await this.socketProtection.runConnectionOperation(async (): Promise<number> => {
         const vpnConnection = await this.createVpnConnection();
         await vpnConnection.destroy();
-        if (replacedInstanceId.length > 0 && replacedInstanceId !== target.instanceId) {
-          this.emitEvent('vpn_stopped', new VpnStoppedPayload(replacedInstanceName, replacedInstanceId));
-        }
-        // The previous interface is gone from here on, so stop reporting it as
-        // attached before the replacement exists.
+        // Only the same instance's interface is replaced here (performReconcile
+        // already detached a gone owner). The previous interface is gone from
+        // here on, so stop reporting it as attached before the replacement exists.
         this.clearActiveTun();
         return vpnConnection.create(config);
       });
@@ -791,9 +906,11 @@ export default class EasyTierVpnAbility extends VpnExtensionAbility {
       this.activeVpnInstanceName = target.instanceLabel;
       this.activeTunSignature = signature;
       this.activeTunConfig = appliedConfig;
+      this.pendingTunKey = '';
+      this.attachWaitInstanceId = '';
       console.info(
         `[EasyTierProVpn] vpn started instanceId=${target.instanceId} label=${target.instanceLabel} ` +
-        `fd=${fd} address=${target.address} routes=${target.routes.length}`,
+        `fd=${fd} address=${target.address} routes=${appliedConfig.routes.length}`,
       );
       this.emitEvent('vpn_started', new VpnStartedPayload(target.instanceLabel, target.instanceId, fd));
     } catch (error) {
@@ -809,6 +926,7 @@ export default class EasyTierVpnAbility extends VpnExtensionAbility {
     const instanceName = this.activeVpnInstanceName;
     await this.destroyVpnConnection();
     this.clearActiveTun();
+    this.resetTunSettling();
     if (instanceId.length > 0) {
       console.info(`[EasyTierProVpn] vpn stopped instanceId=${instanceId}`);
       this.emitEvent('vpn_stopped', new VpnStoppedPayload(instanceName, instanceId));
@@ -955,12 +1073,13 @@ export default class EasyTierVpnAbility extends VpnExtensionAbility {
     return config;
   }
 
-  // Core state to the platform config shape the rules above consume.
-  private coreTunConfig(target: VpnRuntimeTarget): RuntimeVpnConfig {
+  // Core state plus held routes to the platform config shape the rules above
+  // consume.
+  private coreTunConfig(target: VpnRuntimeTarget, routes: Array<string>): RuntimeVpnConfig {
     const derived = new RuntimeVpnConfig();
     derived.addresses = [target.address];
     derived.address = target.address;
-    derived.routes = target.routes.slice();
+    derived.routes = routes;
     derived.dns = target.dns.slice();
     derived.mtu = target.mtu;
     return derived;
