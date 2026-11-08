@@ -1,11 +1,31 @@
 part of 'console_auth_service.dart';
 
 abstract class AuthService {
+  Future<WorkspacePreferences> loadWorkspacePreferences(String accountId);
+
+  Future<void> saveWorkspacePreferences(
+    String accountId,
+    WorkspacePreferences preferences,
+  );
+
+  Future<ConsoleUser> fetchCurrentUser(String accessToken);
+
+  Future<void> authorizeDeviceWorkspace({
+    required String accessToken,
+    required String sourceWorkspaceId,
+    required String deviceId,
+    required String targetWorkspaceId,
+  });
+
   Future<AuthSession?> restoreSession();
 
   Future<DeviceAuthInfo> startDeviceAuth();
 
-  Future<AuthSession> completeDeviceAuth(DeviceAuthInfo info);
+  Future<AuthSession> completeDeviceAuth(
+    DeviceAuthInfo info, {
+    Future<bool> Function()? waitForForeground,
+    int Function()? lifecycleGeneration,
+  });
 
   Future<List<ConsoleNetwork>> fetchNetworks({
     required String accessToken,
@@ -76,6 +96,7 @@ abstract class AuthService {
   Future<CoreBootstrapConfig> prepareCoreBootstrap({
     required String accessToken,
     required String workspaceId,
+    String? enrollmentKeyId,
   });
 
   Future<void> logout();

@@ -1,0 +1,732 @@
+diff --git a/easytier-contrib/easytier-android-jni/kotlin/com/easytier/jni/EasyTierJNI.kt b/easytier-contrib/easytier-android-jni/kotlin/com/easytier/jni/EasyTierJNI.kt
+index ccc2410d..f1d9f218 100644
+--- a/easytier-contrib/easytier-android-jni/kotlin/com/easytier/jni/EasyTierJNI.kt
++++ b/easytier-contrib/easytier-android-jni/kotlin/com/easytier/jni/EasyTierJNI.kt
+@@ -20,6 +20,16 @@ object EasyTierJNI {
+      */
+     @JvmStatic external fun setTunFd(instanceName: String, fd: Int): Int
+ 
++    /** 返回实例 UUID JSON 数组对应的共享 TUN 配置和被拒绝的成员。 */
++    @JvmStatic external fun getMobileTunConfig(instanceIdsJson: String): String?
++
++    /**
++     * 将调用方持有的 TUN 接入多个实例，返回实际配置和被拒绝的成员。
++     * instanceIdsJson 为 null 时选择全部运行中的 TUN 实例。
++     * fd <= 0 时等待全部成员分离；成功返回后调用方才能关闭旧 fd。
++     */
++    @JvmStatic external fun attachMobileTunFd(fd: Int, instanceIdsJson: String?): String?
++
+     /**
+      * 解析配置字符串
+      * @param config TOML 格式的配置字符串
+diff --git a/easytier-contrib/easytier-android-jni/src/lib.rs b/easytier-contrib/easytier-android-jni/src/lib.rs
+index 1b9e0097..976605d0 100644
+--- a/easytier-contrib/easytier-android-jni/src/lib.rs
++++ b/easytier-contrib/easytier-android-jni/src/lib.rs
+@@ -6,6 +6,8 @@
+ //!
+ //! Network management APIs:
+ //! - `setTunFd(instanceName, fd)`: attach an Android TUN fd to an instance.
++//! - `getMobileTunConfig(instanceIdsJson)`: aggregate shared mobile TUN settings.
++//! - `attachMobileTunFd(fd, instanceIdsJson)`: attach a TUN to multiple instances.
+ //! - `parseConfig(config)`: validate TOML config text.
+ //! - `runNetworkInstance(config)`: start a local network instance.
+ //! - `retainNetworkInstance(instanceNames)`: retain named instances and stop the rest.
+@@ -55,6 +57,33 @@ pub extern "system" fn Java_com_easytier_jni_EasyTierJNI_setTunFd(
+     network_api::set_tun_fd_jni(env, class, inst_name, fd)
+ }
+ 
++/// Return shared TUN settings for a JSON array of instance UUID strings.
++/// On failure returns null and throws `RuntimeException`.
++#[unsafe(no_mangle)]
++pub extern "system" fn Java_com_easytier_jni_EasyTierJNI_getMobileTunConfig(
++    env: JNIEnv,
++    _class: JClass,
++    instance_ids_json: JString,
++) -> jstring {
++    logger::init();
++    network_api::mobile_tun_jni(env, instance_ids_json, None)
++}
++
++/// Attach one caller-owned TUN fd and return accepted members and settings.
++/// Null IDs select all running TUN instances; `fd <= 0` detaches all members.
++/// Wait for detach to succeed before closing the descriptor. On failure
++/// returns null and throws `RuntimeException`.
++#[unsafe(no_mangle)]
++pub extern "system" fn Java_com_easytier_jni_EasyTierJNI_attachMobileTunFd(
++    env: JNIEnv,
++    _class: JClass,
++    fd: jint,
++    instance_ids_json: JString,
++) -> jstring {
++    logger::init();
++    network_api::mobile_tun_jni(env, instance_ids_json, Some(fd))
++}
++
+ /// Validate a TOML network config string.
+ ///
+ /// Java signature:
+diff --git a/easytier-contrib/easytier-android-jni/src/network_api.rs b/easytier-contrib/easytier-android-jni/src/network_api.rs
+index 7d11b106..a6058281 100644
+--- a/easytier-contrib/easytier-android-jni/src/network_api.rs
++++ b/easytier-contrib/easytier-android-jni/src/network_api.rs
+@@ -38,6 +38,49 @@ pub(crate) fn set_tun_fd_jni(
+     }
+ }
+ 
++pub(crate) fn mobile_tun_jni(
++    mut env: JNIEnv,
++    instance_ids_json: JString,
++    fd: Option<jint>,
++) -> jstring {
++    let ids = if instance_ids_json.is_null() {
++        None
++    } else {
++        match jstring_to_cstring(&mut env, &instance_ids_json) {
++            Ok(ids) => Some(ids),
++            Err(error) => {
++                throw_exception(&mut env, &format!("Invalid instance IDs: {error}"));
++                return ptr::null_mut();
++            }
++        }
++    };
++    let ids_ptr = ids.as_ref().map_or(ptr::null(), |ids| ids.as_ptr());
++    unsafe {
++        let response = match fd {
++            Some(fd) => easytier_ffi::attach_mobile_tun_fd(fd, ids_ptr),
++            None => easytier_ffi::get_mobile_tun_config(ids_ptr),
++        };
++        if response.is_null() {
++            if let Some(error) = get_last_error() {
++                throw_exception(&mut env, &error);
++            }
++            return ptr::null_mut();
++        }
++        let json = CStr::from_ptr(response).to_string_lossy().into_owned();
++        free_string(response);
++        match env.new_string(json) {
++            Ok(value) => value.into_raw(),
++            Err(error) => {
++                throw_exception(
++                    &mut env,
++                    &format!("Failed to create mobile TUN JSON: {error}"),
++                );
++                ptr::null_mut()
++            }
++        }
++    }
++}
++
+ pub(crate) fn parse_config_jni(mut env: JNIEnv, _class: JClass, config: JString) -> jint {
+     let config_cstr = match jstring_to_cstring(&mut env, &config) {
+         Ok(cstr) => cstr,
+diff --git a/easytier-contrib/easytier-ffi/src/lib.rs b/easytier-contrib/easytier-ffi/src/lib.rs
+index 6c332c89..1e4f8078 100644
+--- a/easytier-contrib/easytier-ffi/src/lib.rs
++++ b/easytier-contrib/easytier-ffi/src/lib.rs
+@@ -12,6 +12,8 @@
+ //! - `list_instance`: list running instance names and IDs.
+ //! - `collect_network_infos`: collect running instance info as key/value pairs.
+ //! - `set_tun_fd`: attach a TUN file descriptor to a named instance.
++//! - `get_mobile_tun_config`: aggregate mobile TUN settings for instance IDs.
++//! - `attach_mobile_tun_fd`: attach one mobile TUN to a set of instances.
+ //! - `call_json_rpc`: call an exposed EasyTier RPC service with JSON payload.
+ //!
+ //! Config server client APIs:
+@@ -36,6 +38,7 @@ mod data_plane;
+ mod error;
+ mod instance_api;
+ mod json_rpc;
++mod mobile_tun;
+ mod state;
+ mod strings;
+ mod types;
+@@ -196,6 +199,51 @@ pub unsafe extern "C" fn set_tun_fd(inst_name: *const c_char, fd: c_int) -> c_in
+     unsafe { instance_api::set_tun_fd(inst_name, fd) }
+ }
+ 
++/// Get shared mobile TUN settings for a JSON array of instance UUID strings.
++///
++/// Uses the same instance manager as local and config-server instances. The
++/// returned JSON contains `instance_ids`, `addresses`, `routes`, `dns`,
++/// `search_domains`, and
++/// per-member `rejected` errors. Conflicting members do not displace unchanged
++/// attached members. Only Android and iOS support this operation.
++///
++/// Returns an allocated JSON string, or null on failure. Release it with
++/// `free_string`; retrieve failures with `get_error_msg` on the same thread.
++/// Do not call this from a config-server event callback.
++///
++/// # Safety
++/// `instance_ids_json` must point to a NUL-terminated UTF-8 JSON array.
++#[cfg_attr(feature = "c-abi", unsafe(no_mangle))]
++pub unsafe extern "C" fn get_mobile_tun_config(instance_ids_json: *const c_char) -> *mut c_char {
++    unsafe { mobile_tun::get_config(instance_ids_json) }
++}
++
++/// Attach a shared mobile TUN and wait for its members to finish attaching.
++///
++/// `instance_ids_json` is a JSON array of UUID strings; null selects all running
++/// TUN-enabled instances. An empty array attaches no members. `fd <= 0` detaches
++/// every member. Positive descriptors remain owned by the caller, who must
++/// detach them before closing. A successful replacement also releases the
++/// previously attached descriptor. Rejected and deselected members are detached;
++/// this does not stop or delete network instances.
++/// Serialize calls with host VPN reconfiguration. Do not invoke this from a
++/// config-server event callback. Only Android and iOS support this operation.
++///
++/// Returns the actual accepted configuration and rejected members in the same
++/// JSON shape as `get_mobile_tun_config`, or null on failure. Release the result
++/// with `free_string`; retrieve failures with `get_error_msg` on the same thread.
++///
++/// # Safety
++/// `instance_ids_json`, when non-null, must point to a NUL-terminated UTF-8 JSON
++/// array. A positive `fd` must be a valid TUN descriptor retained by the caller.
++#[cfg_attr(feature = "c-abi", unsafe(no_mangle))]
++pub unsafe extern "C" fn attach_mobile_tun_fd(
++    fd: c_int,
++    instance_ids_json: *const c_char,
++) -> *mut c_char {
++    unsafe { mobile_tun::attach(fd, instance_ids_json) }
++}
++
+ /// Call an exposed EasyTier RPC method using protobuf JSON.
+ ///
+ /// This generic bridge intentionally excludes instance lifecycle management
+diff --git a/easytier-contrib/easytier-ffi/src/mobile_tun.rs b/easytier-contrib/easytier-ffi/src/mobile_tun.rs
+new file mode 100644
+index 00000000..bb675d90
+--- /dev/null
++++ b/easytier-contrib/easytier-ffi/src/mobile_tun.rs
+@@ -0,0 +1,115 @@
++use std::ffi::{CStr, CString, c_char, c_int};
++
++use uuid::Uuid;
++
++use crate::{config_server::in_config_server_callback, error::set_error_msg};
++
++unsafe fn instance_ids(value: *const c_char) -> Result<Option<Vec<Uuid>>, String> {
++    if value.is_null() {
++        return Ok(None);
++    }
++    let value = unsafe { CStr::from_ptr(value) }
++        .to_str()
++        .map_err(|error| format!("invalid instance IDs: {error}"))?;
++    serde_json::from_str(value)
++        .map(Some)
++        .map_err(|error| format!("invalid instance IDs: {error}"))
++}
++
++fn response(result: Result<String, String>) -> *mut c_char {
++    match result.and_then(|json| CString::new(json).map_err(|error| error.to_string())) {
++        Ok(json) => json.into_raw(),
++        Err(error) => {
++            set_error_msg(&error);
++            std::ptr::null_mut()
++        }
++    }
++}
++
++pub(crate) unsafe fn get_config(instance_ids_json: *const c_char) -> *mut c_char {
++    response((|| {
++        if in_config_server_callback() {
++            return Err("cannot get mobile TUN config from config server callback".to_owned());
++        }
++        let ids = unsafe { instance_ids(instance_ids_json) }?
++            .ok_or_else(|| "instance IDs must not be null".to_owned())?;
++        #[cfg(any(target_os = "android", target_os = "ios"))]
++        {
++            let context = crate::state::ffi_context();
++            let config =
++                context
++                    .runtime
++                    .block_on(easytier::instance::factory::get_mobile_tun_config(
++                        &context.manager,
++                        &ids,
++                    ));
++            serde_json::to_string(&config).map_err(|error| error.to_string())
++        }
++        #[cfg(not(any(target_os = "android", target_os = "ios")))]
++        {
++            let _ = ids;
++            Err("mobile TUN configuration is unavailable on this platform".to_owned())
++        }
++    })())
++}
++
++pub(crate) unsafe fn attach(fd: c_int, instance_ids_json: *const c_char) -> *mut c_char {
++    response((|| {
++        if in_config_server_callback() {
++            return Err("cannot attach mobile TUN from config server callback".to_owned());
++        }
++        let ids = unsafe { instance_ids(instance_ids_json) }?;
++        let context = crate::state::ffi_context();
++        context.runtime.block_on(async {
++            // Config-server mutations remove members before awaiting their stop.
++            // Share their transaction lock so detach also waits for those fds.
++            let _mutation = context.manager.mutation_lock().lock_owned().await;
++            #[cfg(any(target_os = "android", target_os = "ios"))]
++            {
++                let config = easytier::instance::factory::attach_mobile_tun_fd(
++                    &context.manager,
++                    fd,
++                    ids.as_deref(),
++                )
++                .await
++                .map_err(|error| format!("{error:#}"))?;
++                serde_json::to_string(&config).map_err(|error| error.to_string())
++            }
++            #[cfg(not(any(target_os = "android", target_os = "ios")))]
++            {
++                let _ = (fd, ids);
++                Err("mobile TUN attachment is unavailable on this platform".to_owned())
++            }
++        })
++    })())
++}
++
++#[cfg(all(test, not(any(target_os = "android", target_os = "ios"))))]
++mod tests {
++    #[test]
++    fn attachment_waits_for_instance_mutation() {
++        let lock = crate::state::ffi_context().manager.mutation_lock();
++        let mutation = lock.blocking_lock();
++        let (entered, started) = std::sync::mpsc::channel();
++        let (completed, finished) = std::sync::mpsc::channel();
++        let thread = std::thread::spawn(move || {
++            entered.send(()).unwrap();
++            let result = unsafe { super::attach(0, std::ptr::null()) };
++            // Desktop rejects the operation, after respecting the mutation lock.
++            completed.send(result.is_null()).unwrap();
++        });
++        started.recv().unwrap();
++        assert!(
++            finished
++                .recv_timeout(std::time::Duration::from_millis(50))
++                .is_err()
++        );
++        drop(mutation);
++        assert!(
++            finished
++                .recv_timeout(std::time::Duration::from_secs(5))
++                .unwrap()
++        );
++        thread.join().unwrap();
++    }
++}
+diff --git a/easytier-contrib/easytier-ffi/src/tests.rs b/easytier-contrib/easytier-ffi/src/tests.rs
+index c008a66f..a6d68bad 100644
+--- a/easytier-contrib/easytier-ffi/src/tests.rs
++++ b/easytier-contrib/easytier-ffi/src/tests.rs
+@@ -84,6 +84,35 @@ fn take_last_error() -> Option<String> {
+     }
+ }
+ 
++#[test]
++fn mobile_tun_rejects_invalid_ids_and_callback_reentry() {
++    unsafe {
++        assert!(get_mobile_tun_config(std::ptr::null()).is_null());
++        assert!(take_last_error().unwrap().contains("must not be null"));
++        for invalid in ["null", "{}", r#"["not-a-uuid"]"#] {
++            let invalid = CString::new(invalid).unwrap();
++            assert!(get_mobile_tun_config(invalid.as_ptr()).is_null());
++            assert!(take_last_error().unwrap().contains("invalid instance IDs"));
++            assert!(attach_mobile_tun_fd(0, invalid.as_ptr()).is_null());
++            assert!(take_last_error().unwrap().contains("invalid instance IDs"));
++        }
++        let _scope = ConfigServerCallbackScope::enter();
++        let ids = c"[]";
++        assert!(get_mobile_tun_config(ids.as_ptr()).is_null());
++        assert!(
++            take_last_error()
++                .unwrap()
++                .contains("config server callback")
++        );
++        assert!(attach_mobile_tun_fd(0, std::ptr::null()).is_null());
++        assert!(
++            take_last_error()
++                .unwrap()
++                .contains("config server callback")
++        );
++    }
++}
++
+ fn free_key_value_pairs(infos: &[KeyValuePair]) {
+     for info in infos {
+         free_string(info.key);
+diff --git a/easytier/src/instance/factory/mobile_tun.rs b/easytier/src/instance/factory/mobile_tun.rs
+index 1327a467..873617f6 100644
+--- a/easytier/src/instance/factory/mobile_tun.rs
++++ b/easytier/src/instance/factory/mobile_tun.rs
+@@ -16,6 +16,7 @@ pub struct MobileTunConfig {
+     pub addresses: Vec<String>,
+     pub routes: Vec<String>,
+     pub dns: Option<String>,
++    pub search_domains: Vec<String>,
+     pub rejected: Vec<MobileTunMemberError>,
+ }
+
+@@ -30,7 +31,7 @@ struct MobileTunMember {
+     instance_id: uuid::Uuid,
+     claims: SharedIfConfigClaims,
+     current_claims: Option<SharedIfConfigClaims>,
+-    dns: bool,
++    dns_zone: Option<String>,
+ }
+
+ #[cfg(any(mobile, test))]
+@@ -69,7 +70,7 @@ fn select_members(
+     let mut accepted = Vec::new();
+     for member in members {
+         let mut claims = member.claims.clone();
+-        if member.dns {
++        if member.dns_zone.is_some() {
+             claims.ipv4_routes.insert(magic_dns_route());
+         }
+         if let Err(error) = ifcfg.ensure_disjoint(member.instance_id, &claims) {
+@@ -96,6 +97,7 @@ fn config_for_members(
+     };
+     let mut addresses = BTreeSet::new();
+     let mut routes = BTreeSet::new();
++    let mut search_domains = BTreeSet::new();
+     for member in members {
+         config.instance_ids.push(member.instance_id);
+         for address in &member.claims.ipv4_addresses {
+@@ -116,8 +118,9 @@ fn config_for_members(
+                 routes.insert(format!("{:#}", route.network()));
+             }
+         }
+-        if member.dns {
++        if let Some(zone) = &member.dns_zone {
+             config.dns = Some(crate::instance::dns_server::MAGIC_DNS_FAKE_IP.to_owned());
++            search_domains.insert(zone.clone());
+             routes.insert(format!(
+                 "{}/32",
+                 crate::instance::dns_server::MAGIC_DNS_FAKE_IP
+@@ -127,9 +130,28 @@ fn config_for_members(
+     config.instance_ids.sort();
+     config.addresses = addresses.into_iter().collect();
+     config.routes = routes.into_iter().collect();
++    config.search_domains = search_domains.into_iter().collect();
+     config
+ }
+ 
++#[cfg(any(mobile, test))]
++async fn detach_unselected_members<F, Fut>(
++    all_ids: &[uuid::Uuid],
++    members: &[MobileTunMember],
++    mut detach: F,
++) -> anyhow::Result<()>
++where
++    F: FnMut(uuid::Uuid) -> Fut,
++    Fut: std::future::Future<Output = anyhow::Result<()>>,
++{
++    for &id in all_ids {
++        if !members.iter().any(|member| member.instance_id == id) {
++            detach(id).await?;
++        }
++    }
++    Ok(())
++}
++
+ #[cfg(mobile)]
+ async fn collect_members(
+     manager: &NativeInstanceManager,
+@@ -143,6 +165,16 @@ async fn collect_members(
+             continue;
+         }
+         let instance = manager.instance(instance_id);
++        // Starting an instance is asynchronous. It has no TUN claims yet and
++        // should be retried by the next refresh, not reported as rejected.
++        if instance.as_ref().is_some_and(|instance| {
++            matches!(
++                instance.state(),
++                CoreInstanceState::Created | CoreInstanceState::Starting
++            )
++        }) {
++            continue;
++        }
+         let runtime = instance
+             .as_ref()
+             .filter(|instance| instance.state() == CoreInstanceState::Running)
+@@ -155,14 +187,14 @@ async fn collect_members(
+             });
+             continue;
+         };
+-        let (claims, current_claims, dns) = runtime
++        let (claims, current_claims, dns_zone) = runtime
+             .mobile_tun_claims(&instance.as_ref().unwrap().packet_plane())
+             .await;
+         members.push(MobileTunMember {
+             instance_id,
+             claims,
+             current_claims,
+-            dns,
++            dns_zone,
+         });
+     }
+     (members, rejected)
+@@ -220,6 +252,12 @@ pub async fn attach_mobile_tun_fd(
+     }
+     let (members, rejected) = collect_members(manager, instance_ids.unwrap_or(&all_ids)).await;
+     let (members, mut rejected) = select_members(members, rejected);
++    // Select before detaching so unchanged members keep their priority. A
++    // rejected or deselected old member must stop borrowing the shared fd too.
++    detach_unselected_members(&all_ids, &members, |id| {
++        attach_member(manager, id, 0, false, None)
++    })
++    .await?;
+     let mut attached = Vec::new();
+     // Open once; a rejected member never replaces or tears down this shared fd.
+     for member in members {
+@@ -283,7 +321,7 @@ mod tests {
+                 ..Default::default()
+             },
+             current_claims: None,
+-            dns: false,
++            dns_zone: None,
+         }
+     }
+
+@@ -313,10 +351,30 @@ mod tests {
+         assert_eq!(config.rejected[0].instance_id, uuid::Uuid::from_u128(1));
+     }
+ 
++    #[tokio::test]
++    async fn detaches_reconfigured_conflicts_and_deselected_members() {
++        let mut changed = member(1, "10.0.2.1/24");
++        changed.current_claims = Some(member(1, "10.0.1.1/24").claims);
++        let mut unchanged = member(2, "10.0.2.2/24");
++        unchanged.current_claims = Some(unchanged.claims.clone());
++        let (selected, rejected) = select_members(vec![changed, unchanged], Vec::new());
++        let all_ids = [1, 2, 3].map(uuid::Uuid::from_u128);
++        let mut detached = Vec::new();
++        detach_unselected_members(&all_ids, &selected, |id| {
++            detached.push(id);
++            std::future::ready(Ok(()))
++        })
++        .await
++        .unwrap();
++        assert_eq!(detached, vec![all_ids[0], all_ids[2]]);
++        assert_eq!(selected[0].instance_id, all_ids[1]);
++        assert_eq!(rejected[0].instance_id, all_ids[0]);
++    }
++
+     #[test]
+     fn projects_ipv6_and_shared_dns_and_rejects_overlapping_proxy_routes() {
+         let mut first = member(1, "10.0.1.1/24");
+-        first.dns = true;
++        first.dns_zone = Some("et.net".to_owned());
+         first
+             .claims
+             .ipv4_addresses
+@@ -330,7 +388,7 @@ mod tests {
+             .ipv6_routes
+             .insert(SharedIpv6Route::new("::".parse().unwrap(), 0, Some(5)));
+         let mut second = member(2, "10.0.2.1/24");
+-        second.dns = true;
++        second.dns_zone = Some("et.net".to_owned());
+         let (members, rejected) = select_members(
+             vec![first, second, member(3, "100.100.100.101/32")],
+             Vec::new(),
+@@ -351,6 +409,7 @@ mod tests {
+             1
+         );
+         assert_eq!(config.dns.as_deref(), Some("100.100.100.101"));
++        assert_eq!(config.search_domains, vec!["et.net"]);
+         assert_eq!(config.rejected[0].instance_id, uuid::Uuid::from_u128(3));
+         let mut route_owner = member(2, "10.0.2.1/24");
+         route_owner.claims.ipv4_routes.insert(SharedIpv4Route::new(
+@@ -365,6 +424,24 @@ mod tests {
+         assert_eq!(config.rejected[0].instance_id, uuid::Uuid::from_u128(2));
+     }
+
++    #[test]
++    fn projects_only_accepted_dns_zones_and_clears_them_with_dns_disabled() {
++        let mut first = member(1, "10.0.1.1/24");
++        first.dns_zone = Some("et.net".to_owned());
++        let mut second = member(2, "10.0.2.1/24");
++        second.dns_zone = Some("nas.internal".to_owned());
++        let mut rejected = member(3, "10.0.1.2/24");
++        rejected.dns_zone = Some("rejected.internal".to_owned());
++        let (members, rejected) = select_members(vec![first, second, rejected], Vec::new());
++        let config = config_for_members(&members, rejected);
++        assert_eq!(config.search_domains, vec!["et.net", "nas.internal"]);
++
++        let config = config_for_members(&[member(1, "10.0.1.1/24")], Vec::new());
++        assert!(config.dns.is_none());
++        assert!(config.search_domains.is_empty());
++        assert!(!config.routes.contains(&"100.100.100.101/32".to_owned()));
++    }
++
+     #[test]
+     fn distinguishes_claim_conflicts_from_device_failures_through_context() {
+         let mut claims = SharedIfConfig::default();
+diff --git a/easytier/src/instance/runtime_host.rs b/easytier/src/instance/runtime_host.rs
+index 8a32be27..57dc6f5c 100644
+--- a/easytier/src/instance/runtime_host.rs
++++ b/easytier/src/instance/runtime_host.rs
+@@ -172,15 +172,17 @@ impl NativeInstanceRuntimeHost {
+     ) -> (
+         crate::instance::shared_virtual_nic::SharedIfConfigClaims,
+         Option<crate::instance::shared_virtual_nic::SharedIfConfigClaims>,
+-        bool,
++        Option<String>,
+     ) {
++        let flags = self.global_ctx.get_flags();
+         (
+             crate::instance::virtual_nic::NicCtx::mobile_tun_claims(&self.global_ctx, packet_plane)
+                 .await,
+             self.tun.current_mobile_tun_claims().await,
+-            cfg!(feature = "magic-dns")
+-                && self.global_ctx.get_flags().accept_dns
+-                && self.global_ctx.get_ipv4().is_some(),
++            (cfg!(feature = "magic-dns")
++                && flags.accept_dns
++                && self.global_ctx.get_ipv4().is_some())
++            .then(|| flags.tld_dns_zone.trim_end_matches('.').to_owned()),
+         )
+     }
+
+diff --git a/easytier/src/instance/shared_virtual_nic.rs b/easytier/src/instance/shared_virtual_nic.rs
+index 444ba7f0..becdb104 100644
+--- a/easytier/src/instance/shared_virtual_nic.rs
++++ b/easytier/src/instance/shared_virtual_nic.rs
+@@ -518,19 +518,29 @@ impl Drop for SharedVirtualNicMemberRegistration {
+         let member_id = self.member_id;
+         let registration_id = self.registration_id;
+ 
+-        SHARED_VIRTUAL_NIC_RUNTIME.spawn(async move {
+-            let mut shared_nic = shared_nic.lock().await;
+-            if let Err(err) = shared_nic
+-                .remove_member_registration_claims(member_id, registration_id)
+-                .await
+-            {
+-                tracing::warn!(
+-                    ?member_id,
+-                    ?err,
+-                    "failed to clean shared virtual nic member claims"
+-                );
+-            }
+-        });
++        SHARED_VIRTUAL_NIC_RUNTIME.spawn(cleanup_member_registration(
++            shared_nic,
++            member_id,
++            registration_id,
++        ));
++    }
++}
++
++async fn cleanup_member_registration(
++    shared_nic: Arc<Mutex<SharedVirtualNic>>,
++    member_id: SharedVirtualNicMemberId,
++    registration_id: SharedVirtualNicMemberRegistrationId,
++) {
++    let mut shared_nic = shared_nic.lock().await;
++    if let Err(err) = shared_nic
++        .remove_member_registration_claims(member_id, registration_id)
++        .await
++    {
++        tracing::warn!(
++            ?member_id,
++            ?err,
++            "failed to clean shared virtual nic member claims"
++        );
+     }
+ }
+ 
+@@ -566,6 +576,20 @@ impl SharedVirtualNicMember {
+         }
+     }
+ 
++    pub(crate) async fn shutdown(&self) {
++        self.registration
++            .member_tunnel_table
++            .unregister(self.member_id, self.registration.registration_id);
++        SHARED_VIRTUAL_NIC_RUNTIME
++            .spawn(cleanup_member_registration(
++                self.shared_nic.clone(),
++                self.member_id,
++                self.registration.registration_id,
++            ))
++            .await
++            .expect("shared virtual NIC cleanup task failed");
++    }
++
+     #[cfg(mobile)]
+     pub(crate) async fn claims(&self) -> SharedIfConfigClaims {
+         self.shared_nic.lock().await.ifcfg.claims_of(self.member_id)
+diff --git a/easytier/src/instance/shared_virtual_nic/tests.rs b/easytier/src/instance/shared_virtual_nic/tests.rs
+index e228144b..f3a4f662 100644
+--- a/easytier/src/instance/shared_virtual_nic/tests.rs
++++ b/easytier/src/instance/shared_virtual_nic/tests.rs
+@@ -7,6 +7,55 @@ use super::*;
+ const MEMBER: SharedVirtualNicMemberId = uuid::Uuid::from_u128(1);
+ const REGISTRATION: SharedVirtualNicMemberRegistrationId = uuid::Uuid::from_u128(10);
+ 
++#[tokio::test]
++async fn member_shutdown_waits_for_cleanup_and_keeps_other_members() {
++    let shared_nic = Arc::new(Mutex::new(SharedVirtualNic::new(virtual_nic_config(
++        1500, None,
++    ))));
++    let tunnel_table = shared_nic.lock().await.member_tunnel_table();
++    let members = [1, 2].map(|id| {
++        SharedVirtualNicMember::new(
++            uuid::Uuid::from_u128(id),
++            1500,
++            shared_nic.clone(),
++            Arc::new(Notify::new()),
++            tunnel_table.clone(),
++        )
++    });
++    let mut guard = shared_nic.lock().await;
++    for member in &members {
++        guard
++            .member_registrations
++            .insert(member.member_id, member.registration.registration_id);
++    }
++
++    let mut shutdown = Box::pin(members[0].shutdown());
++    assert!(futures::poll!(shutdown.as_mut()).is_pending());
++    assert!(
++        guard
++            .member_registrations
++            .contains_key(&members[0].member_id)
++    );
++    drop(guard);
++    tokio::time::timeout(std::time::Duration::from_secs(5), shutdown)
++        .await
++        .unwrap();
++
++    let guard = shared_nic.lock().await;
++    assert!(
++        !guard
++            .member_registrations
++            .contains_key(&members[0].member_id)
++    );
++    assert_eq!(
++        guard.member_registrations.get(&members[1].member_id),
++        Some(&members[1].registration.registration_id)
++    );
++    drop(guard);
++    members[1].shutdown().await;
++    assert!(shared_nic.lock().await.member_registrations.is_empty());
++}
++
+ #[cfg(target_os = "windows")]
+ #[tokio::test]
+ #[ignore = "requires Administrator privileges and wintun.dll"]
+diff --git a/easytier/src/instance/virtual_nic.rs b/easytier/src/instance/virtual_nic.rs
+index f37266f7..1a5c7f0d 100644
+--- a/easytier/src/instance/virtual_nic.rs
++++ b/easytier/src/instance/virtual_nic.rs
+@@ -1158,6 +1158,9 @@ impl NicCtx {
+         // The forwarding tasks own the TUN stream and sink. Wait until both
+         // release the device before another NIC with the same name is created.
+         self.tasks.shutdown().await;
++        if let NicBackend::Shared(member) = &self.backend {
++            member.shutdown().await;
++        }
+     }
+ 
+     async fn tun_ifname(&self) -> Result<String, Error> {

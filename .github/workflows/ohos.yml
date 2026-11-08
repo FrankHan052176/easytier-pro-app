@@ -19,8 +19,8 @@ permissions:
 
 env:
   FLUTTER_OHOS_REPOSITORY: https://gitcode.com/CPF-Flutter/flutter_flutter.git
-  FLUTTER_OHOS_REF: 3.41.10-ohos-0.0.2-beta
-  FLUTTER_OHOS_COMMIT: eea47c62cc5ff1000db068306ffe7279d53e889b
+  FLUTTER_OHOS_REF: 3.44.9+ohos-1.0.0-beta
+  FLUTTER_OHOS_COMMIT: 744cbb4f08e577787774c04033cc19a9d318d0d2
   OHOS_COMMAND_LINE_TOOLS_VERSION: 6.1.1.280
   CODEARTS_OHPM_REGISTRY: https://devrepo.devcloud.cn-north-4.huaweicloud.com/artgalaxy/api/ohpm/cn-north-4_c07b1b38744f424b8d87a86532d38003_ohpm_1/
   CORE_HAR_PACKAGE: ${{ github.event.client_payload.package_name || 'easytier-ohrs' }}

@@ -80,11 +80,13 @@ class TokenSet {
 
 class ConsoleUser {
   const ConsoleUser({
+    this.id = '',
     required this.email,
     required this.displayName,
     required this.workspaces,
   });
 
+  final String id;
   final String email;
   final String displayName;
   final List<ConsoleWorkspace> workspaces;
@@ -99,10 +101,15 @@ class ConsoleUser {
 }
 
 class ConsoleWorkspace {
-  const ConsoleWorkspace({required this.id, required this.name});
+  const ConsoleWorkspace({
+    required this.id,
+    required this.name,
+    this.capabilities = const [],
+  });
 
   final String id;
   final String name;
+  final List<String> capabilities;
 }
 
 class ConsoleNetwork {
@@ -148,6 +155,7 @@ class NetworkDevice {
     this.ipv4,
     this.deviceId,
     this.machineId,
+    this.instanceId,
     this.os = '',
     this.osVersion = '',
     this.osDistribution = '',
@@ -163,6 +171,7 @@ class NetworkDevice {
   final String? ipv4;
   final String? deviceId;
   final String? machineId;
+  final String? instanceId;
   final String os;
   final String osVersion;
   final String osDistribution;
@@ -344,8 +353,18 @@ class ManagedDevice {
     this.osDistribution = '',
     this.lifecycleState = '',
     this.desiredState = '',
+    this.workspaceId = '',
+    this.enrollmentKeyId,
+    this.workspaceApprovalState,
+    this.workspaceAuthorizationPresent = true,
+    this.canManageNodes = true,
   });
 
+  final String workspaceId;
+  final String? enrollmentKeyId;
+  final String? workspaceApprovalState;
+  final bool workspaceAuthorizationPresent;
+  final bool canManageNodes;
   final String id;
   final String machineId;
   final String hostname;
@@ -358,7 +377,10 @@ class ManagedDevice {
   final String lifecycleState;
   final String desiredState;
 
-  bool get approved => approvalState.toLowerCase() == 'approved';
+  bool get approved =>
+      approvalState.toLowerCase() == 'approved' &&
+      workspaceAuthorizationPresent &&
+      (workspaceApprovalState == null || workspaceApprovalState == 'approved');
   bool get online => connectivityState.toLowerCase() == 'online';
   String get displayLabel {
     final label = displayName.trim();
@@ -393,8 +415,10 @@ class CoreBootstrapConfig {
     required this.bootstrapToken,
     required this.version,
     required this.configServer,
+    this.enrollmentKeyId,
   });
 
+  final String? enrollmentKeyId;
   final String bootstrapToken;
   final String version;
   final String configServer;
@@ -415,4 +439,46 @@ class AuthSession {
 
   final ConsoleUser user;
   final TokenSet tokenSet;
+}
+
+/// Local IDs only. Enrollment credentials stay in the existing runtime storage.
+class WorkspacePreferences {
+  const WorkspacePreferences({
+    this.selectedWorkspaceId,
+    this.sourceWorkspaceId,
+    this.deviceId,
+    this.enrollmentKeyId,
+  });
+
+  final String? selectedWorkspaceId;
+  final String? sourceWorkspaceId;
+  final String? deviceId;
+  final String? enrollmentKeyId;
+
+  WorkspacePreferences copyWith({
+    String? selectedWorkspaceId,
+    String? sourceWorkspaceId,
+    String? deviceId,
+    String? enrollmentKeyId,
+  }) => WorkspacePreferences(
+    selectedWorkspaceId: selectedWorkspaceId ?? this.selectedWorkspaceId,
+    sourceWorkspaceId: sourceWorkspaceId ?? this.sourceWorkspaceId,
+    deviceId: deviceId ?? this.deviceId,
+    enrollmentKeyId: enrollmentKeyId ?? this.enrollmentKeyId,
+  );
+
+  Map<String, dynamic> toJson() => {
+    'selected_workspace_id': selectedWorkspaceId,
+    'source_workspace_id': sourceWorkspaceId,
+    'device_id': deviceId,
+    'enrollment_key_id': enrollmentKeyId,
+  };
+
+  factory WorkspacePreferences.fromJson(Map<String, dynamic> json) =>
+      WorkspacePreferences(
+        selectedWorkspaceId: json['selected_workspace_id'] as String?,
+        sourceWorkspaceId: json['source_workspace_id'] as String?,
+        deviceId: json['device_id'] as String?,
+        enrollmentKeyId: json['enrollment_key_id'] as String?,
+      );
 }

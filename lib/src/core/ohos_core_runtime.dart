@@ -200,10 +200,6 @@ class OhosCoreRuntime extends AndroidCoreRuntime {
   /// UI, because the native suspension is idempotent.
   @override
   Future<void> preemptActiveVpnForExit() async {
-    _activeVpnInstanceName = null;
-    _activeVpnInstanceId = null;
-    _activeVpnConfigSignature = null;
-    _activeVpnFallbackConfig = null;
     await _methodChannel.invokeMethod<void>('stopVpn');
   }
 
@@ -299,16 +295,8 @@ class OhosCoreRuntime extends AndroidCoreRuntime {
   }
 
   void _applySnapshot(OhosRuntimeSnapshot snapshot) {
-    _activeVpnInstanceName = snapshot.activeVpnInstanceName.isEmpty
-        ? null
-        : snapshot.activeVpnInstanceName;
-    _activeVpnInstanceId = snapshot.activeVpnInstanceId.isEmpty
-        ? null
-        : snapshot.activeVpnInstanceId;
     // The Extension re-reads the current Core state for every tunnel change, so
     // this process keeps no VPN config that a later change could replay stale.
-    _activeVpnConfigSignature = null;
-    _activeVpnFallbackConfig = null;
     // The instance map of the snapshot is authoritative: rebuild the runtime
     // label aliases from it and drop name aliases that events taught before a
     // frozen UI, so a label can never resolve through an obsolete network.

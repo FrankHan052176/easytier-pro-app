@@ -12,8 +12,8 @@ permissions:
 
 env:
   FLUTTER_OHOS_REPOSITORY: https://gitcode.com/CPF-Flutter/flutter_flutter.git
-  FLUTTER_OHOS_REF: 3.41.10-ohos-0.0.2-beta
-  FLUTTER_OHOS_COMMIT: eea47c62cc5ff1000db068306ffe7279d53e889b
+  FLUTTER_OHOS_REF: 3.44.9+ohos-1.0.0-beta
+  FLUTTER_OHOS_COMMIT: 744cbb4f08e577787774c04033cc19a9d318d0d2
 
 jobs:
   linux:

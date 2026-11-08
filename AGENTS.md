@@ -31,9 +31,9 @@
 
 | 组件 | 版本或基线 |
 | --- | --- |
-| Flutter-OH | `3.41.10-ohos-0.0.2-beta`，commit `eea47c62cc5ff1000db068306ffe7279d53e889b` |
+| Flutter-OH | `3.44.9+ohos-1.0.0-beta`，commit `744cbb4f08e577787774c04033cc19a9d318d0d2` |
 | Flutter-OH 仓库 | `https://gitcode.com/CPF-Flutter/flutter_flutter.git` |
-| Dart / DevTools | Dart `3.11.5`，DevTools `2.54.1` |
+| Dart / DevTools | Dart `3.12.2`，DevTools `2.57.0` |
 | HarmonyOS Command Line Tools | `6.1.1.290`；CI 使用兼容的 `6.1.1.280` |
 | ohpm / Hvigor / Node | ohpm `6.1.2.285`，Hvigor `6.24.3`，工具包自带 Node `18.20.1` |
 | JDK | OpenJDK `17` |
@@ -58,13 +58,13 @@ java -version
 
 ```bash
 mkdir -p "$HOME/development"
-git clone --branch 3.41.10-ohos-0.0.2-beta \
+git clone --branch 3.44.9+ohos-1.0.0-beta \
   https://gitcode.com/CPF-Flutter/flutter_flutter.git \
   "$HOME/development/flutter-ohos"
 git -C "$HOME/development/flutter-ohos" rev-parse HEAD
 ```
 
-`rev-parse HEAD` 应为 `eea47c62cc5ff1000db068306ffe7279d53e889b`。若版本需要变更，应先确认 Flutter-OH、Hvigor 插件和现有 ArkTS bridge 兼容性，不能用普通 Flutter stable 替代。
+`rev-parse HEAD` 应为 `744cbb4f08e577787774c04033cc19a9d318d0d2`。若版本需要变更，应先确认 Flutter-OH、Hvigor 插件和现有 ArkTS bridge 兼容性，不能用普通 Flutter stable 替代。
 
 ### 3. 安装 HarmonyOS Command Line Tools
 

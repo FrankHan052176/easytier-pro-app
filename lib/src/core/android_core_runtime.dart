@@ -4,22 +4,10 @@ class AndroidCoreRuntime extends CorePlatformRuntime {
   AndroidCoreRuntime({
     MethodChannel? methodChannel,
     EventChannel? eventChannel,
-    String platformLabel = 'Android',
-    String fallbackHostname = 'android-device',
-    @visibleForTesting Duration? vpnRouteRefreshFastInterval,
-    @visibleForTesting Duration? vpnRouteRefreshSteadyInterval,
-    @visibleForTesting int? vpnRouteRefreshFastLimit,
+    this.platformLabel = 'Android',
+    this.fallbackHostname = 'android-device',
   }) : _methodChannel = methodChannel ?? const MethodChannel(_methodName),
-       _eventChannel = eventChannel ?? const EventChannel(_eventName),
-       _platformLabel = platformLabel,
-       _fallbackHostname = fallbackHostname,
-       _vpnRouteRefreshFastInterval =
-           vpnRouteRefreshFastInterval ?? _androidVpnRouteRefreshFastInterval,
-       _vpnRouteRefreshSteadyInterval =
-           vpnRouteRefreshSteadyInterval ??
-           _androidVpnRouteRefreshSteadyInterval,
-       _vpnRouteRefreshFastLimit =
-           vpnRouteRefreshFastLimit ?? _androidVpnRouteRefreshFastLimit {
+       _eventChannel = eventChannel ?? const EventChannel(_eventName) {
     _nativeEvents = _eventChannel.receiveBroadcastStream().listen(
       _handleNativeEvent,
       onError: (Object error) {
@@ -41,56 +29,19 @@ class AndroidCoreRuntime extends CorePlatformRuntime {
   static const String _statsRpcService = 'api.instance.StatsRpcService';
   static const Duration _androidTrafficPollInterval = Duration(seconds: 2);
   static const Duration _androidPeerStatusPollInterval = Duration(seconds: 5);
-  static const Duration _androidVpnRouteRefreshFastInterval = Duration(
-    seconds: 3,
-  );
-  static const Duration _androidVpnRouteRefreshSteadyInterval = Duration(
-    seconds: 5,
-  );
-  static const int _androidVpnRouteRefreshFastLimit = 20;
-  static const Duration _androidVpnStartMissingInstanceRetryDelay = Duration(
-    seconds: 1,
-  );
-  static const int _androidVpnStartMissingInstanceRetryLimit = 3;
-  static const Duration _androidVpnInitialRoutePollInterval = Duration(
-    milliseconds: 200,
-  );
-  static const int _androidVpnInitialRoutePollLimit = 10;
-
   final MethodChannel _methodChannel;
   final EventChannel _eventChannel;
-  final String _platformLabel;
-  final String _fallbackHostname;
-  final Duration _vpnRouteRefreshFastInterval;
-  final Duration _vpnRouteRefreshSteadyInterval;
-  final int _vpnRouteRefreshFastLimit;
   final StreamController<CoreRuntimeEvent> _events =
       StreamController<CoreRuntimeEvent>.broadcast();
 
   late final StreamSubscription<dynamic> _nativeEvents;
-  Timer? _activeVpnRefreshTimer;
-  Future<void> _vpnSerial = Future<void>.value();
-  final Map<String, Map<String, Object?>> _pendingVpnPayloads =
-      <String, Map<String, Object?>>{};
   final Map<String, String> _instanceIdsByRuntimeName = <String, String>{};
   final Map<String, String> _instanceNamesByRuntimeName = <String, String>{};
-  String? _activeVpnInstanceName;
-  String? _activeVpnInstanceId;
-  String? _activeVpnConfigSignature;
-  String? _pendingVpnStartInstanceName;
-  Map<String, Object?>? _activeVpnFallbackConfig;
-  String? _preemptedVpnName;
-  Map<String, Object?>? _preemptedVpnConfig;
-  int _activeVpnRefreshCount = 0;
+  final Map<String, String> _instanceErrorsById = <String, String>{};
   bool _vpnPrepared = false;
   bool _disposed = false;
-
-  /// Whether this process drives the native VPN interface: starting it for a
-  /// joined instance, retaining that instance and re-routing it on refresh.
-  /// A platform whose VPN service owns the tunnel in its own process overrides
-  /// this with `false`, so config-server events only refresh identity
-  /// bookkeeping and never start, retain or re-route an interface.
-  bool get drivesVpnInterfaceFromUi => true;
+  final String platformLabel;
+  final String fallbackHostname;
 
   @override
   Stream<CoreRuntimeEvent> get events => _events.stream;
@@ -120,7 +71,7 @@ class AndroidCoreRuntime extends CorePlatformRuntime {
       }
       return CoreRuntimeStartResult(
         phase: CoreRunPhase.running,
-        message: '$_platformLabel 连接引擎运行中',
+        message: 'Android 连接引擎运行中',
         machineId: machineId,
         details: 'EasyTier ${bootstrap.version}',
         coreVersion: bootstrap.version,
@@ -166,15 +117,15 @@ class AndroidCoreRuntime extends CorePlatformRuntime {
         message: '需要授权 VPN 连接',
         machineId: machineId,
         details: 'EasyTier ${bootstrap.version}',
-        lastError: '$_platformLabel 需要用户授权后才能建立虚拟网卡',
+        lastError: 'Android 需要用户授权后才能建立虚拟网卡',
         coreVersion: bootstrap.version,
       );
     }
-    unawaited(_startPendingVpns());
+    await _methodChannel.invokeMethod<void>('refreshVpn');
 
     return CoreRuntimeStartResult(
       phase: CoreRunPhase.running,
-      message: '$_platformLabel 连接引擎运行中',
+      message: 'Android 连接引擎运行中',
       machineId: machineId,
       details: 'EasyTier ${bootstrap.version}',
       coreVersion: bootstrap.version,
@@ -184,15 +135,9 @@ class AndroidCoreRuntime extends CorePlatformRuntime {
   @override
   Future<void> stop() async {
     _vpnPrepared = false;
-    _cancelActiveVpnRefresh();
-    _pendingVpnPayloads.clear();
     _instanceIdsByRuntimeName.clear();
     _instanceNamesByRuntimeName.clear();
-    _activeVpnInstanceName = null;
-    _activeVpnInstanceId = null;
-    _activeVpnConfigSignature = null;
-    _pendingVpnStartInstanceName = null;
-    _activeVpnFallbackConfig = null;
+    _instanceErrorsById.clear();
     await _methodChannel.invokeMethod<void>('stopRuntime');
   }
 
@@ -226,8 +171,8 @@ class AndroidCoreRuntime extends CorePlatformRuntime {
         instanceName,
         instances[instanceName],
       );
-      final parsed = _trafficTotalsFromJsonRpcStats(
-        response,
+      final parsed = _parseNetworkTrafficTotals(
+        CoreJsonValue.readList(response['metrics']),
         defaultRuntimeNetworkName: runtimeNetworkName,
         sampledAt: sampledAt,
       );
@@ -236,27 +181,6 @@ class AndroidCoreRuntime extends CorePlatformRuntime {
       }
     }
 
-    if (totals.isNotEmpty) {
-      return totals;
-    }
-
-    final snapshot = await _readNetworkInfoSnapshot();
-    for (final instance in snapshot.instances.values) {
-      if (!instance.running) {
-        continue;
-      }
-      final traffic = _trafficTotalsFromPeers(instance.peers);
-      if (traffic == null) {
-        continue;
-      }
-      final runtimeNetworkName = _runtimeNameForInstance(instance);
-      totals[runtimeNetworkName] = CoreNetworkTrafficTotals(
-        runtimeNetworkName: runtimeNetworkName,
-        downloadBytes: traffic.downloadBytes,
-        uploadBytes: traffic.uploadBytes,
-        sampledAt: sampledAt,
-      );
-    }
     return totals;
   }
 
@@ -267,8 +191,122 @@ class AndroidCoreRuntime extends CorePlatformRuntime {
       return false;
     }
     final snapshot = await _readNetworkInfoSnapshot();
-    return _instanceMatchingRuntimeName(snapshot, instanceName)?.running ??
-        false;
+    final instance = _instanceMatchingRuntimeName(snapshot, instanceName);
+    if (instance == null ||
+        !instance.running ||
+        _readStringList(instance.vpnConfig?['addresses']).isEmpty) {
+      return false;
+    }
+    final state = await _readVpnState();
+    final installedAddresses = _readStringList(state['addresses']);
+    return _readStringList(state['instance_ids']).contains(instance.id) &&
+        _readStringList(
+          instance.vpnConfig?['addresses'],
+        ).any(installedAddresses.contains);
+  }
+
+  Future<Map<String, Object?>> _readVpnState() async {
+    final value = await _methodChannel.invokeMethod<Map<Object?, Object?>>(
+      'getVpnState',
+    );
+    return value == null ? const {} : _stringObjectMap(value);
+  }
+
+  @override
+  Future<String?> waitForNetworkConnection(
+    String runtimeNetworkName, {
+    required Future<String?> Function() readInstanceId,
+  }) async {
+    final stopwatch = Stopwatch()..start();
+    var nextInstanceRead = Duration.zero;
+    String? id;
+    var eventCount = 0;
+    var instanceReadEventCount = 0;
+    Completer<void>? wake;
+    final subscription = events.listen((event) {
+      if (event.type == CoreRuntimeEventTypes.vpnStarted ||
+          event.type == CoreRuntimeEventTypes.vpnConfigRefreshed ||
+          event.type == CoreRuntimeEventTypes.vpnStopped ||
+          event.type == 'vpn_config_error') {
+        eventCount++;
+        if (wake case final pending?) {
+          if (!pending.isCompleted) pending.complete();
+        }
+      }
+    });
+    try {
+      connectionLoop:
+      while (stopwatch.elapsed < const Duration(seconds: 60)) {
+        final observedEvents = eventCount;
+        if (_disposed || !_vpnPrepared) {
+          throw StateError('Android VPN 未获得授权或已停止');
+        }
+        if (stopwatch.elapsed >= nextInstanceRead ||
+            eventCount != instanceReadEventCount) {
+          instanceReadEventCount = eventCount;
+          id = await readInstanceId();
+          nextInstanceRead = stopwatch.elapsed + const Duration(seconds: 1);
+        }
+        final state = await _readVpnState();
+        if (instanceReadEventCount != eventCount) continue;
+        if (id != null && id.isNotEmpty) {
+          _instanceIdsByRuntimeName[runtimeNetworkName] = id;
+          final instanceError = _instanceErrorsById.remove(id);
+          if (instanceError != null) throw StateError(instanceError);
+          for (final rejected in _readList(state['rejected'])) {
+            final member = _readMap(rejected);
+            if (member?['instance_id'] == id) {
+              throw StateError(_readString(member?['error']));
+            }
+          }
+          if (_readStringList(state['instance_ids']).contains(id)) {
+            final instances = await _listInstances();
+            for (final entry in instances.entries) {
+              if (entry.value != id) continue;
+              _instanceNamesByRuntimeName[runtimeNetworkName] = entry.key;
+              final instance = await _readJsonRpcNetworkInstance(
+                entry.key,
+                instanceId: id,
+              );
+              final addresses = _readStringList(
+                instance.vpnConfig?['addresses'],
+              );
+              final installedAddresses = _readStringList(state['addresses']);
+              final address = addresses
+                  .where(installedAddresses.contains)
+                  .firstOrNull;
+              if (eventCount != instanceReadEventCount) {
+                continue connectionLoop;
+              }
+              if (address != null) return address;
+            }
+          }
+        }
+        final error = _readString(state['error']);
+        if (error.isNotEmpty) throw StateError(error);
+        if (eventCount != observedEvents) continue;
+
+        final pending = Completer<void>();
+        wake = pending;
+        final remaining = nextInstanceRead - stopwatch.elapsed;
+        if (remaining > Duration.zero) {
+          final timer = Timer(remaining, () {
+            if (!pending.isCompleted) pending.complete();
+          });
+          try {
+            await pending.future;
+          } finally {
+            timer.cancel();
+            wake = null;
+          }
+        } else {
+          wake = null;
+        }
+      }
+      throw StateError('等待 Android 网络接入 VPN 超时');
+    } finally {
+      await subscription.cancel();
+    }
   }
 
   @override
@@ -300,14 +338,6 @@ class AndroidCoreRuntime extends CorePlatformRuntime {
   @override
   Future<void> dispose() async {
     _disposed = true;
-    _cancelActiveVpnRefresh();
-    _pendingVpnStartInstanceName = null;
-    try {
-      await _vpnSerial;
-    } catch (_) {
-      // Errors from the serial queue are surfaced through runtime events while
-      // the runtime is alive. During disposal there may be no listener left.
-    }
     await _nativeEvents.cancel();
     await _events.close();
   }
@@ -316,7 +346,7 @@ class AndroidCoreRuntime extends CorePlatformRuntime {
     final value = await _methodChannel.invokeMethod<String>('getMachineId');
     final machineId = value?.trim() ?? '';
     if (machineId.isEmpty) {
-      throw StateError('$_platformLabel machineId 为空');
+      throw StateError('$platformLabel machineId 为空');
     }
     return machineId;
   }
@@ -328,7 +358,7 @@ class AndroidCoreRuntime extends CorePlatformRuntime {
       return hostname;
     }
     return Platform.localHostname.trim().isEmpty
-        ? _fallbackHostname
+        ? fallbackHostname
         : Platform.localHostname.trim();
   }
 
@@ -366,16 +396,6 @@ class AndroidCoreRuntime extends CorePlatformRuntime {
       instances[instance.name] = instance;
     }
     return AndroidNetworkInfoSnapshot(Map.unmodifiable(instances));
-  }
-
-  Future<void> _ignoreMissingJni(Future<void> future) async {
-    try {
-      await future;
-    } on PlatformException catch (error) {
-      if (error.code != 'JNI_UNAVAILABLE') {
-        rethrow;
-      }
-    }
   }
 
   Future<Map<String, String>> _listInstances() async {
@@ -421,64 +441,24 @@ class AndroidCoreRuntime extends CorePlatformRuntime {
   }
 
   void _handleNativeEvent(Object? event) {
-    if (_disposed) {
-      return;
-    }
+    if (_disposed) return;
     final runtimeEvent = _runtimeEventFromNative(event);
     _events.add(runtimeEvent);
     if (runtimeEvent.type == CoreRuntimeEventTypes.vpnPermissionGranted) {
       _vpnPrepared = true;
-      if (drivesVpnInterfaceFromUi) {
-        unawaited(_startPendingVpns());
-      }
-    }
-    if (runtimeEvent.type == CoreRuntimeEventTypes.vpnPermissionDenied) {
+    } else if (runtimeEvent.type == CoreRuntimeEventTypes.vpnPermissionDenied) {
       _vpnPrepared = false;
-    }
-    if (runtimeEvent.type == CoreRuntimeEventTypes.vpnStarted) {
+    } else if (runtimeEvent.type == CoreRuntimeEventTypes.vpnStopped) {
       final payload = _runtimeEventPayload(runtimeEvent);
-      final instanceName = _readString(
-        payload['instanceName'] ?? payload['instance_name'],
-      );
-      if (instanceName.isNotEmpty) {
-        _activeVpnInstanceName = instanceName;
-        if (_pendingVpnStartInstanceName == instanceName) {
-          _pendingVpnStartInstanceName = null;
-        }
-        _scheduleActiveVpnRefresh();
-      }
-    }
-    if (runtimeEvent.type == CoreRuntimeEventTypes.vpnStopped) {
-      final payload = _runtimeEventPayload(runtimeEvent);
-      final instanceName = _readString(
-        payload['instanceName'] ?? payload['instance_name'],
-      );
       final reason = _readString(payload['reason']);
-      final isReplacingActiveVpn =
-          reason.isEmpty &&
-          instanceName.isNotEmpty &&
-          instanceName == _pendingVpnStartInstanceName;
-      if (isReplacingActiveVpn) {
-        return;
+      if (reason == 'revoked' || reason == 'user_disconnect') {
+        _vpnPrepared = false;
       }
-      if (instanceName.isEmpty || instanceName == _activeVpnInstanceName) {
-        _activeVpnInstanceName = null;
-        _activeVpnInstanceId = null;
-        _activeVpnConfigSignature = null;
-        _pendingVpnStartInstanceName = null;
-        _activeVpnFallbackConfig = null;
-        _cancelActiveVpnRefresh();
-      }
-    }
-    if (runtimeEvent.type == CoreRuntimeEventTypes.configServer) {
+    } else if (runtimeEvent.type == CoreRuntimeEventTypes.configServer) {
       _handleConfigServerEvent(runtimeEvent.data);
     }
     _handlePlatformRuntimeEvent(runtimeEvent);
   }
-
-  /// Extension point for runtime events whose state lives outside the shared
-  /// Android VPN state machine, applied after the shared handling.
-  void _handlePlatformRuntimeEvent(CoreRuntimeEvent event) {}
 
   CoreRuntimeEvent _runtimeEventFromNative(Object? event) {
     if (event is Map) {
@@ -502,6 +482,9 @@ class AndroidCoreRuntime extends CorePlatformRuntime {
       return;
     }
 
+    final instanceId = _readString(
+      payloadMap['instance_id'] ?? payloadMap['instanceId'] ?? payloadMap['id'],
+    );
     final callbackError = _firstNonEmptyString([
       payloadMap['error'],
       payloadMap['error_msg'],
@@ -510,63 +493,39 @@ class AndroidCoreRuntime extends CorePlatformRuntime {
     ]);
     final success = _readBool(payloadMap['success']);
     if (callbackError != null || success == false) {
+      final message = callbackError ?? '$platformLabel config server event failed';
+      if (instanceId.isNotEmpty) _instanceErrorsById[instanceId] = message;
       _events.add(
         CoreRuntimeEvent(
-          type: CoreRuntimeEventTypes.error,
+          type: instanceId.isEmpty
+              ? CoreRuntimeEventTypes.error
+              : 'network_error',
           data: {
-            'error': callbackError ?? '$_platformLabel config server event failed',
+            'error': message,
             'event': eventName,
-            'instance_id': _readString(
-              payloadMap['instance_id'] ??
-                  payloadMap['instanceId'] ??
-                  payloadMap['id'],
-            ),
+            'instance_id': instanceId,
           },
         ),
       );
       return;
     }
+    _instanceErrorsById.remove(instanceId);
 
     final instanceName = _instanceNameFromPayload(payloadMap);
-    final instanceId = _readString(
-      payloadMap['instance_id'] ?? payloadMap['instanceId'] ?? payloadMap['id'],
-    );
     final runtimeNetworkName = _runtimeNetworkNameFromPayload(payloadMap);
-    final instanceKey = _instanceKeyFromPayloadParts(
-      instanceName: instanceName,
-      instanceId: instanceId,
-      runtimeNetworkName: runtimeNetworkName,
-    );
-    if (instanceKey.isEmpty) {
-      return;
-    }
-
     if (eventName == 'delete_network_instance') {
       _forgetInstanceAliases(
         instanceId: instanceId,
         instanceName: instanceName,
         runtimeNetworkName: runtimeNetworkName,
       );
-      if (!drivesVpnInterfaceFromUi) {
-        return;
-      }
-      _pendingVpnPayloads.remove(instanceKey);
-      unawaited(_queueVpnStop(instanceKey));
-      return;
+    } else {
+      _rememberInstanceAliases(
+        instanceId: instanceId,
+        instanceName: instanceName,
+        runtimeNetworkName: runtimeNetworkName,
+      );
     }
-
-    _rememberInstanceAliases(
-      instanceId: instanceId,
-      instanceName: instanceName,
-      runtimeNetworkName: runtimeNetworkName,
-    );
-    if (!drivesVpnInterfaceFromUi) {
-      return;
-    }
-    _pendingVpnPayloads
-      ..clear()
-      ..[instanceKey] = payloadMap;
-    unawaited(_queueVpnStart(instanceKey));
   }
 
   Map<String, Object?> _configServerPayloadFromEvent(
@@ -581,465 +540,6 @@ class AndroidCoreRuntime extends CorePlatformRuntime {
   Map<String, Object?> _runtimeEventPayload(CoreRuntimeEvent event) {
     final payload = event.data['payload'];
     return payload is Map ? _stringObjectMap(payload) : event.data;
-  }
-
-  Future<void> _queueVpnStart(String instanceKey) {
-    _vpnSerial = _vpnSerial
-        .then(
-          (_) => _startVpnForInstance(instanceKey),
-          onError: (Object error, StackTrace stackTrace) =>
-              _startVpnForInstance(instanceKey),
-        )
-        .catchError(_emitVpnError);
-    return _vpnSerial;
-  }
-
-  Future<void> _queueVpnStop(String instanceKey) {
-    _vpnSerial = _vpnSerial
-        .then(
-          (_) => _stopActiveVpn(instanceKey),
-          onError: (Object error, StackTrace stackTrace) =>
-              _stopActiveVpn(instanceKey),
-        )
-        .catchError(_emitVpnError);
-    return _vpnSerial;
-  }
-
-  Future<void> _startPendingVpns() async {
-    if (_pendingVpnPayloads.isEmpty) {
-      return;
-    }
-    final latestInstanceName = _pendingVpnPayloads.keys.last;
-    await _queueVpnStart(latestInstanceName);
-  }
-
-  Future<void> _startVpnForInstance(String instanceKey) async {
-    final payloadMap = _pendingVpnPayloads[instanceKey];
-    if (payloadMap == null) {
-      return;
-    }
-    if (!_vpnPrepared) {
-      return;
-    }
-
-    final target = await _resolveVpnTargetWithMissingInstanceRetry(
-      instanceKey,
-      payloadMap,
-    );
-    if (target == null) {
-      return;
-    }
-    if (!_vpnConfigHasAddress(target.vpnConfig)) {
-      _events.add(
-        CoreRuntimeEvent(
-          type: CoreRuntimeEventTypes.error,
-          data: {
-            'error': '$_platformLabel VPN 缺少虚拟 IP 配置',
-            'instance_key': instanceKey,
-            'instance_name': target.instanceName,
-            'instance_id': target.instanceId,
-            'known_instances': target.knownInstanceNames,
-          },
-        ),
-      );
-      return;
-    }
-    final vpnConfig = await _awaitInitialVpnRoutes(target);
-    _emitVpnRouteDiagnostic(
-      phase: 'start_request',
-      instanceKey: instanceKey,
-      instanceName: target.instanceName,
-      instanceId: target.instanceId,
-      source: target.source,
-      config: vpnConfig,
-      decision: 'start_vpn',
-    );
-
-    final active = _activeVpnInstanceName;
-    if (active != null && active != target.instanceName) {
-      _activeVpnInstanceName = null;
-      _activeVpnInstanceId = null;
-      _activeVpnConfigSignature = null;
-      _activeVpnFallbackConfig = null;
-      _cancelActiveVpnRefresh();
-      await _methodChannel.invokeMethod<void>('stopVpn');
-    }
-    await _ignoreMissingJni(
-      _methodChannel.invokeMethod<void>('retainNetworkInstance', {
-        'instanceNames': <String>[target.instanceName],
-      }),
-    );
-    _pendingVpnStartInstanceName = target.instanceName;
-    try {
-      await _methodChannel.invokeMethod<void>('startVpn', {
-        'instanceName': target.instanceName,
-        'vpnConfig': vpnConfig,
-      });
-    } on Object {
-      if (_pendingVpnStartInstanceName == target.instanceName) {
-        _pendingVpnStartInstanceName = null;
-      }
-      rethrow;
-    }
-    _activeVpnInstanceName = target.instanceName;
-    _activeVpnInstanceId = target.instanceId;
-    _activeVpnConfigSignature = _vpnConfigSignature(vpnConfig);
-    _activeVpnFallbackConfig = vpnConfig;
-    _activeVpnRefreshCount = 0;
-    _scheduleActiveVpnRefresh();
-    _pendingVpnPayloads.remove(instanceKey);
-  }
-
-  /// The instance reports running before it publishes its subnet routes, and the
-  /// periodic refresh would then rebuild the interface on the next tick — an
-  /// interface that is up but unroutable until that flash. Poll briefly so the
-  /// first interface already carries the routes the instance asked for.
-  Future<Map<String, Object?>> _awaitInitialVpnRoutes(
-    _ResolvedAndroidVpnTarget target,
-  ) async {
-    var config = target.vpnConfig;
-    if (_readCidrList(config['routes'] ?? config['route']).isNotEmpty) {
-      return config;
-    }
-    for (
-      var attempt = 0;
-      attempt < _androidVpnInitialRoutePollLimit;
-      attempt++
-    ) {
-      await Future<void>.delayed(_androidVpnInitialRoutePollInterval);
-      try {
-        final read = await _readJsonRpcVpnConfig(
-          target.instanceName,
-          fallbackConfig: target.vpnConfig,
-        );
-        if (!_vpnConfigHasAddress(read.config)) {
-          continue;
-        }
-        config = read.config;
-        if (_readCidrList(config['routes'] ?? config['route']).isNotEmpty) {
-          break;
-        }
-      } on Object {
-        break;
-      }
-    }
-    return config;
-  }
-
-  Future<_ResolvedAndroidVpnTarget?> _resolveVpnTargetWithMissingInstanceRetry(
-    String instanceKey,
-    Map<String, Object?> payloadMap,
-  ) async {
-    for (
-      var attempt = 0;
-      attempt < _androidVpnStartMissingInstanceRetryLimit;
-      attempt++
-    ) {
-      try {
-        return await _resolveVpnTarget(instanceKey, payloadMap);
-      } on Object catch (error) {
-        if (!_isAndroidInstanceNotFoundError(error)) {
-          rethrow;
-        }
-        if (_disposed ||
-            !_vpnPrepared ||
-            !_pendingVpnPayloads.containsKey(instanceKey)) {
-          return null;
-        }
-        final shouldRetry =
-            attempt < _androidVpnStartMissingInstanceRetryLimit - 1;
-        if (!shouldRetry) {
-          return null;
-        }
-        await Future<void>.delayed(_androidVpnStartMissingInstanceRetryDelay);
-      }
-    }
-    return null;
-  }
-
-  Future<void> _queueActiveVpnRefresh() {
-    if (_disposed) {
-      return Future<void>.value();
-    }
-    _vpnSerial = _vpnSerial
-        .then(
-          (_) => _refreshActiveVpnConfig(),
-          onError: (Object error, StackTrace stackTrace) =>
-              _refreshActiveVpnConfig(),
-        )
-        .catchError(_emitVpnError);
-    return _vpnSerial;
-  }
-
-  Future<void> _refreshActiveVpnConfig() async {
-    if (_disposed) {
-      return;
-    }
-    final activeName = _activeVpnInstanceName;
-    if (activeName == null || activeName.isEmpty || !_vpnPrepared) {
-      return;
-    }
-
-    _activeVpnRefreshCount += 1;
-    try {
-      final configRead = await _readJsonRpcVpnConfig(
-        activeName,
-        fallbackConfig: _activeVpnFallbackConfig,
-      );
-      final config = configRead.config;
-      if (!_vpnConfigHasAddress(config)) {
-        _emitVpnRouteDiagnostic(
-          phase: 'refresh',
-          instanceName: activeName,
-          source: 'json_rpc',
-          readResult: configRead,
-          decision: 'skip_missing_address',
-          refreshCount: _activeVpnRefreshCount,
-        );
-        return;
-      }
-
-      final signature = _vpnConfigSignature(config);
-      final changed = signature != _activeVpnConfigSignature;
-      if (changed || _activeVpnRefreshCount <= _vpnRouteRefreshFastLimit) {
-        _emitVpnRouteDiagnostic(
-          phase: 'refresh',
-          instanceName: activeName,
-          source: 'json_rpc',
-          readResult: configRead,
-          decision: changed ? 'restart_vpn' : 'skip_same_signature',
-          refreshCount: _activeVpnRefreshCount,
-          configChanged: changed,
-        );
-      }
-      if (!changed) {
-        return;
-      }
-
-      _pendingVpnStartInstanceName = activeName;
-      try {
-        await _methodChannel.invokeMethod<void>('startVpn', {
-          'instanceName': activeName,
-          'vpnConfig': config,
-        });
-      } on Object {
-        if (_pendingVpnStartInstanceName == activeName) {
-          _pendingVpnStartInstanceName = null;
-        }
-        rethrow;
-      }
-      _activeVpnInstanceName = activeName;
-      _activeVpnConfigSignature = signature;
-      _activeVpnFallbackConfig = config;
-      if (!_disposed) {
-        _events.add(
-          CoreRuntimeEvent(
-            type: CoreRuntimeEventTypes.vpnConfigRefreshed,
-            data: {
-              'instance_name': activeName,
-              'addresses': config['addresses'],
-              'routes': config['routes'],
-              'dns': config['dns'],
-              'disallowedApplications': config['disallowedApplications'],
-            },
-          ),
-        );
-      }
-    } on Object catch (error) {
-      if (_isAndroidInstanceNotFoundError(error)) {
-        if (_activeVpnInstanceName == activeName) {
-          _activeVpnInstanceName = null;
-          _activeVpnInstanceId = null;
-          _activeVpnConfigSignature = null;
-          _activeVpnFallbackConfig = null;
-          _cancelActiveVpnRefresh();
-          await _methodChannel.invokeMethod<void>('stopVpn');
-        }
-        return;
-      }
-      rethrow;
-    } finally {
-      if (!_disposed && _activeVpnInstanceName != null) {
-        _scheduleActiveVpnRefresh();
-      }
-    }
-  }
-
-  void _scheduleActiveVpnRefresh() {
-    _activeVpnRefreshTimer?.cancel();
-    if (_disposed ||
-        !drivesVpnInterfaceFromUi ||
-        _activeVpnInstanceName == null) {
-      return;
-    }
-    final delay = _activeVpnRefreshCount < _vpnRouteRefreshFastLimit
-        ? _vpnRouteRefreshFastInterval
-        : _vpnRouteRefreshSteadyInterval;
-    _activeVpnRefreshTimer = Timer(delay, () {
-      _activeVpnRefreshTimer = null;
-      unawaited(_queueActiveVpnRefresh());
-    });
-  }
-
-  void _cancelActiveVpnRefresh() {
-    _activeVpnRefreshTimer?.cancel();
-    _activeVpnRefreshTimer = null;
-    _activeVpnRefreshCount = 0;
-  }
-
-  Future<_ResolvedAndroidVpnTarget> _resolveVpnTarget(
-    String instanceKey,
-    Map<String, Object?> payloadMap,
-  ) async {
-    var instanceName = _instanceNameFromPayload(payloadMap);
-    final instanceId = _instanceIdFromPayload(payloadMap);
-    final directConfig = buildVpnConfigFromNetworkInfo(payloadMap);
-    final hasDirectConfig =
-        payloadMap.containsKey('vpn_config') ||
-        payloadMap.containsKey('vpnConfig');
-    var knownInstanceNames = const <String>[];
-    var resolvedInstanceId = instanceId.isEmpty ? null : instanceId;
-
-    if (instanceName.isEmpty) {
-      final listedInstances = await _listInstances();
-      knownInstanceNames = listedInstances.keys.take(8).toList(growable: false);
-      for (final entry in listedInstances.entries) {
-        if (instanceId.isNotEmpty && entry.value == instanceId) {
-          instanceName = entry.key;
-          resolvedInstanceId = entry.value;
-          break;
-        }
-      }
-      if (instanceName.isEmpty && listedInstances.length == 1) {
-        instanceName = listedInstances.keys.single;
-        resolvedInstanceId = listedInstances.values.single.isEmpty
-            ? resolvedInstanceId
-            : listedInstances.values.single;
-      }
-    }
-
-    if (hasDirectConfig &&
-        _vpnConfigHasAddress(directConfig) &&
-        instanceName.isNotEmpty) {
-      return _ResolvedAndroidVpnTarget(
-        instanceName: instanceName,
-        instanceId: resolvedInstanceId,
-        vpnConfig: directConfig,
-        source: 'direct_config',
-        knownInstanceNames: knownInstanceNames,
-      );
-    }
-
-    if (instanceName.isNotEmpty) {
-      final rpcConfigRead = await _readJsonRpcVpnConfig(
-        instanceName,
-        fallbackConfig: hasDirectConfig ? directConfig : null,
-      );
-      final rpcConfig = rpcConfigRead.config;
-      _emitVpnRouteDiagnostic(
-        phase: 'start_json_rpc_read',
-        instanceKey: instanceKey,
-        instanceName: instanceName,
-        source: 'json_rpc',
-        readResult: rpcConfigRead,
-      );
-      if (_vpnConfigHasAddress(rpcConfig)) {
-        return _ResolvedAndroidVpnTarget(
-          instanceName: instanceName,
-          instanceId: resolvedInstanceId,
-          vpnConfig: rpcConfig,
-          source: 'json_rpc',
-          knownInstanceNames: knownInstanceNames,
-        );
-      }
-    }
-
-    if (_vpnConfigHasAddress(directConfig) && instanceName.isNotEmpty) {
-      return _ResolvedAndroidVpnTarget(
-        instanceName: instanceName,
-        instanceId: resolvedInstanceId,
-        vpnConfig: directConfig,
-        source: 'direct_fallback',
-        knownInstanceNames: knownInstanceNames,
-      );
-    }
-
-    AndroidNetworkInstanceInfo? lastMatchedInstance;
-    final snapshot = await _readNetworkInfoSnapshot();
-    knownInstanceNames = snapshot.instances.keys
-        .take(8)
-        .toList(growable: false);
-    final instance = snapshot.instanceMatching(
-      name: instanceName.isEmpty ? instanceKey : instanceName,
-      id: instanceId,
-    );
-    if (instance != null) {
-      lastMatchedInstance = instance;
-    }
-    final config = instance?.vpnConfig;
-    if (config != null && _vpnConfigHasAddress(config)) {
-      final matchedInstance = instance!;
-      final targetInstanceName = instanceName.isEmpty
-          ? matchedInstance.name
-          : instanceName;
-      return _ResolvedAndroidVpnTarget(
-        instanceName: targetInstanceName,
-        instanceId: matchedInstance.id ?? instanceId,
-        vpnConfig: config,
-        source: 'snapshot',
-        knownInstanceNames: knownInstanceNames,
-      );
-    }
-
-    return _ResolvedAndroidVpnTarget(
-      instanceName:
-          (instanceName.isEmpty ? lastMatchedInstance?.name : instanceName) ??
-          (instanceName.isEmpty ? instanceKey : instanceName),
-      instanceId:
-          lastMatchedInstance?.id ?? (instanceId.isEmpty ? null : instanceId),
-      vpnConfig: _vpnConfigHasAddress(directConfig)
-          ? directConfig
-          : lastMatchedInstance?.vpnConfig ?? const <String, Object?>{},
-      source: _vpnConfigHasAddress(directConfig)
-          ? 'direct_empty'
-          : 'snapshot_empty',
-      knownInstanceNames: knownInstanceNames,
-    );
-  }
-
-  Future<_AndroidVpnConfigReadResult> _readJsonRpcVpnConfig(
-    String instanceName, {
-    Map<String, Object?>? fallbackConfig,
-  }) async {
-    final payload = _jsonRpcInstancePayload(instanceName);
-    final nodeInfoResponse = await _callJsonRpcMap(
-      _peerManageRpcService,
-      'show_node_info',
-      payload: payload,
-    );
-    final routeResponse = await _callJsonRpcMap(
-      _peerManageRpcService,
-      'list_route',
-      payload: payload,
-    );
-
-    final nodeInfo = _jsonRpcNodeInfo(nodeInfoResponse);
-    final routes = _jsonRpcRoutes(routeResponse);
-    final config = buildVpnConfigFromNetworkInfo(<String, Object?>{
-      'my_node_info': nodeInfo,
-      'routes': routes,
-    });
-    final mergedConfig = fallbackConfig == null
-        ? config
-        : _mergeVpnConfig(config, fallbackConfig);
-    return _AndroidVpnConfigReadResult(
-      config: mergedConfig,
-      routeResponseKeys: routeResponse.keys.toList(growable: false),
-      routePayloadType: _valueTypeName(routes),
-      routePayloadCount: _routePayloadCount(routes),
-      routeCidrs: _readRouteCidrs(routes),
-      routeProxyCidrs: _readProxyRouteCidrs(routes),
-    );
   }
 
   Future<AndroidNetworkInstanceInfo> _readJsonRpcNetworkInstance(
@@ -1111,277 +611,9 @@ class AndroidCoreRuntime extends CorePlatformRuntime {
         const <Object?>[];
   }
 
-  static String _valueTypeName(Object? value) {
-    if (value == null) {
-      return 'null';
-    }
-    if (value is List) {
-      return 'list';
-    }
-    if (value is Map) {
-      return 'map';
-    }
-    if (value is String) {
-      final decoded = _tryDecodeJson(value);
-      if (decoded is List) {
-        return 'json_list_string';
-      }
-      if (decoded is Map) {
-        return 'json_map_string';
-      }
-      return 'string';
-    }
-    return value.runtimeType.toString();
-  }
-
-  static int _routePayloadCount(Object? value) {
-    final decoded = value is String ? _tryDecodeJson(value) : value;
-    if (decoded is List) {
-      return decoded.length;
-    }
-    if (decoded is Map) {
-      return decoded.length;
-    }
-    return _readList(value).length;
-  }
-
-  static List<String> _readProxyRouteCidrs(Object? value) {
-    final cidrs = <String>{};
-
-    void add(Object? candidate) {
-      cidrs.addAll(_readRouteCidrs(candidate));
-    }
-
-    void visit(Object? candidate) {
-      final decoded = candidate is String
-          ? _tryDecodeJson(candidate)
-          : candidate;
-      if (decoded is List) {
-        for (final item in decoded) {
-          visit(item);
-        }
-        return;
-      }
-      if (decoded is! Map) {
-        return;
-      }
-
-      final map = _stringObjectMap(decoded);
-      for (final key in const <String>[
-        'proxy_cidrs',
-        'proxyCidrs',
-        'proxy_cidr',
-        'proxyCidr',
-        'proxy_network',
-        'proxyNetwork',
-        'proxy_networks',
-        'proxyNetworks',
-        'subnet_cidrs',
-        'subnetCidrs',
-        'subnet_routes',
-        'subnetRoutes',
-        'subnets',
-        'subnet',
-      ]) {
-        if (map.containsKey(key)) {
-          add(map[key]);
-        }
-      }
-
-      for (final child in map.values) {
-        if (child is Map || child is List || child is String) {
-          visit(child);
-        }
-      }
-    }
-
-    visit(value);
-    return cidrs.toList(growable: false);
-  }
-
-  static Map<String, Object?> _mergeVpnConfig(
-    Map<String, Object?> primary,
-    Map<String, Object?> fallback,
-  ) {
-    final merged = Map<String, Object?>.from(primary);
-
-    if (_readStringList(
-      merged['dns'] ?? merged['dns_servers'] ?? merged['dnsServers'],
-    ).isEmpty) {
-      final dns =
-          fallback['dns'] ?? fallback['dns_servers'] ?? fallback['dnsServers'];
-      if (_readStringList(dns).isNotEmpty) {
-        merged['dns'] = dns;
-      }
-    }
-
-    if (_readStringList(
-      merged['disallowedApplications'] ??
-          merged['disallowed_applications'] ??
-          merged['disallowedPackages'] ??
-          merged['disallowed_packages'],
-    ).isEmpty) {
-      final disallowed =
-          fallback['disallowedApplications'] ??
-          fallback['disallowed_applications'] ??
-          fallback['disallowedPackages'] ??
-          fallback['disallowed_packages'];
-      if (_readStringList(disallowed).isNotEmpty) {
-        merged['disallowedApplications'] = disallowed;
-      }
-    }
-
-    if (merged['mtu'] == null && fallback['mtu'] != null) {
-      merged['mtu'] = fallback['mtu'];
-    }
-    return merged;
-  }
-
-  void _emitVpnRouteDiagnostic({
-    required String phase,
-    String? instanceKey,
-    String? instanceName,
-    String? instanceId,
-    String? source,
-    String? decision,
-    int? refreshCount,
-    bool? configChanged,
-    Map<String, Object?>? config,
-    _AndroidVpnConfigReadResult? readResult,
-  }) {
-    if (_disposed) {
-      return;
-    }
-    final effectiveConfig = config ?? readResult?.config;
-    final addresses = effectiveConfig == null
-        ? const <String>[]
-        : _readCidrList(
-            effectiveConfig['addresses'] ?? effectiveConfig['address'],
-          );
-    final routes = effectiveConfig == null
-        ? const <String>[]
-        : _readCidrList(effectiveConfig['routes'] ?? effectiveConfig['route']);
-    final dns = effectiveConfig == null
-        ? const <String>[]
-        : _readStringList(
-            effectiveConfig['dns'] ??
-                effectiveConfig['dns_servers'] ??
-                effectiveConfig['dnsServers'],
-          );
-    final payload = <String, Object?>{
-      'phase': phase,
-      if (instanceKey?.isNotEmpty ?? false) 'instance_key': instanceKey,
-      if (instanceName?.isNotEmpty ?? false) 'instance_name': instanceName,
-      if (instanceId?.isNotEmpty ?? false) 'instance_id': instanceId,
-      if (source?.isNotEmpty ?? false) 'source': source,
-      if (decision?.isNotEmpty ?? false) 'decision': decision,
-      'addresses': addresses,
-      'address_count': addresses.length,
-      'routes': routes,
-      'route_count': routes.length,
-      'dns': dns,
-      'dns_count': dns.length,
-    };
-    if (refreshCount != null) {
-      payload['refresh_count'] = refreshCount;
-    }
-    if (configChanged != null) {
-      payload['config_changed'] = configChanged;
-    }
-    if (readResult != null) {
-      payload.addAll({
-        'route_response_keys': readResult.routeResponseKeys,
-        'route_payload_type': readResult.routePayloadType,
-        'route_payload_count': readResult.routePayloadCount,
-        'route_cidrs': readResult.routeCidrs,
-        'route_cidr_count': readResult.routeCidrs.length,
-        'route_proxy_cidrs': readResult.routeProxyCidrs,
-        'route_proxy_cidr_count': readResult.routeProxyCidrs.length,
-      });
-    }
-    _events.add(
-      CoreRuntimeEvent(
-        type: CoreRuntimeEventTypes.vpnRouteDiagnostic,
-        data: payload,
-      ),
-    );
-  }
-
-  Future<void> _stopActiveVpn(String instanceKey) async {
-    final matchesActiveName = _activeVpnInstanceName == instanceKey;
-    final matchesActiveId = _activeVpnInstanceId == instanceKey;
-    if (_preemptedVpnName == instanceKey) {
-      _preemptedVpnName = null;
-      _preemptedVpnConfig = null;
-    }
-    if (!matchesActiveName && !matchesActiveId) {
-      _pendingVpnPayloads.remove(instanceKey);
-      return;
-    }
-    _activeVpnInstanceName = null;
-    _activeVpnInstanceId = null;
-    _activeVpnConfigSignature = null;
-    _activeVpnFallbackConfig = null;
-    _cancelActiveVpnRefresh();
-    await _methodChannel.invokeMethod<void>('stopVpn');
-    _pendingVpnPayloads.remove(instanceKey);
-  }
-
-  /// Tears the interface down as soon as the user leaves a network instead of
-  /// waiting for the control plane to confirm and push the delete event, which
-  /// would leave the tunnel up against a network that is already going away.
-  /// The resolved config is remembered so a failed exit can bring it back.
-  @override
-  Future<void> preemptActiveVpnForExit() async {
-    final activeName = _activeVpnInstanceName;
-    final activeConfig = _activeVpnFallbackConfig;
-    if (activeName == null ||
-        activeName.isEmpty ||
-        activeConfig == null ||
-        !_vpnPrepared) {
-      return;
-    }
-    _preemptedVpnName = activeName;
-    _preemptedVpnConfig = activeConfig;
-    _activeVpnInstanceName = null;
-    _activeVpnInstanceId = null;
-    _activeVpnConfigSignature = null;
-    _activeVpnFallbackConfig = null;
-    _cancelActiveVpnRefresh();
-    _pendingVpnPayloads.remove(activeName);
-    await _methodChannel.invokeMethod<void>('stopVpn');
-  }
-
-  /// Restores the interface a preempted exit took down when that exit failed.
-  @override
-  Future<void> restoreActiveVpnAfterFailedExit() async {
-    final name = _preemptedVpnName;
-    final config = _preemptedVpnConfig;
-    _preemptedVpnName = null;
-    _preemptedVpnConfig = null;
-    if (name == null || config == null || !_vpnPrepared) {
-      return;
-    }
-    await _methodChannel.invokeMethod<void>('startVpn', {
-      'instanceName': name,
-      'vpnConfig': config,
-    });
-    _activeVpnInstanceName = name;
-    _activeVpnConfigSignature = _vpnConfigSignature(config);
-    _activeVpnFallbackConfig = config;
-    _activeVpnRefreshCount = 0;
-    _scheduleActiveVpnRefresh();
-  }
-
   String _instanceNameFromPayload(Map<String, Object?> payloadMap) {
     return _readString(
       payloadMap['instance_name'] ?? payloadMap['instanceName'],
-    );
-  }
-
-  String _instanceIdFromPayload(Map<String, Object?> payloadMap) {
-    return _readString(
-      payloadMap['instance_id'] ?? payloadMap['instanceId'] ?? payloadMap['id'],
     );
   }
 
@@ -1392,28 +624,6 @@ class AndroidCoreRuntime extends CorePlatformRuntime {
           payloadMap['runtime_network_name'] ??
           payloadMap['runtimeNetworkName'],
     );
-  }
-
-  String _instanceKeyFromPayloadParts({
-    required String instanceName,
-    required String instanceId,
-    required String runtimeNetworkName,
-  }) {
-    final name = instanceName.trim();
-    if (name.isNotEmpty) {
-      return name;
-    }
-    final id = instanceId.trim();
-    if (id.isNotEmpty) {
-      return id;
-    }
-    final runtimeName = runtimeNetworkName.trim();
-    if (runtimeName.isEmpty) {
-      return '';
-    }
-    return _instanceNamesByRuntimeName[runtimeName] ??
-        _instanceIdsByRuntimeName[runtimeName] ??
-        '';
   }
 
   void _rememberInstanceAliases({
@@ -1480,20 +690,6 @@ class AndroidCoreRuntime extends CorePlatformRuntime {
     return null;
   }
 
-  String _runtimeNameForInstance(AndroidNetworkInstanceInfo instance) {
-    for (final entry in _instanceIdsByRuntimeName.entries) {
-      if (entry.value == instance.id) {
-        return entry.key;
-      }
-    }
-    for (final entry in _instanceNamesByRuntimeName.entries) {
-      if (entry.value == instance.name) {
-        return entry.key;
-      }
-    }
-    return instance.name;
-  }
-
   String _runtimeNameForInstanceName(String instanceName, String? instanceId) {
     final id = instanceId?.trim() ?? '';
     if (id.isNotEmpty) {
@@ -1512,64 +708,11 @@ class AndroidCoreRuntime extends CorePlatformRuntime {
     return name;
   }
 
-  void _emitVpnError(Object error, StackTrace stackTrace) {
-    if (_disposed) {
-      return;
-    }
-    if (_isAndroidInstanceNotFoundError(error)) {
-      return;
-    }
-    _events.add(
-      CoreRuntimeEvent(
-        type: CoreRuntimeEventTypes.error,
-        data: {'error': error.toString(), 'stack': stackTrace.toString()},
-      ),
-    );
-  }
-
   static bool _isAndroidInstanceNotFoundError(Object error) {
     final message = error is PlatformException
         ? '${error.code} ${error.message ?? ''} ${error.details ?? ''}'
         : error.toString();
     return CoreLifecycleService._isInstanceNotReadyMessage(message);
-  }
-
-  bool _vpnConfigHasAddress(Map<String, Object?> config) {
-    return _readString(config['address']).isNotEmpty ||
-        _readString(config['ipv4']).isNotEmpty ||
-        _readString(config['virtual_ip']).isNotEmpty ||
-        _readString(config['cidr']).isNotEmpty ||
-        _readString(config['ipv4_cidr']).isNotEmpty ||
-        _readList(config['addresses']).isNotEmpty;
-  }
-
-  static String _vpnConfigSignature(Map<String, Object?> config) {
-    List<String> normalizedCidrs(Object? value) {
-      final items = _readCidrList(value).toSet().toList(growable: false);
-      items.sort();
-      return items;
-    }
-
-    List<String> normalizedStrings(Object? value) {
-      final items = _readStringList(value).toSet().toList(growable: false);
-      items.sort();
-      return items;
-    }
-
-    return jsonEncode({
-      'addresses': normalizedCidrs(config['addresses'] ?? config['address']),
-      'routes': normalizedCidrs(config['routes'] ?? config['route']),
-      'dns': normalizedStrings(
-        config['dns'] ?? config['dns_servers'] ?? config['dnsServers'],
-      ),
-      'disallowedApplications': normalizedStrings(
-        config['disallowedApplications'] ??
-            config['disallowed_applications'] ??
-            config['disallowedPackages'] ??
-            config['disallowed_packages'],
-      ),
-      'mtu': _readString(config['mtu']),
-    });
   }
 
   static Map<String, Object?>? _readMap(Object? value) {
@@ -1578,10 +721,6 @@ class AndroidCoreRuntime extends CorePlatformRuntime {
 
   static List<Object?> _readList(Object? value) {
     return CoreJsonValue.readList(value);
-  }
-
-  static Object? _tryDecodeJson(String value) {
-    return CoreJsonValue.tryDecodeJson(value);
   }
 
   static List<String> _readStringList(Object? value) {
@@ -2088,141 +1227,6 @@ class AndroidCoreRuntime extends CorePlatformRuntime {
     copyIfMissing('peer_id', ['peerId', 'id']);
     return normalized;
   }
-
-  static _MutableNetworkTrafficTotals? _trafficTotalsFromPeers(
-    List<Map<String, dynamic>> peers,
-  ) {
-    final byPeer = <String, _MutableNetworkTrafficTotals>{};
-    var fallbackIndex = 0;
-    for (final peer in peers) {
-      final rxBytes = _readTrafficBytes(
-        peer['rx_bytes_raw'] ??
-            peer['rxBytesRaw'] ??
-            peer['rx_bytes'] ??
-            peer['rxBytes'] ??
-            peer['received_bytes'],
-      );
-      final txBytes = _readTrafficBytes(
-        peer['tx_bytes_raw'] ??
-            peer['txBytesRaw'] ??
-            peer['tx_bytes'] ??
-            peer['txBytes'] ??
-            peer['transmitted_bytes'],
-      );
-      if (rxBytes == null && txBytes == null) {
-        continue;
-      }
-      final peerKey = _firstNonEmptyString([
-        peer['peer_id'],
-        peer['peerId'],
-        peer['id'],
-        peer['cidr'],
-        peer['ipv4'],
-      ]);
-      final key = peerKey ?? '#${fallbackIndex++}';
-      final traffic = byPeer.putIfAbsent(key, _MutableNetworkTrafficTotals.new);
-      if (rxBytes != null) {
-        if (!traffic.hasDownloadBytes || rxBytes > traffic.downloadBytes) {
-          traffic.downloadBytes = rxBytes;
-        }
-        traffic.hasDownloadBytes = true;
-      }
-      if (txBytes != null) {
-        if (!traffic.hasUploadBytes || txBytes > traffic.uploadBytes) {
-          traffic.uploadBytes = txBytes;
-        }
-        traffic.hasUploadBytes = true;
-      }
-    }
-
-    final total = _MutableNetworkTrafficTotals();
-    for (final peer in byPeer.values) {
-      if (peer.hasDownloadBytes) {
-        total.downloadBytes += peer.downloadBytes;
-        total.hasDownloadBytes = true;
-      }
-      if (peer.hasUploadBytes) {
-        total.uploadBytes += peer.uploadBytes;
-        total.hasUploadBytes = true;
-      }
-    }
-    return total.hasDownloadBytes || total.hasUploadBytes ? total : null;
-  }
-
-  static Map<String, CoreNetworkTrafficTotals> _trafficTotalsFromJsonRpcStats(
-    Map<String, Object?> response, {
-    required String defaultRuntimeNetworkName,
-    required DateTime sampledAt,
-  }) {
-    final collected = <String, _MutableNetworkTrafficTotals>{};
-    final metrics = _readList(response['metrics'] ?? response['result']);
-    for (final item in metrics) {
-      final metric = _readMap(item);
-      if (metric == null) {
-        continue;
-      }
-      final metricName = _readString(metric['name']);
-      if (metricName != 'traffic_bytes_self_rx' &&
-          metricName != 'traffic_bytes_self_tx') {
-        continue;
-      }
-      final labels = _readMap(metric['labels']);
-      final labelNetworkName = labels == null
-          ? ''
-          : _readString(labels['network_name'] ?? labels['networkName']);
-      final runtimeNetworkName = labelNetworkName.isNotEmpty
-          ? labelNetworkName
-          : defaultRuntimeNetworkName;
-      if (runtimeNetworkName.isEmpty || runtimeNetworkName == '__access__') {
-        continue;
-      }
-      final value = _readIntValue(metric['value']);
-      if (value == null || value < 0) {
-        continue;
-      }
-
-      final totals = collected.putIfAbsent(
-        runtimeNetworkName,
-        _MutableNetworkTrafficTotals.new,
-      );
-      if (metricName == 'traffic_bytes_self_rx') {
-        totals.downloadBytes = value;
-        totals.hasDownloadBytes = true;
-      } else {
-        totals.uploadBytes = value;
-        totals.hasUploadBytes = true;
-      }
-    }
-
-    return collected.map((runtimeNetworkName, totals) {
-      return MapEntry(
-        runtimeNetworkName,
-        CoreNetworkTrafficTotals(
-          runtimeNetworkName: runtimeNetworkName,
-          downloadBytes: totals.hasDownloadBytes ? totals.downloadBytes : 0,
-          uploadBytes: totals.hasUploadBytes ? totals.uploadBytes : 0,
-          sampledAt: sampledAt,
-        ),
-      );
-    });
-  }
-
-  static int? _readTrafficBytes(Object? value) {
-    final parsed = _readIntValue(value);
-    if (parsed != null) {
-      return parsed < 0 ? null : parsed;
-    }
-    final text = _readString(value);
-    if (text.isEmpty || text == '-' || text.toLowerCase() == 'null') {
-      return null;
-    }
-    final normalized = text.replaceAll(',', '');
-    final number = num.tryParse(normalized);
-    if (number == null || number < 0) {
-      return null;
-    }
-    return number.toInt();
-  }
 }
 
 class AndroidNetworkInfoSnapshot {
@@ -2263,9 +1267,6 @@ class AndroidNetworkInfoSnapshot {
       if (instance.id == targetId) {
         return instance;
       }
-    }
-    if (instances.length == 1) {
-      return instances.values.single;
     }
     return null;
   }
@@ -2850,38 +1851,4 @@ bool? _readBool(Object? value) {
     return false;
   }
   return null;
-}
-
-class _AndroidVpnConfigReadResult {
-  const _AndroidVpnConfigReadResult({
-    required this.config,
-    required this.routeResponseKeys,
-    required this.routePayloadType,
-    required this.routePayloadCount,
-    required this.routeCidrs,
-    required this.routeProxyCidrs,
-  });
-
-  final Map<String, Object?> config;
-  final List<String> routeResponseKeys;
-  final String routePayloadType;
-  final int routePayloadCount;
-  final List<String> routeCidrs;
-  final List<String> routeProxyCidrs;
-}
-
-class _ResolvedAndroidVpnTarget {
-  const _ResolvedAndroidVpnTarget({
-    required this.instanceName,
-    required this.instanceId,
-    required this.vpnConfig,
-    required this.source,
-    required this.knownInstanceNames,
-  });
-
-  final String instanceName;
-  final String? instanceId;
-  final Map<String, Object?> vpnConfig;
-  final String source;
-  final List<String> knownInstanceNames;
 }

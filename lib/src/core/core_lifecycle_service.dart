@@ -12,10 +12,13 @@ import 'core_json_value.dart';
 import 'core_peer_status.dart';
 
 part 'core_lifecycle_models.dart';
+part 'core_workspace_connections.dart';
 part 'core_platform_runtime.dart';
+part 'core_traffic_stats.dart';
 part 'desktop_core_runtime.dart';
 part 'android_core_runtime.dart';
 part 'ohos_core_runtime.dart';
+part 'ios_core_runtime.dart';
 
 @visibleForTesting
 typedef CoreElevatedDesktopCommandRunner =
@@ -93,6 +96,19 @@ class CoreLifecycleService {
   late final CorePlatformRuntime _runtime;
   late final StreamSubscription<CoreRuntimeEvent> _runtimeEvents;
   AuthSession? _session;
+  WorkspacePreferences _workspacePreferences = const WorkspacePreferences();
+  String? _workspaceAccountId;
+  Future<void>? _workspaceInitialization;
+  Future<ManagedDevice>? _sourceDeviceRequest;
+  final selectedWorkspaceId = ValueNotifier<String?>(null);
+  final networkConnections = ValueNotifier<Map<String, CoreNetworkConnection>>(
+    {},
+  );
+  final Map<String, Future<void>> _networkOperations = {};
+  final Map<String, int> _networkOperationGenerations = {};
+  int _connectionGeneration = 0;
+  bool _connectionsDisposed = false;
+
   TokenConnectionProfile? _tokenConnectionProfile;
   Future<void> _serial = Future<void>.value();
   String? _cliPath;
@@ -111,40 +127,25 @@ class CoreLifecycleService {
 
   Future<void> bindSession(AuthSession session) {
     return _enqueue(() async {
-      final previousWorkspace = _session?.user.currentWorkspace?.id;
-      final nextWorkspace = session.user.currentWorkspace?.id;
+      final accountChanged =
+          _session != null && _session!.user.id != session.user.id;
+      if (accountChanged) {
+        _resetWorkspaceConnections();
+        await _runtime.stop();
+      }
       final versionScopeChanged =
           _engineVersionScopeForSession(_session) !=
           _engineVersionScopeForSession(session);
-      final workspaceChanged =
-          previousWorkspace != null &&
-          nextWorkspace != null &&
-          previousWorkspace != nextWorkspace;
-
+      await initializeWorkspaceSession(session, checkSourceAccess: false);
       _session = session;
       _tokenConnectionProfile = null;
       _invalidateEngineVersionChecks();
       if (versionScopeChanged) {
         engineVersionStatus.value = CoreEngineVersionStatus.unknown;
       }
-      _logger.info(
-        'core',
-        'Binding session',
-        context: {
-          'workspace_changed': workspaceChanged,
-          'previous_workspace': previousWorkspace,
-          'next_workspace': nextWorkspace,
-        },
-      );
       _reportSessionEstablished(session);
-      if (workspaceChanged) {
-        status.value = const CoreRunStatus(
-          phase: CoreRunPhase.repairing,
-          message: '工作区变更，正在重建连接引擎...',
-        );
-      }
-      await _ensureRunning(forceReinstall: workspaceChanged);
-      if (_session?.user.currentWorkspace != null) {
+      await _ensureRunning(forceReinstall: accountChanged);
+      if (sourceWorkspaceId != null) {
         _startEngineVersionCheckTimer();
       }
     });
@@ -165,6 +166,7 @@ class CoreLifecycleService {
 
   Future<void> onSessionExpired(Object error) {
     return _enqueue(() async {
+      _resetWorkspaceConnections();
       _session = null;
       _invalidateEngineVersionChecks();
       _stopEngineVersionCheckTimer();
@@ -174,6 +176,7 @@ class CoreLifecycleService {
 
   Future<void> onLogout() {
     return _enqueue(() async {
+      _resetWorkspaceConnections();
       _session = null;
       _tokenConnectionProfile = null;
       _invalidateEngineVersionChecks();
@@ -258,19 +261,6 @@ class CoreLifecycleService {
     });
   }
 
-  /// Drops the VPN interface before the control plane confirms a network exit,
-  /// so leaving does not keep traffic pointed at a network that is going away.
-  Future<void> preemptActiveVpnForNetworkExit() {
-    _logger.info('core.vpn', 'Preempting active VPN interface for network exit');
-    return _runtime.preemptActiveVpnForExit();
-  }
-
-  /// Undoes [preemptActiveVpnForNetworkExit] when that exit failed.
-  Future<void> restoreActiveVpnAfterFailedExit() {
-    _logger.info('core.vpn', 'Restoring preempted VPN interface');
-    return _runtime.restoreActiveVpnAfterFailedExit();
-  }
-
   Future<void> _stopRuntimeAllowingElevation({
     required String elevatedStatusMessage,
     required String elevatedLogMessage,
@@ -330,6 +320,19 @@ class CoreLifecycleService {
     });
   }
 
+  /// Drops the VPN interface before the control plane confirms a network exit,
+  /// so leaving does not keep traffic pointed at a network that is going away.
+  Future<void> preemptActiveVpnForNetworkExit() {
+    _logger.info('core.vpn', 'Preempting active VPN interface for network exit');
+    return _runtime.preemptActiveVpnForExit();
+  }
+
+  /// Undoes [preemptActiveVpnForNetworkExit] when that exit failed.
+  Future<void> restoreActiveVpnAfterFailedExit() {
+    _logger.info('core.vpn', 'Restoring preempted VPN interface');
+    return _runtime.restoreActiveVpnAfterFailedExit();
+  }
+
   Future<void> recoverAfterAppResume() {
     return _enqueue(() async {
       if (!_hasActiveConnection) {
@@ -370,6 +373,7 @@ class CoreLifecycleService {
     _stopEngineVersionCheckTimer();
     await _runtimeEvents.cancel();
     await _runtime.dispose();
+    _disposeWorkspaceConnections();
     engineVersionStatus.dispose();
     status.dispose();
   }
@@ -380,6 +384,7 @@ class CoreLifecycleService {
 
   Future<void> bindTokenConnection(TokenConnectionProfile profile) {
     return _enqueue(() async {
+      _resetWorkspaceConnections();
       _session = null;
       _tokenConnectionProfile = profile;
       _invalidateEngineVersionChecks();
@@ -426,7 +431,7 @@ class CoreLifecycleService {
           return;
         }
 
-        if (session != null && session.user.currentWorkspace == null) {
+        if (session != null && _sourceWorkspace == null) {
           status.value = const CoreRunStatus(
             phase: CoreRunPhase.error,
             message: '当前账号未绑定工作区',
@@ -448,11 +453,8 @@ class CoreLifecycleService {
         try {
           final CoreBootstrapConfig bootstrap;
           if (session != null) {
-            final workspace = session.user.currentWorkspace!;
-            bootstrap = await authService.prepareCoreBootstrap(
-              accessToken: session.tokenSet.accessToken,
-              workspaceId: workspace.id,
-            );
+            final workspace = _sourceWorkspace!;
+            bootstrap = await _prepareSourceBootstrap(session, workspace.id);
           } else {
             final defaults = await authService.fetchCoreBootstrapDefaults();
             bootstrap = profile!.toBootstrap(
@@ -1123,6 +1125,18 @@ exit 3
     return _runtime.readNetworkTrafficTotals();
   }
 
+  Future<void> beginNetworkConnection() => _runtime.beginNetworkConnection();
+
+  Future<String?> waitForNetworkConnection(
+    String runtimeNetworkName, {
+    required Future<String?> Function() readInstanceId,
+  }) => _runtime.waitForNetworkConnection(
+    runtimeNetworkName,
+    readInstanceId: readInstanceId,
+  );
+
+  Future<void> endNetworkConnection() => _runtime.endNetworkConnection();
+
   Future<bool> isNetworkInstanceRunning(String runtimeNetworkName) async {
     return _runtime.isNetworkInstanceRunning(runtimeNetworkName);
   }
@@ -1158,7 +1172,7 @@ exit 3
         );
         return;
       }
-      final workspace = session.user.currentWorkspace;
+      final workspace = _sourceWorkspace;
       if (workspace == null) {
         _logger.error('core', 'No workspace available for lifecycle binding');
         if (status.value.phase != CoreRunPhase.signedOut) {
@@ -1186,10 +1200,7 @@ exit 3
       );
 
       try {
-        final bootstrap = await authService.prepareCoreBootstrap(
-          accessToken: session.tokenSet.accessToken,
-          workspaceId: workspace.id,
-        );
+        final bootstrap = await _prepareSourceBootstrap(session, workspace.id);
         if (!forceReinstall) {
           final runtimeStatus = await _runtime.readStatus(bootstrap);
           final machineId = runtimeStatus?.machineId;
@@ -1505,7 +1516,7 @@ exit 3
       );
       return;
     }
-    final workspace = session.user.currentWorkspace;
+    final workspace = _sourceWorkspace;
     if (workspace == null) {
       engineVersionStatus.value = CoreEngineVersionStatus.unknown;
       return;
@@ -1580,11 +1591,7 @@ exit 3
   }
 
   String? _engineVersionScopeForSession(AuthSession? session) {
-    final workspaceId = session?.user.currentWorkspace?.id;
-    if (session == null || workspaceId == null) {
-      return null;
-    }
-    return '${session.user.email}\n$workspaceId';
+    return session?.user.id;
   }
 
   bool _isCurrentEngineVersionCheck({
@@ -1595,7 +1602,7 @@ exit 3
     final currentSession = _session;
     return generation == _engineVersionCheckGeneration &&
         identical(currentSession, session) &&
-        currentSession?.user.currentWorkspace?.id == workspaceId;
+        sourceWorkspaceId == workspaceId;
   }
 
   bool _isCurrentTokenEngineVersionCheck({
@@ -1912,60 +1919,10 @@ exit 3
   @visibleForTesting
   static Map<String, CoreNetworkTrafficTotals>
   parseNetworkTrafficTotalsFromJson(String output, {DateTime? sampledAt}) {
-    final decoded = jsonDecode(output);
-    final items = _extractMetricItems(decoded);
-
-    final collected = <String, _MutableNetworkTrafficTotals>{};
-    for (final item in items) {
-      if (item is! Map<String, dynamic>) {
-        continue;
-      }
-      final metricName = item['name']?.toString().trim() ?? '';
-      if (metricName != 'traffic_bytes_self_rx' &&
-          metricName != 'traffic_bytes_self_tx') {
-        continue;
-      }
-
-      final labels = item['labels'];
-      if (labels is! Map<String, dynamic>) {
-        continue;
-      }
-      final runtimeNetworkName =
-          labels['network_name']?.toString().trim() ?? '';
-      if (runtimeNetworkName.isEmpty || runtimeNetworkName == '__access__') {
-        continue;
-      }
-
-      final value = _readInt(item['value']);
-      if (value == null) {
-        continue;
-      }
-
-      final totals = collected.putIfAbsent(
-        runtimeNetworkName,
-        _MutableNetworkTrafficTotals.new,
-      );
-      if (metricName == 'traffic_bytes_self_rx') {
-        totals.downloadBytes = value;
-        totals.hasDownloadBytes = true;
-      } else {
-        totals.uploadBytes = value;
-        totals.hasUploadBytes = true;
-      }
-    }
-
-    final sampleTime = sampledAt ?? DateTime.now();
-    return collected.map((runtimeNetworkName, totals) {
-      return MapEntry(
-        runtimeNetworkName,
-        CoreNetworkTrafficTotals(
-          runtimeNetworkName: runtimeNetworkName,
-          downloadBytes: totals.hasDownloadBytes ? totals.downloadBytes : 0,
-          uploadBytes: totals.hasUploadBytes ? totals.uploadBytes : 0,
-          sampledAt: sampleTime,
-        ),
-      );
-    });
+    return _parseNetworkTrafficTotals(
+      _extractMetricItems(jsonDecode(output)),
+      sampledAt: sampledAt,
+    );
   }
 
   static List<dynamic> _extractMetricItems(Object? decoded) {
@@ -1989,20 +1946,6 @@ exit 3
     String output,
   ) {
     return parseCorePeerStatusesFromJson(output);
-  }
-
-  static int? _readInt(Object? value) {
-    if (value is int) {
-      return value;
-    }
-    if (value is num) {
-      return value.toInt();
-    }
-    final text = value?.toString().trim();
-    if (text == null || text.isEmpty) {
-      return null;
-    }
-    return num.tryParse(text)?.toInt();
   }
 
   void _rememberCliPath(String? cliPath) {
@@ -2380,6 +2323,7 @@ exit 3
   }
 
   void _handleRuntimeEvent(CoreRuntimeEvent event) {
+    final platform = event.data['platform']?.toString() ?? 'Android';
     _logger.debug(
       'core.runtime',
       'Runtime event received',
@@ -2411,7 +2355,7 @@ exit 3
           const <String>[];
       _logger.info(
         'core.vpn',
-        'Android VPN established',
+        '$platform VPN established',
         context: {
           'instance_name':
               payload['instanceName'] ?? payload['instance_name'] ?? '',
@@ -2461,7 +2405,7 @@ exit 3
               '',
         },
       );
-      _restoreRunningStatusAfterVpnRecovery();
+      _restoreRunningStatusAfterVpnRecovery(platform);
     }
     if (event.type == CoreRuntimeEventTypes.vpnRecoveredFromSnapshot) {
       final payload = _runtimeEventPayload(event);
@@ -2478,6 +2422,7 @@ exit 3
       // reports attached releases a failure state whose recovery report this
       // process never received.
       _restoreRunningStatusAfterVpnRecovery(
+        platform,
         message: payload['message']?.toString(),
       );
     }
@@ -2485,7 +2430,7 @@ exit 3
       final payload = _runtimeEventPayload(event);
       _logger.info(
         'core.vpn',
-        'Android VPN config refresh requested',
+        '$platform VPN config refresh requested',
         context: {
           'instance_name':
               payload['instanceName'] ?? payload['instance_name'] ?? '',
@@ -2500,7 +2445,7 @@ exit 3
       final stopReason = payload['reason']?.toString().trim() ?? '';
       _logger.info(
         'core.vpn',
-        'Android VPN stopped',
+        '$platform VPN stopped',
         context: {
           'instance_name':
               payload['instanceName'] ?? payload['instance_name'] ?? '',
@@ -2515,9 +2460,12 @@ exit 3
     }
     if (event.type == CoreRuntimeEventTypes.configServerStarted) {
       final payload = _runtimeEventPayload(event);
+      if (event.data['platform'] == 'iOS' && payload['mode'] == 'control') {
+        _restoreRunningStatusAfterVpnRecovery(platform);
+      }
       _logger.info(
         'core.runtime',
-        'Android config server client started',
+        '$platform config server client started',
         context: {
           'hostname': payload['hostname'] ?? '',
           'already_started':
@@ -2529,7 +2477,7 @@ exit 3
       final payload = _runtimeEventPayload(event);
       _logger.info(
         'core.runtime',
-        'Android config server client stopped',
+        '$platform config server client stopped',
         context: {'reason': payload['reason'] ?? ''},
       );
     }
@@ -2549,7 +2497,7 @@ exit 3
       status.value = CoreRunStatus(
         phase: CoreRunPhase.needsVpnPermission,
         message: '需要授权 VPN 连接',
-        lastError: '用户已拒绝 Android VPN 授权，请重新授权后继续。',
+        lastError: '用户已拒绝 $platform VPN 授权，请重新授权后继续。',
         machineId: current.machineId,
         details: current.details,
       );
@@ -2558,7 +2506,8 @@ exit 3
     if (event.type == CoreRuntimeEventTypes.configServerStopped) {
       final payload = _runtimeEventPayload(event);
       final stopReason = payload['reason']?.toString().trim() ?? '';
-      if (_isIntentionalAndroidRuntimeStop(stopReason)) {
+      if (_isIntentionalRuntimeStop(stopReason) ||
+          (event.data['platform'] == 'iOS' && stopReason == 'system_stop')) {
         status.value = CoreRunStatus(
           phase: CoreRunPhase.stopped,
           message: stopReason == 'revoked' ? 'VPN 已由系统断开' : '连接已断开',
@@ -2576,7 +2525,7 @@ exit 3
       if (_isInstanceNotReadyMessage(message)) {
         _logger.warn(
           'core.runtime',
-          'Android runtime instance is not ready',
+          '$platform runtime instance is not ready',
           context: {
             'error': message,
             'instance_name':
@@ -2587,7 +2536,7 @@ exit 3
       }
       _logger.error(
         'core.runtime',
-        'Android runtime error',
+        '$platform runtime error',
         context: {
           'error': message,
           'action': payload['action'] ?? '',
@@ -2623,7 +2572,7 @@ exit 3
     }
   }
 
-  bool _isIntentionalAndroidRuntimeStop(String reason) {
+  bool _isIntentionalRuntimeStop(String reason) {
     return reason == 'user_disconnect' || reason == 'revoked';
   }
 
@@ -2633,7 +2582,7 @@ exit 3
     }
     _logger.warn(
       'core.runtime',
-      'Android runtime stopped while session is active; reconnecting',
+      '${_runtime is IosCoreRuntime ? 'iOS' : 'Android'} runtime stopped while session is active; reconnecting',
     );
     status.value = CoreRunStatus(
       phase: CoreRunPhase.repairing,
@@ -2655,11 +2604,10 @@ exit 3
     return value == null ? 0 : 1;
   }
 
-  /// Restores a running status from a runtime report that the tunnel is up
-  /// again. [message] is the phase text of the runtime that recovered; a
-  /// platform whose runtime reports its own wording passes it, so the UI never
-  /// shows another platform's status text.
-  void _restoreRunningStatusAfterVpnRecovery({String? message}) {
+  void _restoreRunningStatusAfterVpnRecovery(
+    String platform, {
+    String? message,
+  }) {
     if (!_hasActiveConnection) {
       return;
     }
@@ -2670,7 +2618,7 @@ exit 3
     }
     status.value = CoreRunStatus(
       phase: CoreRunPhase.running,
-      message: message ?? 'Android 连接引擎运行中',
+      message: message ?? '$platform 连接引擎运行中',
       machineId: current.machineId,
       details: current.details,
     );

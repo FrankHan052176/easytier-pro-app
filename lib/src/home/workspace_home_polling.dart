@@ -5,7 +5,12 @@ extension _WorkspaceHomePolling on _WorkspaceHomeViewState {
     if (!widget.coreLifecycleService.status.value.isRunning) {
       return const <ConsoleNetwork>[];
     }
-    return _networks
+    return <String, ConsoleNetwork>{
+          for (final network in _networks) network.id: network,
+          for (final connection
+              in widget.coreLifecycleService.networkConnections.value.values)
+            connection.network.id: connection.network,
+        }.values
         .where((network) {
           if (network.runtimeNetworkName.trim().isEmpty) {
             return false;
@@ -165,9 +170,8 @@ extension _WorkspaceHomePolling on _WorkspaceHomeViewState {
           nextTraffic.remove(network.id);
           nextPrevious.remove(runtimeName);
           nextHistories.remove(network.id);
-          if (nextInstanceReady[network.id] != true) {
-            instanceReadinessFallbacks.add(network);
-          }
+          nextInstanceReady[network.id] = false;
+          instanceReadinessFallbacks.add(network);
           continue;
         }
 
@@ -178,7 +182,8 @@ extension _WorkspaceHomePolling on _WorkspaceHomeViewState {
         );
         nextTraffic[network.id] = snapshot;
         nextPrevious[runtimeName] = totals;
-        nextInstanceReady[network.id] = true;
+        nextInstanceReady[network.id] = await widget.coreLifecycleService
+            .isNetworkInstanceRunning(runtimeName);
 
         final history =
             List<_TrafficHistoryPoint>.from(
@@ -232,6 +237,12 @@ extension _WorkspaceHomePolling on _WorkspaceHomeViewState {
         nextHistory.removeAt(0);
       }
 
+      for (final entry in nextInstanceReady.entries) {
+        widget.coreLifecycleService.updateNetworkReadiness(
+          entry.key,
+          entry.value,
+        );
+      }
       _updateState(() {
         _networkTraffic = nextTraffic;
         _networkInstanceReady = nextInstanceReady;
@@ -306,6 +317,7 @@ extension _WorkspaceHomePolling on _WorkspaceHomeViewState {
       if (!mounted) {
         return;
       }
+      widget.coreLifecycleService.updateNetworkReadiness(network.id, ready);
       _updateState(() {
         _networkInstanceReady = {..._networkInstanceReady, network.id: ready};
       });
@@ -413,7 +425,6 @@ extension _WorkspaceHomePolling on _WorkspaceHomeViewState {
       }
       _updateState(() {
         _networkPeerStatuses = {..._networkPeerStatuses, network.id: statuses};
-        _networkInstanceReady = {..._networkInstanceReady, network.id: true};
         final nextErrors = Map<String, String>.from(_peerStatusErrors)
           ..remove(network.id);
         _peerStatusErrors = nextErrors;

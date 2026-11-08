@@ -44,7 +44,6 @@ class AuthGate extends StatefulWidget {
     required this.traySupport,
     required this.appUpdateService,
     required this.windowBehaviorPreferences,
-    this.androidMvpSingleActiveNetworkOverride,
   });
 
   final AuthService authService;
@@ -53,7 +52,6 @@ class AuthGate extends StatefulWidget {
   final TraySupport traySupport;
   final AppUpdateService appUpdateService;
   final WindowBehaviorPreferences windowBehaviorPreferences;
-  final bool? androidMvpSingleActiveNetworkOverride;
 
   @override
   State<AuthGate> createState() => _AuthGateState();
@@ -74,6 +72,8 @@ class _AuthGateState extends State<AuthGate> with WidgetsBindingObserver {
   bool _sessionExpirationInFlight = false;
   bool _logoutInFlight = false;
   int _approvalGeneration = 0;
+  int _lifecycleGeneration = 0;
+  Completer<void>? _foregroundWaiter;
   Timer? _sessionRefreshTimer;
   StreamSubscription<SessionExpiredException>? _sessionExpirationSubscription;
   final AppLogger _logger = AppLogger.instance;
@@ -94,6 +94,9 @@ class _AuthGateState extends State<AuthGate> with WidgetsBindingObserver {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _approvalGeneration++;
+    _foregroundWaiter?.complete();
+    _foregroundWaiter = null;
     _sessionRefreshTimer?.cancel();
     unawaited(_sessionExpirationSubscription?.cancel());
     super.dispose();
@@ -101,6 +104,10 @@ class _AuthGateState extends State<AuthGate> with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (_lifecycleState == AppLifecycleState.resumed &&
+        state != AppLifecycleState.resumed) {
+      _lifecycleGeneration++;
+    }
     _lifecycleState = state;
     _logger.debug(
       'auth.gate',
@@ -108,6 +115,8 @@ class _AuthGateState extends State<AuthGate> with WidgetsBindingObserver {
       context: {'state': state.name},
     );
     if (state == AppLifecycleState.resumed) {
+      _foregroundWaiter?.complete();
+      _foregroundWaiter = null;
       _startApprovalPollingIfReady();
       final session = _session;
       if (session != null) {
@@ -195,13 +204,21 @@ class _AuthGateState extends State<AuthGate> with WidgetsBindingObserver {
 
   Future<void> _waitForApproval(DeviceAuthInfo info, int generation) async {
     try {
-      final session = await widget.authService.completeDeviceAuth(info);
-      if (generation != _approvalGeneration) {
+      final session = await widget.authService.completeDeviceAuth(
+        info,
+        waitForForeground: _shouldWaitForBrowserReturn
+            ? () => _waitForApprovalForeground(generation)
+            : null,
+        lifecycleGeneration: _shouldWaitForBrowserReturn
+            ? () => _lifecycleGeneration
+            : null,
+      );
+      if (!mounted || generation != _approvalGeneration) {
         return;
       }
       _setSession(session);
     } catch (error) {
-      if (generation != _approvalGeneration) {
+      if (!mounted || generation != _approvalGeneration) {
         return;
       }
       _logger.error(
@@ -215,6 +232,16 @@ class _AuthGateState extends State<AuthGate> with WidgetsBindingObserver {
         _approvalWaitInFlight = false;
       }
     }
+  }
+
+  Future<bool> _waitForApprovalForeground(int generation) async {
+    while (mounted &&
+        generation == _approvalGeneration &&
+        _lifecycleState != AppLifecycleState.resumed) {
+      _foregroundWaiter ??= Completer<void>();
+      await _foregroundWaiter!.future;
+    }
+    return mounted && generation == _approvalGeneration;
   }
 
   Future<bool> _openBrowser(String url) async {
@@ -541,7 +568,8 @@ class _AuthGateState extends State<AuthGate> with WidgetsBindingObserver {
     if (kIsWeb || Platform.operatingSystem == 'ohos') {
       return false;
     }
-    return defaultTargetPlatform == TargetPlatform.android;
+    return defaultTargetPlatform == TargetPlatform.android ||
+        defaultTargetPlatform == TargetPlatform.iOS;
   }
 
   @override
@@ -555,8 +583,6 @@ class _AuthGateState extends State<AuthGate> with WidgetsBindingObserver {
         appUpdateService: widget.appUpdateService,
         windowBehaviorPreferences: widget.windowBehaviorPreferences,
         onLogout: _logout,
-        androidMvpSingleActiveNetworkOverride:
-            widget.androidMvpSingleActiveNetworkOverride,
       );
     }
 
@@ -617,7 +643,57 @@ class _AuthGateState extends State<AuthGate> with WidgetsBindingObserver {
       ),
     );
 
-    return FScaffold(child: content);
+    return FScaffold(
+      child: Column(
+        children: [
+          Expanded(child: content),
+          if (defaultTargetPlatform == TargetPlatform.iOS &&
+              _stage == AuthStage.loginRequired)
+            const _PolicyFooterLinks(),
+        ],
+      ),
+    );
+  }
+}
+
+class _PolicyFooterLinks extends StatelessWidget {
+  const _PolicyFooterLinks();
+
+  Widget _link(String label, String url) => FTappable(
+    onPress: () => unawaited(
+      launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication),
+    ),
+    child: Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Text(label),
+    ),
+  );
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: const EdgeInsets.only(bottom: 8),
+        child: DefaultTextStyle(
+          style: theme.textTheme.bodySmall!.copyWith(
+            fontSize: 12,
+            color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
+          ),
+          child: Wrap(
+            alignment: WrapAlignment.center,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              const Text('使用前请阅读'),
+              _link('《隐私政策》', 'https://easytier.net/privacy/'),
+              const Text('和'),
+              _link('《服务条款》', 'https://easytier.net/terms/'),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
 

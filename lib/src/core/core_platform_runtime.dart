@@ -10,10 +10,32 @@ abstract class CorePlatformRuntime {
     if (!kIsWeb && Platform.operatingSystem == 'ohos') {
       return OhosCoreRuntime();
     }
+    if (!kIsWeb && Platform.isIOS) {
+      return IosCoreRuntime();
+    }
     return DesktopCoreRuntime(owner);
   }
 
   bool get supportsElevationRepair => false;
+
+  /// Whether this process drives the VPN interface itself. A platform whose
+  /// tunnel is owned by a separate extension reports false so shared runtime
+  /// event handling does not try to start or stop it here.
+  bool get drivesVpnInterfaceFromUi => true;
+
+  /// Whether a resume may still recover a runtime whose reported phase is
+  /// [CoreRunPhase.needsVpnPermission]. A platform whose authorization is
+  /// applied outside this process can report that phase before its runtime is
+  /// reachable, so the phase must not stay terminal there.
+  bool get supportsVpnPermissionResumeRecovery => false;
+
+  /// Re-checks the native runtime after the app resumes. Returns true when the
+  /// caller must re-drive the connection.
+  Future<bool> shouldRecoverAfterAppResume() async => false;
+
+  /// Extension point for runtime events whose state lives outside the shared
+  /// Android VPN state machine.
+  void _handlePlatformRuntimeEvent(CoreRuntimeEvent event) {}
 
   Duration get networkTrafficPollInterval => const Duration(seconds: 2);
 
@@ -27,19 +49,6 @@ abstract class CorePlatformRuntime {
     CoreBootstrapConfig bootstrap, {
     required bool forceReinstall,
   });
-
-  /// Whether a resume may still recover a runtime whose reported phase is
-  /// [CoreRunPhase.needsVpnPermission].
-  ///
-  /// A platform whose authorization is applied outside this process can report
-  /// the permission phase before its runtime becomes reachable, so that phase
-  /// must not stay terminal: the resume re-checks the runtime and re-drives the
-  /// connection once the runtime itself vouches for the authorization.
-  /// Platforms whose authorization is delivered through an in-app grant keep
-  /// `false`, so only a new grant may leave the permission phase.
-  bool get supportsVpnPermissionResumeRecovery => false;
-
-  Future<bool> shouldRecoverAfterAppResume() async => false;
 
   Future<String?> readInstalledVersion() async => null;
 
@@ -58,6 +67,15 @@ abstract class CorePlatformRuntime {
   /// Brings back the interface [preemptActiveVpnForExit] took down when that
   /// exit turned out to fail.
   Future<void> restoreActiveVpnAfterFailedExit() async {}
+
+  Future<void> beginNetworkConnection() async {}
+
+  Future<String?> waitForNetworkConnection(
+    String runtimeNetworkName, {
+    required Future<String?> Function() readInstanceId,
+  }) async => null;
+
+  Future<void> endNetworkConnection() async {}
 
   Future<Map<String, CoreNetworkTrafficTotals>> readNetworkTrafficTotals();
 
@@ -125,13 +143,15 @@ class CoreRuntimeEventTypes {
   static const String configServerStarted = 'config_server_started';
   static const String configServerStopped = 'config_server_stopped';
   static const String error = 'error';
+
   /// An authoritative runtime snapshot reported an attached tunnel that this
   /// process never observed starting: the native side recovered on its own
   /// while the UI was frozen, so the lifecycle reconciles its failure state
   /// from that snapshot instead of replaying the `vpn_started` event the
   /// frozen process never received.
   static const String vpnRecoveredFromSnapshot = 'vpn_recovered_from_snapshot';
-  /// The runtime could not be read: its state is unknown. That is not a failure,
-  /// so it must not move the UI into an error phase.
+
+  /// The runtime could not be read: its state is unknown. That is not a
+  /// failure, so it must not move the UI into an error phase.
   static const String runtimeUnknown = 'runtime_unknown';
 }

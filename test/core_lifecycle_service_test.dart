@@ -13,7 +13,7 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   group('CoreLifecycleService workspace binding', () {
-    test('forces runtime reinstall when workspace changes', () async {
+    test('workspace selection preserves the source runtime', () async {
       final authService = _LifecycleAuthService();
       final runtime = _LifecycleRuntime();
       final service = CoreLifecycleService(
@@ -21,14 +21,28 @@ void main() {
         runtime: runtime,
       );
       addTearDown(service.dispose);
-
-      await service.bindSession(_session('tenant-1'));
-      await service.bindSession(_session('tenant-2'));
-
-      expect(authService.workspaceIds, ['tenant-1', 'tenant-2']);
-      expect(runtime.ensureRunningCount, 2);
-      expect(runtime.forceReinstallValues, [false, true]);
-      expect(runtime.readStatusCount, 1);
+      final session = _session('tenant-1');
+      await service.bindSession(
+        AuthSession(
+          user: ConsoleUser(
+            id: session.user.id,
+            email: session.user.email,
+            displayName: session.user.displayName,
+            workspaces: const [
+              ConsoleWorkspace(id: 'tenant-1', name: 'A'),
+              ConsoleWorkspace(id: 'tenant-2', name: 'B'),
+            ],
+          ),
+          tokenSet: session.tokenSet,
+        ),
+      );
+      await service.selectWorkspace('tenant-2');
+      expect(authService.workspaceIds, ['tenant-1']);
+      expect(service.selectedWorkspaceId.value, 'tenant-2');
+      expect(service.sourceWorkspaceId, 'tenant-1');
+      expect(runtime.ensureRunningCount, 1);
+      expect(runtime.forceReinstallValues, [false]);
+      expect(runtime.stopCount, 0);
       expect(service.status.value.phase, CoreRunPhase.running);
     });
 
@@ -51,35 +65,38 @@ void main() {
       expect(service.status.value.message, '当前账号未绑定工作区');
     });
 
-    test('clears engine version status when workspace switch fails', () async {
-      final authService = _LifecycleAuthService();
-      final runtime = _LifecycleRuntime()
-        ..connected = true
-        ..installedVersion = '2.6.3';
-      final service = CoreLifecycleService(
-        authService: authService,
-        runtime: runtime,
-        engineVersionCheckInterval: Duration.zero,
-      );
-      addTearDown(service.dispose);
+    test(
+      'clears engine version status when source workspace is removed',
+      () async {
+        final authService = _LifecycleAuthService();
+        final runtime = _LifecycleRuntime()
+          ..connected = true
+          ..installedVersion = '2.6.3';
+        final service = CoreLifecycleService(
+          authService: authService,
+          runtime: runtime,
+          engineVersionCheckInterval: Duration.zero,
+        );
+        addTearDown(service.dispose);
 
-      await service.bindSession(_session('tenant-1'));
-      expect(
-        service.engineVersionStatus.value.relation,
-        CoreEngineVersionRelation.updateAvailable,
-      );
+        await service.bindSession(_session('tenant-1'));
+        expect(
+          service.engineVersionStatus.value.relation,
+          CoreEngineVersionRelation.updateAvailable,
+        );
 
-      runtime.ensureRunningError = StateError('install failed');
-      await service.bindSession(_session('tenant-2'));
+        runtime.ensureRunningError = StateError('install failed');
+        await service.bindSession(_session('tenant-2'));
 
-      expect(service.status.value.phase, CoreRunPhase.error);
-      expect(
-        service.engineVersionStatus.value.relation,
-        CoreEngineVersionRelation.unknown,
-      );
-      expect(service.engineVersionStatus.value.installedVersion, isNull);
-      expect(service.engineVersionStatus.value.consoleVersion, isNull);
-    });
+        expect(service.status.value.phase, CoreRunPhase.error);
+        expect(
+          service.engineVersionStatus.value.relation,
+          CoreEngineVersionRelation.unknown,
+        );
+        expect(service.engineVersionStatus.value.installedVersion, isNull);
+        expect(service.engineVersionStatus.value.consoleVersion, isNull);
+      },
+    );
 
     test('binds token connection without workspace bootstrap', () async {
       final authService = _LifecycleAuthService();
@@ -678,37 +695,40 @@ void main() {
       expect(service.engineVersionStatus.value.consoleVersion, isNull);
     });
 
-    test('pending version check is ignored after workspace switch', () async {
-      final authService = _LifecycleAuthService();
-      final runtime = _LifecycleRuntime()
-        ..connected = true
-        ..installedVersion = '2.6.4';
-      final service = CoreLifecycleService(
-        authService: authService,
-        runtime: runtime,
-        engineVersionCheckInterval: Duration.zero,
-      );
-      addTearDown(service.dispose);
+    test(
+      'pending version check is ignored after source access is removed',
+      () async {
+        final authService = _LifecycleAuthService();
+        final runtime = _LifecycleRuntime()
+          ..connected = true
+          ..installedVersion = '2.6.4';
+        final service = CoreLifecycleService(
+          authService: authService,
+          runtime: runtime,
+          engineVersionCheckInterval: Duration.zero,
+        );
+        addTearDown(service.dispose);
 
-      await service.bindSession(_session('tenant-1'));
+        await service.bindSession(_session('tenant-1'));
 
-      final staleVersion = Completer<String>();
-      authService.versionCompleter = staleVersion;
-      final check = service.checkEngineVersion();
-      await Future<void>.delayed(Duration.zero);
+        final staleVersion = Completer<String>();
+        authService.versionCompleter = staleVersion;
+        final check = service.checkEngineVersion();
+        await Future<void>.delayed(Duration.zero);
 
-      authService.versionCompleter = null;
-      authService.bootstrapVersion = '2.6.4';
-      await service.bindSession(_session('tenant-2'));
+        authService.versionCompleter = null;
+        authService.bootstrapVersion = '2.6.4';
+        await service.bindSession(_session('tenant-2'));
 
-      staleVersion.complete('2.6.5');
-      await check;
+        staleVersion.complete('2.6.5');
+        await check;
 
-      final versionStatus = service.engineVersionStatus.value;
-      expect(versionStatus.relation, CoreEngineVersionRelation.current);
-      expect(versionStatus.installedVersion, 'v2.6.4');
-      expect(versionStatus.consoleVersion, 'v2.6.4');
-    });
+        final versionStatus = service.engineVersionStatus.value;
+        expect(versionStatus.relation, CoreEngineVersionRelation.unknown);
+        expect(versionStatus.installedVersion, isNull);
+        expect(versionStatus.consoleVersion, isNull);
+      },
+    );
 
     test('timed out version check cannot publish late result', () async {
       final authService = _LifecycleAuthService();
@@ -963,44 +983,27 @@ void main() {
         required bool isWindows,
         required bool isMacOS,
       }) {
-        return CoreLifecycleService
-            .shouldTreatDesktopCommandFailureAsElevationForTesting(
-              command,
-              isWindows: isWindows,
-              isMacOS: isMacOS,
-            );
+        return CoreLifecycleService.shouldTreatDesktopCommandFailureAsElevationForTesting(
+          command,
+          isWindows: isWindows,
+          isMacOS: isMacOS,
+        );
       }
 
       expect(
-        treatsAsElevation(
-          'install',
-          isWindows: true,
-          isMacOS: false,
-        ),
+        treatsAsElevation('install', isWindows: true, isMacOS: false),
         isTrue,
       );
       expect(
-        treatsAsElevation(
-          'uninstall',
-          isWindows: false,
-          isMacOS: true,
-        ),
+        treatsAsElevation('uninstall', isWindows: false, isMacOS: true),
         isTrue,
       );
       expect(
-        treatsAsElevation(
-          'status',
-          isWindows: true,
-          isMacOS: false,
-        ),
+        treatsAsElevation('status', isWindows: true, isMacOS: false),
         isFalse,
       );
       expect(
-        treatsAsElevation(
-          'install',
-          isWindows: false,
-          isMacOS: false,
-        ),
+        treatsAsElevation('install', isWindows: false, isMacOS: false),
         isFalse,
       );
     });
@@ -1702,6 +1705,56 @@ void main() {
     });
 
     test(
+      'foreground iOS control recovers without restarting the runtime',
+      () async {
+        final runtime = _LifecycleRuntime();
+        final service = CoreLifecycleService(
+          authService: _LifecycleAuthService(),
+          runtime: runtime,
+        );
+        addTearDown(service.dispose);
+        await service.bindSession(_session('tenant-1'));
+        runtime.emit(
+          const CoreRuntimeEvent(
+            type: CoreRuntimeEventTypes.vpnPermissionDenied,
+            data: {'platform': 'iOS'},
+          ),
+        );
+        await _waitUntil(
+          () => service.status.value.phase == CoreRunPhase.needsVpnPermission,
+        );
+        runtime.emit(
+          const CoreRuntimeEvent(
+            type: CoreRuntimeEventTypes.configServerStarted,
+            data: {
+              'platform': 'iOS',
+              'payload': {'mode': 'control'},
+            },
+          ),
+        );
+        await _waitUntil(
+          () => service.status.value.phase == CoreRunPhase.running,
+        );
+        expect(service.status.value.machineId, 'machine-1');
+        expect(runtime.ensureRunningCount, 1);
+
+        await service.stopRuntimeForUserExit();
+        runtime.emit(
+          const CoreRuntimeEvent(
+            type: CoreRuntimeEventTypes.configServerStarted,
+            data: {
+              'platform': 'iOS',
+              'payload': {'mode': 'control'},
+            },
+          ),
+        );
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+        expect(service.status.value.phase, CoreRunPhase.stopped);
+        expect(runtime.ensureRunningCount, 1);
+      },
+    );
+
+    test(
       'reports Android VPN permission denial as an authorization state',
       () async {
         final authService = _LifecycleAuthService();
@@ -2373,6 +2426,37 @@ class _VersionProbeProcess implements Process {
 }
 
 class _LifecycleAuthService implements AuthService {
+  WorkspacePreferences workspacePreferences = const WorkspacePreferences();
+
+  @override
+  Future<WorkspacePreferences> loadWorkspacePreferences(
+    String accountId,
+  ) async => workspacePreferences;
+
+  @override
+  Future<void> saveWorkspacePreferences(
+    String accountId,
+    WorkspacePreferences preferences,
+  ) async {
+    workspacePreferences = preferences;
+  }
+
+  @override
+  Future<ConsoleUser> fetchCurrentUser(String accessToken) async =>
+      const ConsoleUser(
+        email: 'tester@example.com',
+        displayName: 'Test',
+        workspaces: [ConsoleWorkspace(id: 'tenant-1', name: '个人空间')],
+      );
+
+  @override
+  Future<void> authorizeDeviceWorkspace({
+    required String accessToken,
+    required String sourceWorkspaceId,
+    required String deviceId,
+    required String targetWorkspaceId,
+  }) async {}
+
   var prepareBootstrapCount = 0;
   var fetchVersionCount = 0;
   var bootstrapVersion = '2.6.4';
@@ -2391,7 +2475,11 @@ class _LifecycleAuthService implements AuthService {
   }
 
   @override
-  Future<AuthSession> completeDeviceAuth(DeviceAuthInfo info) {
+  Future<AuthSession> completeDeviceAuth(
+    DeviceAuthInfo info, {
+    Future<bool> Function()? waitForForeground,
+    int Function()? lifecycleGeneration,
+  }) {
     throw UnimplementedError();
   }
 
@@ -2552,6 +2640,7 @@ class _LifecycleAuthService implements AuthService {
   Future<CoreBootstrapConfig> prepareCoreBootstrap({
     required String accessToken,
     required String workspaceId,
+    String? enrollmentKeyId,
   }) async {
     prepareBootstrapCount++;
     workspaceIds.add(workspaceId);
