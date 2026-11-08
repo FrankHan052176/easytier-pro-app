@@ -573,6 +573,62 @@ void main() {
         );
       });
     });
+    test(
+      'reads instance readiness from the snapshot instead of getVpnState',
+      () async {
+        final events = harness.collectEvents();
+        harness.instances = {_instanceName: _instanceId};
+        harness.snapshot = _snapshotJson(
+          configServerConnected: true,
+          activeVpnInstanceName: _instanceName,
+          activeVpnInstanceId: _instanceId,
+          vpnConfig: _vpnConfig(),
+          instances: {_runtimeNetworkLabel: _instanceId},
+        );
+        harness.emit({
+          'type': 'runtime_snapshot',
+          'payload': harness.snapshot,
+        });
+        await events.waitFor('runtime_snapshot');
+        await _settle();
+
+        expect(
+          await harness.runtime.isNetworkInstanceRunning(
+            _runtimeNetworkLabel,
+          ),
+          isTrue,
+        );
+        // The Android bridge exposes getVpnState; HarmonyOS keeps that state
+        // in the snapshot and must never ask the method channel for it.
+        expect(harness.methodNames, isNot(contains('getVpnState')));
+      },
+    );
+
+    test(
+      'returns the tunnel address from the snapshot before the console id arrives',
+      () async {
+        harness.snapshot = _snapshotJson(
+          configServerConnected: true,
+          activeVpnInstanceName: _runtimeNetworkLabel,
+          activeVpnInstanceId: _instanceId,
+          vpnConfig: _vpnConfig(),
+          instances: const <String, String>{},
+        );
+        await harness.runtime.ensureRunning(
+          _bootstrap(),
+          forceReinstall: false,
+        );
+
+        final address = await harness.runtime
+            .waitForNetworkConnection(
+              _runtimeNetworkLabel,
+              readInstanceId: () async => null,
+            )
+            .timeout(const Duration(seconds: 3));
+
+        expect(address, '10.126.0.9');
+      },
+    );
   });
 
   group('OhosCoreRuntime route refresh', () {

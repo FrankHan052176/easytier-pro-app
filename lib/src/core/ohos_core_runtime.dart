@@ -12,6 +12,7 @@ class OhosRuntimeSnapshot {
     required this.activeVpnInstanceName,
     required this.activeVpnInstanceId,
     required this.instances,
+    required this.vpnConfigAddresses,
   });
 
   /// Parses the snapshot JSON contract, either still encoded or already
@@ -34,6 +35,7 @@ class OhosRuntimeSnapshot {
       ),
       activeVpnInstanceId: CoreJsonValue.readString(map['activeVpnInstanceId']),
       instances: Map.unmodifiable(_readInstanceAliases(map['instances'])),
+      vpnConfigAddresses: _readVpnAddresses(map['vpnConfig']),
     );
   }
 
@@ -49,6 +51,15 @@ class OhosRuntimeSnapshot {
   /// Runtime/network label to Core instance id, the authoritative instance map
   /// of the native runtime.
   final Map<String, String> instances;
+
+  /// Addresses installed on the interface the snapshot reports as attached.
+  /// Empty while no interface is attached.
+  final List<String> vpnConfigAddresses;
+
+  static List<String> _readVpnAddresses(Object? value) {
+    final config = CoreJsonValue.readMap(value);
+    return CoreJsonValue.readStringList(config?['addresses']);
+  }
 
   static Map<String, String> _readInstanceAliases(Object? value) {
     final aliases = <String, String>{};
@@ -167,6 +178,9 @@ class OhosCoreRuntime extends AndroidCoreRuntime {
         coreVersion: bootstrap.version,
       );
     }
+    // A successful prepare is the same permission evidence Android records in
+    // its start path; the join wait relies on it.
+    _vpnPrepared = true;
 
     await _methodChannel.invokeMethod<void>('startConfigServerClient', {
       'url': fullUrl,
@@ -192,6 +206,89 @@ class OhosCoreRuntime extends AndroidCoreRuntime {
       details: 'EasyTier ${bootstrap.version}',
       coreVersion: bootstrap.version,
     );
+  }
+
+  /// Waits for the Extension snapshot to report this network's interface.
+  ///
+  /// The shared Android implementation waits for the console node's instance
+  /// id and re-reads the interface through JSON-RPC. On HarmonyOS the console
+  /// assignment and the local runtime are decoupled, so that match can time out
+  /// even though the Extension already attached the correct TUN. The snapshot
+  /// names the attached instance and the addresses it installed, which is the
+  /// local data path the caller needs.
+  @override
+  Future<String?> waitForNetworkConnection(
+    String runtimeNetworkName, {
+    required Future<String?> Function() readInstanceId,
+  }) async {
+    final networkName = runtimeNetworkName.trim();
+    if (networkName.isEmpty) {
+      return null;
+    }
+    final deadline = DateTime.now().add(const Duration(seconds: 60));
+    String? consoleInstanceId;
+    var readConsoleId = false;
+    while (DateTime.now().isBefore(deadline)) {
+      if (_disposed || !_vpnPrepared) {
+        throw StateError('HarmonyOS VPN 未获得授权或已停止');
+      }
+      final OhosRuntimeSnapshot snapshot;
+      try {
+        snapshot = await _readSnapshot();
+      } on Object {
+        await Future<void>.delayed(const Duration(milliseconds: 500));
+        continue;
+      }
+      _applySnapshot(snapshot);
+      final activeId = snapshot.activeVpnInstanceId.trim();
+      var expectedId = snapshot.instances[networkName] ?? '';
+      if (expectedId.isEmpty && !readConsoleId) {
+        readConsoleId = true;
+        try {
+          consoleInstanceId = (await readInstanceId())?.trim();
+        } on Object {
+          consoleInstanceId = null;
+        }
+        expectedId = consoleInstanceId ?? '';
+      } else if (expectedId.isEmpty && consoleInstanceId != null) {
+        expectedId = consoleInstanceId;
+      }
+      final attached =
+          activeId.isNotEmpty &&
+          (snapshot.activeVpnInstanceName == networkName ||
+              (expectedId.isNotEmpty && activeId == expectedId));
+      if (attached) {
+        for (final cidr in snapshot.vpnConfigAddresses) {
+          final address = cidr.split('/').first.trim();
+          if (address.isNotEmpty) {
+            return address;
+          }
+        }
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 500));
+    }
+    throw StateError('等待 HarmonyOS 网络接入 VPN 超时');
+  }
+
+  @override
+  Future<bool> isNetworkInstanceRunning(String runtimeNetworkName) async {
+    final networkName = runtimeNetworkName.trim();
+    if (networkName.isEmpty) {
+      return false;
+    }
+    try {
+      final snapshot = await _readSnapshot();
+      _applySnapshot(snapshot);
+      final activeId = snapshot.activeVpnInstanceId.trim();
+      if (activeId.isEmpty || snapshot.vpnConfigAddresses.isEmpty) {
+        return false;
+      }
+      final expectedId = snapshot.instances[networkName] ?? '';
+      return snapshot.activeVpnInstanceName == networkName ||
+          (expectedId.isNotEmpty && activeId == expectedId);
+    } on Object {
+      return false;
+    }
   }
 
   /// Suspends the native tunnel while the user leaves a network. The Extension
@@ -292,6 +389,25 @@ class OhosCoreRuntime extends AndroidCoreRuntime {
         },
       ),
     );
+  }
+
+  /// Reports the interface the Extension owns in the shape the shared Android
+  /// readiness code consumes. The Android method channel has `getVpnState`,
+  /// but HarmonyOS keeps that state in the authoritative runtime snapshot;
+  /// asking the bridge for it would only produce a MissingPluginException.
+  @override
+  Future<Map<String, Object?>> _readVpnState() async {
+    try {
+      final snapshot = await _readSnapshot();
+      _applySnapshot(snapshot);
+      final activeId = snapshot.activeVpnInstanceId.trim();
+      return <String, Object?>{
+        'instance_ids': activeId.isEmpty ? const <String>[] : <String>[activeId],
+        'addresses': snapshot.vpnConfigAddresses,
+      };
+    } on Object {
+      return const <String, Object?>{};
+    }
   }
 
   void _applySnapshot(OhosRuntimeSnapshot snapshot) {
