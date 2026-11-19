@@ -56,3 +56,6 @@ sparkle_private_key.*
 .fvm/
 conversation-*
 !/.github/scripts/
+
+# Categorized changelog written by local AGCD right before a Release build
+/agcd-changelog.json

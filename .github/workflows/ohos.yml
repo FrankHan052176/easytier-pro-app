@@ -2,17 +2,10 @@ name: ohos
 
 on:
   push:
-    branches:
-      - main
-  repository_dispatch:
-    types: [core-har-published]
+    branches: [main]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
-    inputs:
-      notify:
-        description: '是否发送测试邀请通知 (勾选发送通知，默认不勾选为静默发布)'
-        required: false
-        type: boolean
-        default: false
 
 permissions:
   contents: read
@@ -22,27 +15,16 @@ env:
   FLUTTER_OHOS_REF: 3.44.9+ohos-1.0.0-beta
   FLUTTER_OHOS_COMMIT: 744cbb4f08e577787774c04033cc19a9d318d0d2
   OHOS_COMMAND_LINE_TOOLS_VERSION: 6.1.1.280
-  CODEARTS_OHPM_REGISTRY: https://devrepo.devcloud.cn-north-4.huaweicloud.com/artgalaxy/api/ohpm/cn-north-4_c07b1b38744f424b8d87a86532d38003_ohpm_1/
-  CORE_HAR_PACKAGE: ${{ github.event.client_payload.package_name || 'easytier-ohrs' }}
-  SIGNING_REPOSITORY: ${{ vars.SIGNING_REPOSITORY || 'FrankHan052176/EasyTierProSigning' }}
-  SIGNING_REPOSITORY_REF: ${{ vars.SIGNING_REPOSITORY_REF || 'main' }}
 
 jobs:
-  ohos:
-    name: ohos
+  ohos-check:
+    name: ohos-unsigned-check
     runs-on: ubuntu-latest
-    env:
-      AGC_CLIENT_ID: ${{ secrets.AGC_CLIENT_ID }}
-      AGC_CLIENT_SECRET: ${{ secrets.AGC_CLIENT_SECRET }}
-      AGC_APP_ID: ${{ secrets.AGC_APP_ID }}
-      AGC_API_DOMAIN: ${{ vars.AGC_API_DOMAIN || 'connect-api.cloud.huawei.com' }}
-      AGC_TEST_DURATION_DAYS: ${{ vars.AGC_TEST_DURATION_DAYS || '14' }}
 
     steps:
       - name: Checkout app
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0
           persist-credentials: false
 
       - name: Set up Java
@@ -69,129 +51,23 @@ jobs:
           echo "$RUNNER_TEMP/flutter-ohos/bin" >> "$GITHUB_PATH"
           echo "FLUTTER_GIT_URL=$FLUTTER_OHOS_REPOSITORY" >> "$GITHUB_ENV"
           "$RUNNER_TEMP/flutter-ohos/bin/flutter" config --enable-ohos
+          "$RUNNER_TEMP/flutter-ohos/bin/flutter" config --ohos-sdk "$OHOS_NDK_HOME"
 
-      - name: Install HarmonyOS dependencies and Core HAR
-        id: core_har
+      - name: Install HarmonyOS dependencies
         working-directory: ohos
-        env:
-          CODEARTS_PRIVATE_OHPM_READ: ${{ secrets.CODEARTS_PRIVATE_OHPM_READ }}
-          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          ohpm uninstall "$CORE_HAR_PACKAGE"
-
-          mkdir -p "$HOME/.ohpm"
-          umask 077
-          printf '%s' "$CODEARTS_PRIVATE_OHPM_READ" > "$HOME/.ohpm/.ohpmrc"
-
-          ohpm install "$CORE_HAR_PACKAGE@latest" \
-            --registry "$CODEARTS_OHPM_REGISTRY"
+          test -s easytier-ohrs-0.0.1.har
+          sha256sum easytier-ohrs-0.0.1.har
           ohpm install
 
-          resolved_version=$(jq -r '.version' \
-            "oh_modules/$CORE_HAR_PACKAGE/oh-package.json5")
-          pubspec_path=../pubspec.yaml
-          version_line=$(grep -n -m 1 '^version:' "$pubspec_path" | cut -d: -f1)
-          test -n "$version_line"
-          version_commit=$(git blame -L "${version_line},${version_line}" \
-            --porcelain -- "$pubspec_path" | sed -n '1s/ .*//p')
-          version_epoch=$(git show -s --format=%ct "$version_commit")
-          workflow_runs=$(curl --fail --silent --show-error --location \
-            --header "Authorization: Bearer $GH_TOKEN" \
-            --header 'X-GitHub-Api-Version: 2022-11-28' \
-            "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/workflows/ohos.yml/runs?per_page=100")
-          previous_attempts=$(jq -er \
-            --argjson version_epoch "$version_epoch" \
-            --argjson current_run_id "$GITHUB_RUN_ID" \
-            '[.workflow_runs[]
-              | select((.created_at | fromdateiso8601) >= $version_epoch)
-              | select(.id != $current_run_id)
-              | (.run_attempt // 1)]
-            | add // 0' \
-            <<<"$workflow_runs")
-          build_number=$((10#$previous_attempts + 10#$GITHUB_RUN_ATTEMPT))
-          if (( build_number < 1 || build_number > 99 )); then
-            echo "Pro version build number is outside the supported range: $build_number" >&2
-            exit 1
-          fi
-          package_branch=$(printf '%s\n' "$resolved_version" | sed -E \
-            's/^[0-9]+\.[0-9]+\.[0-9]+-//; s/-[0-9]+-[0-9]+-[0-9]+-g[0-9a-f]+$//')
-          echo "Installed Core HAR: ${CORE_HAR_PACKAGE}@${resolved_version}"
-          echo "Pro version build number: $build_number"
-          echo "package_branch=$package_branch" >> "$GITHUB_OUTPUT"
-          echo "package_version=$resolved_version" >> "$GITHUB_OUTPUT"
-          echo "build_number=$build_number" >> "$GITHUB_OUTPUT"
+      - name: Install Flutter dependencies
+        run: flutter pub get
 
-          cd ..
-          flutter pub get
-
-      - name: Prepare signing configuration
-        env:
-          GH_TOKEN: ${{ secrets.SIGNING_REPOSITORY_TOKEN }}
-          SIGNING_REPOSITORY_DIR: ${{ runner.temp }}/signing-repository
-          SIGNING_APP_DIR: .
-          SIGNING_SOURCE_CONFIG_NAME: sign.json
-          SIGNING_OUTPUT_DIR: ${{ runner.temp }}/easytier-pro-signing
+      - name: Verify unsigned Release HAP compilation
         run: |
           set -euo pipefail
-          gh repo clone \
-            "$SIGNING_REPOSITORY" \
-            "$SIGNING_REPOSITORY_DIR" \
-            -- \
-            --depth=1 \
-            --branch "$SIGNING_REPOSITORY_REF"
-          .github/ci/prepare-signing-config.sh
-          echo "EASYTIER_PRO_SIGNING_DIR=$SIGNING_OUTPUT_DIR" >> "$GITHUB_ENV"
-
-      - name: Build signed publish release App
-        id: app
-        env:
-          CORE_HAR_BRANCH: ${{ steps.core_har.outputs.package_branch }}
-          CORE_HAR_VERSION: ${{ steps.core_har.outputs.package_version }}
-          EASYTIER_PRO_BUILD_NUMBER: ${{ steps.core_har.outputs.build_number }}
-        run: |
-          set -euo pipefail
-          CI=true flutter build app \
-            --release \
-            --flavor publish \
-            --target-platform ohos-arm64 \
-            --no-pub
-
-          signed_app=$(find ohos/build/outputs/publish \
-            -type f -name '*-signed.app' -print -quit)
-          test -n "$signed_app"
-          app_name="EasyTier-${CORE_HAR_BRANCH}-${CORE_HAR_VERSION}"
-          app_path="$RUNNER_TEMP/$app_name.app"
-          mv "$signed_app" "$app_path"
-          echo "name=$app_name" >> "$GITHUB_OUTPUT"
-          echo "path=$app_path" >> "$GITHUB_OUTPUT"
-
-      - name: Upload signed HarmonyOS App
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ steps.app.outputs.name }}
-          path: ${{ steps.app.outputs.path }}
-          retention-days: 14
-          if-no-files-found: error
-
-      - name: Upload and submit AGC test version
-        if: ${{ env.AGC_CLIENT_ID != '' && env.AGC_CLIENT_SECRET != '' && env.AGC_APP_ID != '' }}
-        id: agc
-        env:
-          AGC_APP_FILE: ${{ steps.app.outputs.path }}
-          AGC_EVENT_NAME: ${{ github.event_name }}
-          AGC_RUN_ATTEMPT: ${{ github.run_attempt }}
-          AGC_NEED_NOTIFY: ${{ github.event_name == 'workflow_dispatch' && (inputs.notify && '1' || '0') || (github.event_name == 'repository_dispatch' && (github.event.client_payload.notify && '1' || '0') || (vars.AGC_NOTIFY_ON_PUSH == '1' && github.event_name == 'push' && github.run_attempt == 1 && '1' || '0')) }}
-          AGC_APP_NAME_PREFIX: EasyTierPro
-          AGC_CORE_HAR_VERSION: ${{ steps.core_har.outputs.package_version }}
-          AGC_PUSH_COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
-          AGC_WORKFLOW_SHA: ${{ github.sha }}
-        run: .github/scripts/agc-test-release.sh "$AGC_APP_FILE"
-
-      - name: Remove credentials and signing material
-        if: always()
-        run: |
-          rm -rf \
-            "$RUNNER_TEMP/signing-repository" \
-            "$RUNNER_TEMP/easytier-pro-signing"
-          rm -f "$HOME/.ohpm/.ohpmrc"
+          CI=true flutter build hap --release --no-codesign --no-pub
+          unsigned_hap=$(find build/ohos/hap -type f -name '*-unsigned.hap' -print -quit)
+          test -n "$unsigned_hap"
+          echo "Verified unsigned Release HAP locally in CI (not uploaded): $unsigned_hap"
